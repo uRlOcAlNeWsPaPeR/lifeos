@@ -31,8 +31,7 @@ export type PlanId = keyof typeof PLAN_LIMITS;
  * Firestore — the people who build and run LifeOS. Compared case-insensitively.
  */
 export const CREATOR_EMAILS = new Set([
-  "pantrypaladins@gmail.com",
-  "adityavijey@gmail.com",
+  "lifeos3030@gmail.com",
 ]);
 
 export function isCreator(email: string | null | undefined): boolean {
