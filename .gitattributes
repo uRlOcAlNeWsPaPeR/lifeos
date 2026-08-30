@@ -1,0 +1,13 @@
+# Normalise line endings so the repo works the same on Windows and macOS/Linux.
+* text=auto eol=lf
+
+# Binary / generated — never touch
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+package-lock.json -diff

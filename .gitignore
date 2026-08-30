@@ -1,0 +1,27 @@
+node_modules
+.next
+out
+build
+.DS_Store
+*.pem
+npm-debug.log*
+
+# secrets
+.env
+.env*.local
+serviceAccount*.json
+firebase-adminsdk*.json
+
+# firebase
+.firebase
+firebase-debug.log
+.firebaserc
+
+next-env.d.ts
+.vercel
+*.tsbuildinfo
+
+# stray scratch / cookie files
+cj2.txt
+*.cookies
+cookies.txt
