@@ -6,7 +6,7 @@ import { HeuristicProvider } from "./heuristic";
 import type { AIProvider } from "./types";
 import { limitsFor, effectivePlan } from "@/lib/plan-limits";
 import { adminDb, adminAuth } from "@/lib/firebase/admin";
-import { todayKey } from "@/lib/firebase/schema";
+import { periodKey } from "@/lib/firebase/schema";
 
 let provider: AIProvider | null = null;
 
@@ -38,28 +38,41 @@ export function aiStatus() {
 
 export { PLAN_LIMITS, limitsFor, effectivePlan, type PlanId } from "@/lib/plan-limits";
 
-type MeteredFeature = "brainDump" | "assistant";
+type MeteredFeature = "brainDump" | "assistant" | "essayCoach";
 
 const FEATURE_CONFIG: Record<
   MeteredFeature,
-  { usageField: string; cap: (l: ReturnType<typeof limitsFor>) => number; noun: string }
+  {
+    usageField: string;
+    period: "day" | "week";
+    cap: (l: ReturnType<typeof limitsFor>) => number;
+    noun: string;
+  }
 > = {
   brainDump: {
     usageField: "brainDumpUsage",
-    cap: (l) => l.brainDumpsPerDay,
+    period: "week",
+    cap: (l) => l.brainDumpsPerWeek,
     noun: "Brain Dump",
   },
   assistant: {
     usageField: "assistantUsage",
+    period: "day",
     cap: (l) => l.assistantPerDay,
     noun: "AI Assistant question",
+  },
+  essayCoach: {
+    usageField: "essayCoachUsage",
+    period: "week",
+    cap: (l) => l.essayCoachPerWeek,
+    noun: "Essay Coach run",
   },
 };
 
 /**
- * Server-side per-day rate limit for a metered AI feature. Reads the user's
- * plan + email (creator override), checks today's count against the cap and
- * increments `<feature>Usage["yyyy-mm-dd"]` on the profile doc.
+ * Server-side rate limit for a metered AI feature. Reads the user's plan + email
+ * (creator override), checks the current period's count against the cap and
+ * increments `<feature>Usage[<periodKey>]` on the profile doc.
  */
 export async function assertAndCountAiUsage(uid: string, feature: MeteredFeature) {
   const cfg = FEATURE_CONFIG[feature];
@@ -74,17 +87,18 @@ export async function assertAndCountAiUsage(uid: string, feature: MeteredFeature
   const cap = cfg.cap(limitsFor(plan));
 
   const usage: Record<string, number> = (profile[cfg.usageField] as Record<string, number>) ?? {};
-  const key = todayKey();
+  const key = periodKey(cfg.period);
   const used = usage[key] ?? 0;
+  const window = cfg.period === "week" ? "this week" : "today";
 
-  if (cap !== Infinity && used >= cap) {
+  if (Number.isFinite(cap) && used >= cap) {
     const err = new Error(
-      `You've used your ${cap} ${cfg.noun}${cap === 1 ? "" : "s"} for today. Upgrade for more.`,
+      `You've used your ${cap} ${cfg.noun}${cap === 1 ? "" : "s"} for ${window}.`,
     );
     (err as { status?: number }).status = 402;
     throw err;
   }
-  await ref.set({ [cfg.usageField]: { ...usage, [key]: used + 1 } }, { merge: true });
+  await ref.set({ [cfg.usageField]: { [key]: used + 1 } }, { merge: true });
 }
 
 /** @deprecated use assertAndCountAiUsage(uid, "brainDump") */

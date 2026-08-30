@@ -4,6 +4,7 @@ import { Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Badge, priorityTone } from "@/components/ui/badge";
 import { relativeDue, fmtDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import type { TaskDTO } from "@/lib/types";
 
 export function TaskItem({
@@ -25,6 +26,8 @@ export function TaskItem({
 }) {
   const due = relativeDue(task.dueAt);
   const done = task.status === "done";
+  const past = !done && Boolean(due?.past);
+  const upcoming = !done && !!due && !due.past;
 
   return (
     <div
@@ -32,6 +35,7 @@ export function TaskItem({
         "group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-card/60 backdrop-blur-xl transition-all duration-200 hover:border-white/15",
         compact ? "px-3 py-2" : "px-4 py-3.5",
         done && "opacity-55",
+        past && "opacity-60",
       )}
     >
       {draggable && (
@@ -58,10 +62,18 @@ export function TaskItem({
       </button>
 
       <div className="min-w-0 flex-1">
-        <p className={cn("truncate font-medium", compact ? "text-sm" : "text-[15px]", done && "line-through")}>
+        <p
+          className={cn(
+            "truncate",
+            compact ? "text-sm" : "text-[15px]",
+            upcoming ? "font-semibold" : "font-medium",
+            done && "font-medium line-through",
+          )}
+        >
           {task.title}
         </p>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          {task.source === "canvas" && <CanvasBadge />}
           {task.category && <span>{task.category}</span>}
           {task.course && (
             <span className="inline-flex items-center gap-1">
@@ -91,6 +103,7 @@ export function TaskItem({
       )}
 
       <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+        {task.canvasUrl && <OpenInCanvas url={task.canvasUrl} compact className="p-1.5" />}
         {onEdit && (
           <button
             onClick={() => onEdit(task)}

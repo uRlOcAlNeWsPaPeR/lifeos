@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { relativeDue, fmtDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { GraduationCap, ListChecks } from "lucide-react";
 
 export function DeadlineList({
@@ -28,10 +29,15 @@ export function DeadlineList({
         const due = relativeDue(item.dueAt);
         const Icon = item.kind === "assignment" ? GraduationCap : ListChecks;
         return (
-          <li key={`${item.kind}-${item.id}`} className="flex items-center gap-3 py-2.5">
+          <li
+            key={`${item.kind}-${item.id}`}
+            className={cn("flex items-center gap-3 py-2.5", due?.past && "opacity-60")}
+          >
             <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{item.title}</p>
+              <p className={cn("truncate text-sm", due && !due.past ? "font-semibold" : "font-medium")}>
+                {item.title}
+              </p>
               <p className="text-xs text-muted-foreground">
                 {item.context ? `${item.context} · ` : ""}
                 {fmtDate(item.dueAt, { weekday: "short", month: "short", day: "numeric" })}

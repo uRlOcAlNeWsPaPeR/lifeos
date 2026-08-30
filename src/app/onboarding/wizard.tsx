@@ -2,7 +2,18 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Plus, Sparkles, X, Moon, BellRing } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Plus,
+  Sparkles,
+  X,
+  Moon,
+  BellRing,
+  GraduationCap,
+  CheckCircle2,
+} from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -13,6 +24,8 @@ import { completeOnboarding } from "@/lib/firebase/onboarding-seed";
 import { DEFAULT_PREFS } from "@/lib/firebase/schema";
 import { fmt12 } from "@/lib/scheduling/sleep";
 import { toast } from "@/components/ui/toaster";
+import { ConnectCanvas } from "@/components/canvas/connect-canvas";
+import { useCanvas } from "@/lib/canvas/use-canvas";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -53,7 +66,9 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
   const [studyDays, setStudyDays] = useState<string[]>(DEFAULT_PREFS.studyDays);
   const [alarmsEnabled, setAlarmsEnabled] = useState(false);
 
-  const steps = ["You", "Goals", "Classes", "Sleep & study", "Activities", "Focus"];
+  const canvas = useCanvas();
+
+  const steps = ["You", "Goals", "Classes", "School", "Sleep & study", "Activities", "Focus"];
   const canNext = useMemo(() => (step === 0 ? name.trim().length > 0 : true), [step, name]);
   const last = steps.length - 1;
 
@@ -189,6 +204,44 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
 
           {step === 3 && (
             <Step
+              title="Connect your school"
+              subtitle="Connect Canvas to automatically bring your courses, assignments and deadlines into LifeOS. This is optional — you can skip it and connect later in Settings."
+            >
+              {canvas.status?.connected ? (
+                <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="font-medium">Canvas connected</p>
+                    <p className="text-sm text-muted-foreground">
+                      {canvas.status.school ? `${canvas.status.school} — ` : ""}
+                      we&apos;ll import your courses and assignments right after setup.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
+                      <GraduationCap className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      You&apos;ll sign in on your school&apos;s Canvas page in a popup —
+                      LifeOS never sees your password.
+                    </p>
+                  </div>
+                  <ConnectCanvas
+                    status={canvas.status}
+                    busy={canvas.busy}
+                    onConnect={(url) => canvas.connect(url, "onboarding")}
+                    onConnectToken={canvas.connectWithToken}
+                  />
+                </div>
+              )}
+            </Step>
+          )}
+
+          {step === 4 && (
+            <Step
               title="Your sleep & study rhythm"
               subtitle="LifeOS uses this to plan work into your real free time — and to stop pushing tasks past your bedtime."
             >
@@ -290,7 +343,7 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
             </Step>
           )}
 
-          {step === 4 && (
+          {step === 5 && (
             <Step
               title="Any extracurriculars?"
               subtitle="Sports, clubs, work, music — anything that takes regular time. Optional."
@@ -333,7 +386,7 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
             </Step>
           )}
 
-          {step === 5 && (
+          {step === 6 && (
             <Step
               title="What should LifeOS help with most?"
               subtitle="Pick a few. This tunes your AI priorities and assistant."

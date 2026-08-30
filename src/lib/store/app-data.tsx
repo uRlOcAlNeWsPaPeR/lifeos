@@ -18,6 +18,7 @@ import {
   entityDoc,
   userDoc,
   todayKey,
+  weekKey,
   withPrefs,
   type ProfileDoc,
   type Prefs,
@@ -56,7 +57,10 @@ interface StoreData {
     helpWith: string[];
     prefs: Prefs;
   };
+  /** Tasks shown in lists — excludes ones that shadow an assignment. */
   tasks: TaskDTO[];
+  /** Every task, including assignment shadows (for analytics + assignment detail). */
+  allTasks: TaskDTO[];
   goals: GoalDTO[];
   courses: CourseDTO[];
   assignments: AssignmentDTO[];
@@ -66,10 +70,12 @@ interface StoreData {
   ai: { engine: string; label: string };
   limits: {
     plan: string;
-    brainDumpsPerDay: number | null;
-    brainDumpsUsedToday: number;
+    brainDumpsPerWeek: number | null;
+    brainDumpsUsedThisWeek: number;
     assistantPerDay: number | null;
     assistantUsedToday: number;
+    essayCoachPerWeek: number | null;
+    essayCoachUsedThisWeek: number;
     maxActiveGoals: number | null;
     maxCourses: number | null;
     fullAnalytics: boolean;
@@ -232,7 +238,7 @@ export function AppDataProvider({
     );
     const goalLite = new Map(goalsRaw.map((g) => [g.id, { id: g.id, title: g.title as string }]));
 
-    const tasks: TaskDTO[] = tasksRaw.map((t) => ({
+    const allTasks: TaskDTO[] = tasksRaw.map((t) => ({
       id: t.id,
       title: (t.title as string) ?? "",
       notes: (t.notes as string) ?? null,
@@ -254,6 +260,10 @@ export function AppDataProvider({
       recurrence: (t.recurrence as TaskDTO["recurrence"]) ?? "none",
       goal: t.goalId ? goalLite.get(t.goalId as string) ?? null : null,
       course: t.courseId ? courseLite.get(t.courseId as string) ?? null : null,
+      canvasUrl: (t.canvasUrl as string) ?? null,
+      canvasAssignmentId: (t.canvasAssignmentId as string) ?? null,
+      shadowOfAssignmentId: null,
+      assignment: null,
     }));
 
     const goals: GoalDTO[] = goalsRaw.map((g) => {
@@ -270,7 +280,7 @@ export function AppDataProvider({
         dueAt: (g.dueAt as string) ?? null,
         milestones,
         habitLogs: ((g.habitLogs as { id: string; date: string }[]) ?? []),
-        tasks: tasks
+        tasks: allTasks
           .filter((t) => t.goalId === g.id)
           .map((t) => ({ id: t.id, title: t.title, status: t.status, dueAt: t.dueAt })),
       };
@@ -286,9 +296,54 @@ export function AppDataProvider({
       gradeValue: (a.gradeValue as string) ?? null,
       pointsEarned: (a.pointsEarned as number) ?? null,
       pointsPossible: (a.pointsPossible as number) ?? null,
+      provider: (a.provider as string) ?? null,
+      canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
+      canvasUrl: (a.canvasUrl as string) ?? null,
       course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
-      tasks: tasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
+      tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
+      linkedTask: null as AssignmentDTO["linkedTask"],
     }));
+
+    /* --- shadow-task dedup: a task that mirrors an assignment (same name, same
+       due day, or an explicit link) becomes that assignment's planning layer and
+       is hidden from the task lists. --- */
+    {
+      const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+      const dayKey = (iso: string | null) =>
+        iso ? new Date(iso).toISOString().slice(0, 10) : "";
+      const byId = new Map(assignments.map((a) => [a.id, a]));
+      const byTitleDay = new Map<string, AssignmentDTO>();
+      for (const a of assignments) byTitleDay.set(`${norm(a.title)}|${dayKey(a.dueAt)}`, a);
+
+      for (const t of allTasks) {
+        let shadow: AssignmentDTO | undefined;
+        if (t.assignmentId && byId.has(t.assignmentId)) shadow = byId.get(t.assignmentId);
+        else if (t.dueAt) shadow = byTitleDay.get(`${norm(t.title)}|${dayKey(t.dueAt)}`);
+        if (shadow) {
+          t.shadowOfAssignmentId = shadow.id;
+          t.assignment = { id: shadow.id, title: shadow.title };
+        }
+      }
+      for (const a of assignments) {
+        const lt =
+          allTasks.find((t) => t.shadowOfAssignmentId === a.id && t.assignmentId === a.id) ??
+          allTasks.find((t) => t.shadowOfAssignmentId === a.id);
+        a.linkedTask = lt
+          ? {
+              id: lt.id,
+              status: lt.status,
+              notes: lt.notes,
+              estimatedMinutes: lt.estimatedMinutes,
+              scheduledAt: lt.scheduledAt ?? null,
+              priority: lt.priority,
+              dueTime: lt.dueTime ?? null,
+              completedAt: lt.completedAt,
+            }
+          : null;
+      }
+    }
+
+    const tasks = allTasks.filter((t) => !t.shadowOfAssignmentId);
 
     const courses: CourseDTO[] = coursesRaw.map((c) => ({
       id: c.id,
@@ -299,6 +354,8 @@ export function AppDataProvider({
       term: (c.term as string) ?? null,
       currentGrade: (c.currentGrade as string) ?? null,
       provider: (c.provider as string) ?? null,
+      canvasCourseId: (c.canvasCourseId as string) ?? null,
+      canvasUrl: (c.canvasUrl as string) ?? null,
       assignments: assignments
         .filter((a) => a.courseId === c.id)
         .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
@@ -314,6 +371,9 @@ export function AppDataProvider({
       kind: (e.kind as EventDTO["kind"]) ?? "event",
       location: (e.location as string) ?? null,
       taskId: (e.taskId as string) ?? null,
+      provider: (e.provider as string) ?? null,
+      canvasUrl: (e.canvasUrl as string) ?? null,
+      canvasEventId: (e.canvasEventId as string) ?? null,
     }));
 
     const alarms: AlarmDTO[] = alarmsRaw
@@ -359,6 +419,7 @@ export function AppDataProvider({
         prefs: withPrefs(profile?.prefs),
       },
       tasks,
+      allTasks,
       goals,
       courses,
       assignments,
@@ -368,10 +429,12 @@ export function AppDataProvider({
       ai,
       limits: {
         plan,
-        brainDumpsPerDay: orNull(planLimits.brainDumpsPerDay),
-        brainDumpsUsedToday: profile?.brainDumpUsage?.[todayKey()] ?? 0,
+        brainDumpsPerWeek: orNull(planLimits.brainDumpsPerWeek),
+        brainDumpsUsedThisWeek: profile?.brainDumpUsage?.[weekKey()] ?? 0,
         assistantPerDay: orNull(planLimits.assistantPerDay),
         assistantUsedToday: profile?.assistantUsage?.[todayKey()] ?? 0,
+        essayCoachPerWeek: orNull(planLimits.essayCoachPerWeek),
+        essayCoachUsedThisWeek: profile?.essayCoachUsage?.[weekKey()] ?? 0,
         maxActiveGoals: orNull(planLimits.maxActiveGoals),
         maxCourses: orNull(planLimits.maxCourses),
         fullAnalytics: planLimits.fullAnalytics,
@@ -380,8 +443,8 @@ export function AppDataProvider({
   }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, ai]);
 
   const analytics = useMemo(
-    () => deriveAnalytics(data.tasks, data.goals, data.assignments),
-    [data.tasks, data.goals, data.assignments],
+    () => deriveAnalytics(data.allTasks, data.goals, data.assignments),
+    [data.allTasks, data.goals, data.assignments],
   );
 
   /* --------------------------------- writes -------------------------------- */
@@ -501,7 +564,7 @@ export function AppDataProvider({
       addGoal: (input) => {
         const cap = data.limits.maxActiveGoals;
         if (cap !== null && goalsRaw.filter((g) => (g.status ?? "active") === "active").length >= cap) {
-          toast(`The ${data.limits.plan === "free" ? "Free" : "Pro"} plan tops out at ${cap} active goals. Upgrade for more.`, "error");
+          toast(`Your plan tops out at ${cap} active goals. Upgrade to Student+ for more.`, "error");
           return Promise.resolve(undefined);
         }
         return guard(async () => {
@@ -569,7 +632,7 @@ export function AppDataProvider({
       addCourse: (input) => {
         const cap = data.limits.maxCourses;
         if (cap !== null && coursesRaw.length >= cap) {
-          toast(`The ${data.limits.plan === "free" ? "Free" : "Pro"} plan tops out at ${cap} courses. Upgrade for more.`, "error");
+          toast(`Your plan tops out at ${cap} courses. Upgrade to Student+ for more.`, "error");
           return Promise.resolve(undefined);
         }
         return guard(async () => {
@@ -651,7 +714,13 @@ export function AppDataProvider({
           (await guard(async () => {
             const batch = writeBatch(db());
             let order = Math.max(0, ...tasksRaw.map((t) => (t.sortOrder as number) ?? 0));
+            // link a task to a real course when its subject matches one
+            const courseByName = new Map(
+              coursesRaw.map((c) => [String(c.name ?? "").trim().toLowerCase(), c.id]),
+            );
             for (const it of items) {
+              const cat = (it.category ?? "").trim();
+              const courseId = cat ? courseByName.get(cat.toLowerCase()) ?? null : null;
               batch.set(doc(col(uid, "tasks")), {
                 title: it.title.trim(),
                 notes: it.notes ?? null,
@@ -664,7 +733,7 @@ export function AppDataProvider({
                 sortOrder: ++order,
                 source: "brain_dump",
                 goalId: null,
-                courseId: null,
+                courseId,
                 assignmentId: null,
                 createdAt: now(),
               });
@@ -681,7 +750,7 @@ export function AppDataProvider({
       },
 
       noteBrainDumpUsed: () => {
-        const key = todayKey();
+        const key = weekKey();
         const usage = { ...(profile?.brainDumpUsage ?? {}) };
         usage[key] = (usage[key] ?? 0) + 1;
         updateDoc(userDoc(uid), { brainDumpUsage: usage }).catch(() => {});

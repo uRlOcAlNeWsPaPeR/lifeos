@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles } from "lucide-react";
+import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,18 +13,20 @@ import {
   StudySettings,
   NotificationSettings,
 } from "./settings-client";
+import { CanvasSettings } from "./canvas-settings";
 import { useAppData } from "@/lib/store/app-data";
 import { planLabel, isCreator } from "@/lib/plan-limits";
 import { cn } from "@/lib/utils";
 
 function planSummary(l: ReturnType<typeof useAppData>["data"]["limits"]) {
   const n = (v: number | null) => (v === null ? "Unlimited" : v);
-  return `${n(l.brainDumpsPerDay)} Brain Dumps/day · ${n(l.assistantPerDay)} Assistant questions/day · ${n(l.maxActiveGoals)} goals · ${l.fullAnalytics ? "full" : "snapshot"} analytics`;
+  return `${n(l.brainDumpsPerWeek)} Brain Dumps/week · ${n(l.assistantPerDay)} Assistant questions/day · ${n(l.maxActiveGoals)} goals · ${l.fullAnalytics ? "full" : "snapshot"} analytics`;
 }
 
 const TABS = [
   { id: "schedule", label: "Schedule", icon: CalendarClock },
   { id: "study", label: "Study", icon: Timer },
+  { id: "school", label: "School", icon: GraduationCap },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "profile", label: "Profile", icon: User },
   { id: "plan", label: "Plan", icon: CreditCard },
@@ -68,6 +70,15 @@ export default function SettingsPage() {
           {tab === "study" && (
             <Section title="Study preferences">
               <StudySettings />
+            </Section>
+          )}
+
+          {tab === "school" && (
+            <Section
+              title="Canvas"
+              desc="Canvas is the source of your school data. LifeOS turns it into tasks, deadlines and a workload view — it never replaces your own planning."
+            >
+              <CanvasSettings />
             </Section>
           )}
 

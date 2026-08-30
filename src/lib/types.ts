@@ -25,6 +25,28 @@ export interface TaskDTO {
   recurrence?: "none" | "daily" | "weekdays" | "weekly" | null;
   goal?: { id: string; title: string } | null;
   course?: { id: string; name: string; color: string } | null;
+  /** Set when source === "canvas" — deep link to the assignment on Canvas. */
+  canvasUrl?: string | null;
+  canvasAssignmentId?: string | null;
+  /**
+   * When set, this task mirrors an assignment of the same name — it's the
+   * assignment's planning data (estimate / schedule / notes / done-state), not a
+   * standalone to-do. Hidden from task lists; surfaced via the assignment.
+   */
+  shadowOfAssignmentId?: string | null;
+  assignment?: { id: string; title: string } | null;
+}
+
+/** The optional "planning layer" a user attaches to an assignment. */
+export interface LinkedTaskDTO {
+  id: string;
+  status: "todo" | "done";
+  notes: string | null;
+  estimatedMinutes: number | null;
+  scheduledAt: string | null;
+  priority: "low" | "medium" | "high" | "urgent";
+  dueTime: string | null;
+  completedAt: string | null;
 }
 
 export interface MilestoneDTO {
@@ -59,6 +81,8 @@ export interface CourseDTO {
   term: string | null;
   currentGrade: string | null;
   provider: string | null;
+  canvasCourseId?: string | null;
+  canvasUrl?: string | null;
   assignments: AssignmentDTO[];
 }
 
@@ -72,8 +96,13 @@ export interface AssignmentDTO {
   gradeValue: string | null;
   pointsEarned: number | null;
   pointsPossible: number | null;
+  provider?: string | null;
+  canvasAssignmentId?: string | null;
+  canvasUrl?: string | null;
   course?: { id: string; name: string; color: string } | null;
   tasks?: { id: string; status: string }[];
+  /** The user's planning task for this assignment, if they've added one. */
+  linkedTask?: LinkedTaskDTO | null;
 }
 
 export interface EventDTO {
@@ -86,6 +115,9 @@ export interface EventDTO {
   kind: "event" | "study_session" | "class" | "deadline";
   location: string | null;
   taskId: string | null;
+  provider?: string | null;
+  canvasUrl?: string | null;
+  canvasEventId?: string | null;
 }
 
 export interface BrainDumpItemDTO {

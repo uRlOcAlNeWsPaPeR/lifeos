@@ -151,7 +151,182 @@ export interface TaskShape {
 }
 
 const FILLER =
-  /^(i\s+)?(have to|have a|need to|needa|gotta|got to|must|should|want to|wanna|plan to|remember to|don'?t forget to|make sure to|also)\s+/i;
+  /^(i\s+)?(have to|have a|have an|have|need to|needa|gotta|got to|must|should|want to|wanna|plan to|remember to|don'?t forget to|make sure to|also)\s+/i;
+
+// Work-type keywords used to build a short "{Subject} {type}" title.
+const WORK_TYPES =
+  "essay|paper|report|lab report|lab|homework|hw|assignment|project|presentation|pset|problem set|worksheet|packet|reading|quiz|test|exam|midterm|final|review|notes|outline|draft|discussion post|reflection";
+const WORK_TYPE_RE = new RegExp(`\\b([a-z][a-z+-]{1,20})\\s+(${WORK_TYPES})\\b`, "i");
+const NORMALISE_TYPE: Record<string, string> = { hw: "HW", pset: "pset", "problem set": "pset" };
+
+/**
+ * Force a task title down to a few keywords.
+ *   "english essay on the great gatsby symbolism" -> "English essay"
+ *   "do my chem homework problems 1-20"            -> "Chem HW"
+ *   "history test on the french revolution, ..."   -> "History test"
+ * Leaves already-short titles alone.
+ */
+export function tightenTitle(input: string): string {
+  let t = (input ?? "").trim().replace(FILLER, "").trim();
+  // strip date/schedule words wherever they sit — they belong on the due date, not the title
+  t = t
+    .replace(
+      /\b(due|by|on|this|next)?\s*(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week|this weekend|morning|afternoon|evening|night)\b/gi,
+      " ",
+    )
+    .replace(/\b(in \d+ (?:days?|weeks?)|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b/gi, " ")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s,–-]+|[\s,–-]+$/g, "")
+    .trim();
+  if (!t) return titleCase((input ?? "").trim());
+
+  // "<subject> <work-type>" is the cleanest form — use it whenever we can, even
+  // for a title that's already short ("work on my coding project" -> "Coding project").
+  const m = t.match(WORK_TYPE_RE);
+  if (m) {
+    const subject = m[1].toLowerCase();
+    const type = m[2].toLowerCase();
+    const typeLabel = NORMALISE_TYPE[type] ?? type;
+    if (!/^(the|a|an|my|his|her|their|this|that|some|our)$/.test(subject)) {
+      return titleCase(`${subject} ${typeLabel}`);
+    }
+    return titleCase(typeLabel);
+  }
+
+  if (t.split(/\s+/).length <= 5) return titleCase(t);
+  // Fallback: first 5 words, no trailing punctuation.
+  return titleCase(t.split(/\s+/).slice(0, 5).join(" ").replace(/[,.;:]+$/, ""));
+}
+
+// A fragment that names an assignment which can have topics / sub-steps under it.
+const ELABORATABLE_RE =
+  /\b(test|exam|quiz|midterm|final|essay|paper|report|presentation|project|study(?:ing)?|review|lab|homework|hw|assignment|worksheet|pset|problem set|packet|reading|analysis|write[- ]?up)\b/i;
+// A verb / noun that marks its own to-do (not a detail of another task).
+const ACTION_VERBS =
+  "read|write|study|studying|practice|rehearse|email|e-mail|text|message|call|meet|finish|complete|submit|turn in|hand in|buy|pick up|grab|clean|return|watch|make|start|work on|apply|register|sign up|schedule|book|pay|fill out|record|find|look up|research|print|outline|revise|edit|proofread|upload|memorize|prepare|get|draft";
+const NEW_TASK_RE = new RegExp(
+  `\\b(test|exam|quiz|midterm|final|essay|paper|report|hw|homework|assignment|project|lab|pset|problem set|presentation|worksheet|packet|reading|meeting|appointment|${ACTION_VERBS})\\b`,
+  "i",
+);
+const DATE_WORD_RE =
+  /\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|this week|this weekend|by (?:mon|tue|wed|thu|fri|sat|sun|next|the)|due (?:mon|tue|wed|thu|fri|sat|sun|next|by|on)|\d{1,2}\/\d{1,2}|\bin \d+ (?:day|week))\b/i;
+
+/** A short phrase with no verb / assignment word / date — i.e. a topic, not a task. */
+function isBareTopic(fragment: string): boolean {
+  const f = fragment.trim().toLowerCase().replace(/^(and|the|a|an)\s+/, "");
+  const words = f.split(/\s+/);
+  if (!f || words.length > 9) return false;
+  return !NEW_TASK_RE.test(f) && !DATE_WORD_RE.test(f);
+}
+
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const asSentence = (s: string) => {
+  const t = cap(s.trim().replace(/[.\s]+$/, ""));
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+};
+
+/**
+ * Split one fragment into the short ACTION (becomes the title, keeps date words)
+ * and the DETAIL (becomes notes). Handles both:
+ *   "physics lab. i need to graph velocity and answer q1-8"  -> action / detail
+ *   "english essay due friday about symbolism in gatsby"     -> action / detail
+ */
+function splitActionDetail(fragment: string): { action: string; detail: string | null } {
+  const f = fragment.trim().replace(/[.]+$/, "");
+  const clean = (s: string) =>
+    s
+      .trim()
+      .replace(/^(and|then|also)\s+/i, "")
+      .replace(/[\s.,;]+(?:i|a|an|the|and|to|my|it)$/i, "")
+      .trim();
+
+  // "<...work type...> on/about <detail>" — keep any date words in the action
+  const topical = f.match(
+    new RegExp(
+      `^(.*?\\b(?:${WORK_TYPES})\\b[\\s\\w]{0,20}?)\\b(?:on|about|over|covering|regarding)\\s+(.{4,})$`,
+      "i",
+    ),
+  );
+  if (topical && !NEW_TASK_RE.test(topical[2])) {
+    return { action: clean(topical[1]), detail: clean(topical[2]) };
+  }
+
+  // "email/call/ask <someone> about <detail>"
+  const aboutM = f.match(
+    /^((?:email|e-mail|call|text|message|meet with|talk to|ask|remind|tell|update|check with|follow up with)\b[^,.]{2,45}?)\s+(?:about|regarding|re:?|on)\s+(.{3,})$/i,
+  );
+  if (aboutM) return { action: clean(aboutM[1]), detail: clean(aboutM[2]) };
+
+  // "<action>. <it/this/the X> needs/must/requires <detail>"  or  "<action> — <detail>"
+  const clausal = f.match(
+    /^(.{6,}?)(?:[.;]\s+|\s+—\s+|,?\s+(?:and\s+)?(?:it|this|they|which|the \w+)\s+(?:needs?|has to|have to|must|should|is|are|will|requires?)\b\s*)(.+)$/i,
+  );
+  if (clausal && clausal[2].trim().split(/\s+/).length >= 2) {
+    return { action: clean(clausal[1]), detail: clean(clausal[2]) };
+  }
+
+  return { action: f, detail: null };
+}
+
+export interface Parcel {
+  text: string;
+  notes: string | null;
+}
+
+/**
+ * Turn raw fragments into task parcels. Fixes over-splitting (a comma list of
+ * topics under one assignment stays ONE task) and detail-loss (requirements /
+ * instructions land in `notes`, not the title).
+ */
+export function consolidateFragments(fragments: string[]): Parcel[] {
+  const groups: { head: string; extra: string[] }[] = [];
+  // "I need to graph X and answer Y" — the pieces after the marker are sub-steps.
+  const LIST_MARKER = /\b(?:need|needs|have|has|had|gotta|got|want|wants|planning) to\b/i;
+  const STANDALONE = new RegExp(`\\b(${ACTION_VERBS}|test|exam|quiz|essay|paper|hw|homework|assignment|lab)\\b`, "i");
+
+  for (const raw of fragments) {
+    const frag = raw.trim().replace(/^(and|then|also)\s+/i, "");
+    if (!frag) continue;
+    const prev = groups[groups.length - 1];
+
+    // a bare topic phrase belongs to the previous assignment, not its own task
+    if (prev && ELABORATABLE_RE.test(prev.head) && isBareTopic(frag)) {
+      prev.extra.push(frag.replace(/^the\s+/i, "").trim());
+      continue;
+    }
+
+    // a short piece after "I need to …" is a sub-step of that task, not a new task
+    if (
+      prev &&
+      LIST_MARKER.test(prev.head) &&
+      frag.split(/\s+/).length <= 8 &&
+      !DATE_WORD_RE.test(frag) &&
+      !/\b(email|e-mail|call|text|meet|buy|return|pay|apply|register|schedule|book|clean)\b/i.test(frag) &&
+      // still fold "answer questions 1-8" but not "study for my test"
+      !/\b(test|exam|quiz|essay|paper|study|studying)\b/i.test(frag) &&
+      STANDALONE.test(frag)
+    ) {
+      prev.extra.push(frag.trim());
+      continue;
+    }
+
+    groups.push({ head: frag, extra: [] });
+  }
+
+  return groups.map((g) => {
+    const { action, detail } = splitActionDetail(g.head);
+    const noteParts: string[] = [];
+    if (detail) noteParts.push(detail.replace(/^(?:i|we|you)\s+(?:need|have|gotta|got|want)\s+to\s+/i, ""));
+    for (const e of g.extra) {
+      const t = e.replace(/[\s.,;]+(?:i|a|an|the|and|to|my|it)$/i, "").trim();
+      if (t) noteParts.push(t);
+    }
+    return {
+      text: action,
+      notes: noteParts.length ? asSentence(noteParts.join("; ")) : null,
+    };
+  });
+}
 
 /** Turn a raw fragment into a clean, action-oriented task title. */
 export function normalizeTask(fragment: string): TaskShape {
@@ -170,34 +345,34 @@ export function normalizeTask(fragment: string): TaskShape {
           .trim();
     // strip any leading "study for" / "for" the matcher grabbed with the subject
     raw = raw.replace(/^(study(ing)?\s+for|study(ing)?|for)\s+/i, "").trim();
-    const subject = titleCase(raw);
-    const label = subject ? `Study for ${subject}` : titleCase(t);
+    const subject = titleCase((guessCategory(raw) ?? raw).trim());
+    const label = subject ? `Study for ${subject}` : tightenTitle(t);
     return { title: label, kind: "study" };
   }
   if (/\b(essay|paper|report|write|writing|draft)\b/.test(lower)) {
-    return { title: titleCase(stripLeadVerb(t)), kind: "write" };
+    return { title: tightenTitle(stripLeadVerb(t)), kind: "write" };
   }
   if (/\bemail\b|\breach out\b|\bmessage\b|\btext\b(?! book)/.test(lower)) {
-    return { title: titleCase(t), kind: "email" };
+    return { title: tightenTitle(t), kind: "email" };
   }
   if (/\bpractice\b|\brehears/.test(lower)) {
     // "practice cricket" / "cricket practice" -> "Cricket practice"
     const noun = lower.replace(/\bpractice\b/g, "").replace(/\btonight\b|\btoday\b|\bfor .*/g, "").trim();
-    return { title: noun ? `${titleCase(noun)} practice` : titleCase(t), kind: "practice" };
+    return { title: noun ? `${titleCase(noun)} practice` : tightenTitle(t), kind: "practice" };
   }
   if (/\bread\b|\bchapter\b|\bpages?\b/.test(lower)) {
-    return { title: titleCase(stripLeadVerb(t)), kind: "read" };
+    return { title: tightenTitle(stripLeadVerb(t)), kind: "read" };
   }
   if (/\bproject\b|\bbuild\b|\bcode\b|\bapp\b|\bwebsite\b|\bwork on\b/.test(lower)) {
-    return { title: titleCase(stripLeadVerb(t)), kind: "project" };
+    return { title: tightenTitle(stripLeadVerb(t)), kind: "project" };
   }
   if (/\bmeet\b|\bmeeting\b|\bappointment\b|\bcall\b/.test(lower)) {
-    return { title: titleCase(t), kind: "meeting" };
+    return { title: tightenTitle(t), kind: "meeting" };
   }
   if (/\bbuy\b|\bpick up\b|\bgroceries\b|\blaundry\b|\bclean\b|\breturn\b/.test(lower)) {
-    return { title: titleCase(t), kind: "errand" };
+    return { title: tightenTitle(t), kind: "errand" };
   }
-  return { title: titleCase(t), kind: "generic" };
+  return { title: tightenTitle(t), kind: "generic" };
 }
 
 function stripLeadVerb(t: string) {

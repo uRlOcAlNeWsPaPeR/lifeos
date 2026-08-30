@@ -147,5 +147,21 @@ export const assistantSchema = z.object({
 });
 
 export const planUpgradeSchema = z.object({
-  plan: z.enum(["free", "pro", "student_plus"]),
+  plan: z.enum(["free", "student_plus"]),
+});
+
+export const canvasConnectSchema = z.object({
+  instanceUrl: z.string().min(3).max(255),
+  origin: z.enum(["settings", "onboarding", "school"]).optional().default("settings"),
+});
+
+export const canvasDisconnectSchema = z.object({
+  // What to do with Canvas-imported tasks — made explicit, never silent.
+  canvasTasks: z.enum(["keep", "remove"]).default("keep"),
+});
+
+// DEV ONLY — pasted Canvas personal access token.
+export const canvasTokenConnectSchema = z.object({
+  instanceUrl: z.string().min(3).max(255),
+  accessToken: z.string().min(20).max(300),
 });

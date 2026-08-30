@@ -4,10 +4,12 @@ import type {
   AssistantReference,
   BrainDumpItem,
   BrainDumpResult,
+  EssayCoachResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
 import {
+  consolidateFragments,
   derivePriority,
   estimateMinutes,
   guessCategory,
@@ -26,14 +28,18 @@ export class HeuristicProvider implements AIProvider {
   readonly name = "heuristic" as const;
 
   async parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult> {
-    const fragments = splitFragments(text);
     const slots = freeSlots(ctx, 7);
     let slotCursor = 0;
 
-    const items: BrainDumpItem[] = fragments.map((fragment) => {
-      const shape = normalizeTask(fragment);
-      const dateGuess = guessDueDate(fragment, ctx.now);
-      const category = guessCategory(fragment) ?? shape.kind === "study" ? guessCategory(fragment) : guessCategory(fragment);
+    // Split into fragments, then fold bare topic-phrases back into the assignment
+    // they elaborate on ("history test on X, Y, Z" = one task, not three).
+    const parcels = consolidateFragments(splitFragments(text));
+
+    const items: BrainDumpItem[] = parcels.map(({ text: source, notes }) => {
+      const shape = normalizeTask(source);
+      const title = shape.title;
+      const dateGuess = guessDueDate(source, ctx.now);
+      const category = guessCategory(source);
       const minutes = estimateMinutes(shape.kind);
       const priority = derivePriority({
         kind: shape.kind,
@@ -67,7 +73,8 @@ export class HeuristicProvider implements AIProvider {
       if (suggestedSlot) reasoningBits.push(`Suggested slot: ${suggestedSlot}.`);
 
       return {
-        title: shape.title,
+        title,
+        notes: notes ?? null,
         category: category ?? null,
         suggestedPriority: priority,
         suggestedDueAt: dateGuess.explicit && dateGuess.date ? dateGuess.date.toISOString() : null,
@@ -307,6 +314,19 @@ export class HeuristicProvider implements AIProvider {
       "_Ask me things like “what should I work on tonight?”, “when should I study for my physics test?”, or “make me a study plan for this week.”_",
     ];
     return { engine: "heuristic", answer: lines.filter((l) => l !== undefined).join("\n"), references: refs };
+  }
+
+  async essayCoach(_essay: string): Promise<EssayCoachResult> {
+    void _essay;
+    // The essay coach needs a real language model — the offline engine can't do
+    // structured writing feedback. Return an honest, non-failing result.
+    return {
+      engine: "heuristic",
+      summary:
+        "The Essay Coach needs an AI model. Add a Gemini or Claude API key to enable scored feedback and inline suggestions. The AI Detector and Humanizer work fully offline.",
+      scores: {},
+      highlights: [],
+    };
   }
 }
 

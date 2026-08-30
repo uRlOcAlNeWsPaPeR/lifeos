@@ -1,25 +1,22 @@
 // Client-safe plan definitions. Server enforcement lives in lib/ai + the store.
 
+// Two tiers. Every AI feature is capped on BOTH plans — nothing is unlimited, so
+// no single user can run up the API bill.
 export const PLAN_LIMITS = {
   free: {
-    brainDumpsPerDay: 3,
+    brainDumpsPerWeek: 5,
     assistantPerDay: 5,
+    essayCoachPerWeek: 5,
     maxActiveGoals: 3,
-    maxCourses: 4,
+    maxCourses: 8,
     fullAnalytics: false,
   },
-  pro: {
-    brainDumpsPerDay: Infinity,
-    assistantPerDay: 100,
-    maxActiveGoals: 25,
-    maxCourses: 15,
-    fullAnalytics: true,
-  },
   student_plus: {
-    brainDumpsPerDay: Infinity,
-    assistantPerDay: Infinity,
-    maxActiveGoals: Infinity,
-    maxCourses: Infinity,
+    brainDumpsPerWeek: 50,
+    assistantPerDay: 150,
+    essayCoachPerWeek: 50,
+    maxActiveGoals: 100,
+    maxCourses: 60,
     fullAnalytics: true,
   },
 } as const;
@@ -44,6 +41,7 @@ export function effectivePlan(
   email?: string | null,
 ): PlanId {
   if (isCreator(email)) return "student_plus";
+  if (plan === "pro") return "student_plus"; // legacy tier — folded into Student+
   return plan && plan in PLAN_LIMITS ? (plan as PlanId) : "free";
 }
 
@@ -52,5 +50,5 @@ export function limitsFor(plan: string) {
 }
 
 export function planLabel(plan: string) {
-  return plan === "student_plus" ? "Student+" : plan === "pro" ? "Pro" : "Free";
+  return effectivePlan(plan) === "student_plus" ? "Student+" : "Free";
 }

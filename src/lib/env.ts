@@ -5,7 +5,7 @@ export const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
   ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? "",
-  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.5-flash",
+  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-flash-latest",
   AI_PROVIDER: (process.env.AI_PROVIDER as "auto" | "anthropic" | "gemini" | "heuristic") || "auto",
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || "LifeOS",
 };

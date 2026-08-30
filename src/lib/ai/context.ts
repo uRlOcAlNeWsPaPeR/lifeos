@@ -8,6 +8,9 @@ const d = (v: unknown): Date | null => {
   return Number.isNaN(x.getTime()) ? null : x;
 };
 
+const normTitle = (s: string) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+const dayKey = (date: Date | null) => (date ? date.toISOString().slice(0, 10) : "");
+
 /** Build the AI data snapshot for a user from Firestore. This is the ONLY thing AI sees. */
 export async function buildContext(uid: string): Promise<LifeOSContext> {
   const base = adminDb().collection("users").doc(uid);
@@ -30,6 +33,9 @@ export async function buildContext(uid: string): Promise<LifeOSContext> {
 
   const courseName = new Map(courses.map((c) => [c.id as string, c.name as string]));
   const goalTitle = new Map(goals.map((g) => [g.id as string, g.title as string]));
+  const assignmentKeys = new Set(
+    assignments.map((a) => `${normTitle(a.title as string)}|${dayKey(d(a.dueAt))}`),
+  );
   const weekStart = new Date();
   weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
   weekStart.setHours(0, 0, 0, 0);
@@ -45,17 +51,25 @@ export async function buildContext(uid: string): Promise<LifeOSContext> {
       extracurriculars: (profile.extracurriculars as string[]) ?? [],
       helpWith: (profile.helpWith as string[]) ?? [],
     },
-    tasks: tasks.map((t) => ({
-      id: t.id as string,
-      title: t.title as string,
-      status: (t.status as string) ?? "todo",
-      priority: ((t.priority as string) ?? "medium") as Priority,
-      category: (t.category as string) ?? null,
-      dueAt: d(t.dueAt),
-      estimatedMinutes: (t.estimatedMinutes as number) ?? null,
-      goalTitle: t.goalId ? goalTitle.get(t.goalId as string) ?? null : null,
-      courseName: t.courseId ? courseName.get(t.courseId as string) ?? null : null,
-    })),
+    // Skip tasks that just shadow an assignment (same name/day, or explicit link) —
+    // the assignment already represents that work.
+    tasks: tasks
+      .filter((t) => {
+        if (t.assignmentId) return false;
+        const key = `${normTitle(t.title as string)}|${dayKey(d(t.dueAt))}`;
+        return !(t.dueAt && assignmentKeys.has(key));
+      })
+      .map((t) => ({
+        id: t.id as string,
+        title: t.title as string,
+        status: (t.status as string) ?? "todo",
+        priority: ((t.priority as string) ?? "medium") as Priority,
+        category: (t.category as string) ?? null,
+        dueAt: d(t.dueAt),
+        estimatedMinutes: (t.estimatedMinutes as number) ?? null,
+        goalTitle: t.goalId ? goalTitle.get(t.goalId as string) ?? null : null,
+        courseName: t.courseId ? courseName.get(t.courseId as string) ?? null : null,
+      })),
     goals: goals.map((g) => ({
       id: g.id as string,
       title: g.title as string,
@@ -74,6 +88,7 @@ export async function buildContext(uid: string): Promise<LifeOSContext> {
       name: c.name as string,
       code: (c.code as string) ?? null,
       currentGrade: (c.currentGrade as string) ?? null,
+      source: (c.provider as string) === "canvas" ? "canvas" : null,
     })),
     assignments: assignments.map((a) => ({
       id: a.id as string,
@@ -81,6 +96,7 @@ export async function buildContext(uid: string): Promise<LifeOSContext> {
       courseName: a.courseId ? courseName.get(a.courseId as string) ?? null : null,
       dueAt: d(a.dueAt),
       status: (a.status as string) ?? "open",
+      source: (a.provider as string) === "canvas" ? "canvas" : null,
       hasLinkedTask: tasks.some((t) => t.assignmentId === a.id && t.status !== "done"),
     })),
     events: events.map((e) => ({

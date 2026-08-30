@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAppData } from "@/lib/store/app-data";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
-import { greeting } from "@/lib/format";
+import { greeting, isStaleOverdue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskDTO } from "@/lib/types";
 
@@ -258,7 +258,7 @@ function build(
   const open = data.tasks.filter((t) => t.status === "todo");
 
   const overdue = open
-    .filter((t) => t.dueAt && new Date(t.dueAt) < startToday)
+    .filter((t) => t.dueAt && new Date(t.dueAt) < startToday && !isStaleOverdue(t.dueAt, now))
     .sort((a, b) => (a.dueAt ?? "").localeCompare(b.dueAt ?? ""));
 
   const today = open

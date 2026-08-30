@@ -15,7 +15,7 @@ export const SCHOOL_INTEGRATIONS: IntegrationCardInfo[] = [
     id: "canvas",
     name: "Canvas LMS",
     blurb: "Automatically import your courses, assignments and due dates.",
-    status: "coming_soon",
+    status: "available",
     authType: "oauth2",
   },
   {

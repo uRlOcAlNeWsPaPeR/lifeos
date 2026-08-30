@@ -114,10 +114,12 @@ export interface ProfileDoc {
   onboardedAt: string | null;
   createdAt: string;
   prefs?: Partial<Prefs>;
-  /** { "2026-08-28": 3 } — per-day Brain Dump count, enforced against the plan cap */
+  /** { "2026-W35": 3 } — per-WEEK Brain Dump count, enforced against the plan cap */
   brainDumpUsage: Record<string, number>;
   /** { "2026-08-28": 4 } — per-day AI Assistant question count */
   assistantUsage?: Record<string, number>;
+  /** { "2026-W35": 2 } — per-WEEK Essay Coach run count (Writing tool) */
+  essayCoachUsage?: Record<string, number>;
 }
 
 export function emptyProfile(name: string, email: string): ProfileDoc {
@@ -137,7 +139,22 @@ export function emptyProfile(name: string, email: string): ProfileDoc {
     prefs: DEFAULT_PREFS,
     brainDumpUsage: {},
     assistantUsage: {},
+    essayCoachUsage: {},
   };
 }
 
 export const todayKey = () => new Date().toISOString().slice(0, 10);
+
+/** ISO-week key like "2026-W35" — used to meter weekly quotas (e.g. Brain Dumps). */
+export function weekKey(d: Date = new Date()): string {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = t.getUTCDay() || 7; // Mon=1 … Sun=7
+  t.setUTCDate(t.getUTCDate() + 4 - day); // shift to the Thursday of this week
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+}
+
+/** Key for a metered period. */
+export const periodKey = (period: "day" | "week") =>
+  period === "week" ? weekKey() : todayKey();

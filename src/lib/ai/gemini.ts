@@ -19,17 +19,23 @@ export class GeminiProvider extends LLMProvider {
   private apiKey = env.GEMINI_API_KEY;
   private model = env.GEMINI_MODEL;
 
-  protected async complete(system: string, user: string): Promise<string> {
+  protected async complete(
+    system: string,
+    user: string,
+    opts?: { schema?: unknown },
+  ): Promise<string> {
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: "user", parts: [{ text: user }] }],
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.3,
-        maxOutputTokens: 4096,
-        // Gemini 2.5+ models "think" by default; disable it so the full token
-        // budget goes to the JSON answer and latency stays predictable.
-        thinkingConfig: { thinkingBudget: 0 },
+        // Force the exact output shape when the caller provides a schema — this is
+        // what guarantees Brain Dump gets a real `items` array back.
+        ...(opts?.schema ? { responseSchema: opts.schema } : {}),
+        temperature: 0.2,
+        // Gemini 3.x reasons by default and rejects thinkingBudget:0; leave a
+        // generous budget so reasoning + the JSON answer both fit.
+        maxOutputTokens: 8192,
       },
     });
 

@@ -21,8 +21,9 @@ import { Badge } from "@/components/ui/badge";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
+import { AssignmentDetail } from "@/components/app/assignment-detail";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtTime, toInputDateTime } from "@/lib/format";
+import { fmtTime, toInputDateTime, isStaleOverdue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, EventDTO, TaskDTO } from "@/lib/types";
 
@@ -72,11 +73,18 @@ export function CalendarView() {
     for (const t of data.tasks) {
       // show a task on the day you plan to WORK on it, else its due date
       const when = t.scheduledAt || t.dueAt;
-      if (when) bucket(KEY(new Date(when))).tasks.push(t);
+      if (!when) continue;
+      // hide long-abandoned open tasks (unless the user scheduled work for them)
+      if (t.status !== "done" && !t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
+      bucket(KEY(new Date(when))).tasks.push(t);
     }
     for (const e of data.events) bucket(KEY(new Date(e.startAt))).events.push(e);
     for (const a of data.assignments) {
-      if (a.dueAt && a.status !== "graded") bucket(KEY(new Date(a.dueAt))).assignments.push(a);
+      // only open assignments — turned-in / graded work drops off the calendar —
+      // and not the ones long past due
+      if (a.dueAt && a.status === "open" && !isStaleOverdue(a.dueAt)) {
+        bucket(KEY(new Date(a.dueAt))).assignments.push(a);
+      }
     }
     return map;
   }, [data.tasks, data.events, data.assignments]);
@@ -183,26 +191,55 @@ export function CalendarView() {
         <div
           className={cn(
             "grid grid-cols-7",
-            view === "week"
-              ? "min-h-[62vh] auto-rows-fr"
-              : "auto-rows-fr [grid-template-rows:repeat(6,minmax(116px,1fr))]",
+            view === "week" ? "min-h-[62vh] auto-rows-fr" : "auto-rows-fr",
           )}
+          style={
+            view === "month"
+              ? { gridTemplateRows: `repeat(${grid.length / 7}, minmax(116px, 1fr))` }
+              : undefined
+          }
         >
           {grid.map((day) => {
             const k = KEY(day);
             const b = index.get(k);
             const inMonth = view === "week" || day.getMonth() === cursor.getMonth();
             const isToday = sameDay(day, today);
+            const dayPast = k < KEY(today);
+            const dayFuture = k > KEY(today);
             const items = [
-              ...(b?.events ?? []).map((e) => ({ type: "event" as const, id: e.id, title: e.title, kind: e.kind })),
-              ...(b?.assignments ?? []).map((a) => ({ type: "assignment" as const, id: a.id, title: a.title, kind: "" })),
+              ...(b?.events ?? []).map((e) => ({
+                type: "event" as const,
+                id: e.id,
+                title: e.title,
+                kind: e.kind,
+                canvas: e.provider === "canvas",
+              })),
+              ...(b?.assignments ?? []).map((a) => ({
+                type: "assignment" as const,
+                id: a.id,
+                title: a.title,
+                kind: "",
+                canvas: a.provider === "canvas",
+              })),
               ...(b?.tasks ?? []).map((t) => ({
                 type: "task" as const,
                 id: t.id,
                 title: t.title,
                 kind: t.status,
+                canvas: t.source === "canvas",
               })),
             ];
+            // Month view only shows its own month — the trailing/leading days of
+            // adjacent months render as empty, non-interactive cells.
+            if (!inMonth) {
+              return (
+                <div
+                  key={k}
+                  className="border-b border-r border-white/[0.03] bg-white/[0.01] last:border-r-0"
+                />
+              );
+            }
+
             const shown = view === "week" ? items : items.slice(0, 3);
             const more = items.length - shown.length;
 
@@ -212,7 +249,6 @@ export function CalendarView() {
                 onClick={() => setSelected(k)}
                 className={cn(
                   "flex flex-col gap-1 border-b border-r border-white/[0.05] p-1.5 text-left transition-colors last:border-r-0 hover:bg-white/[0.03]",
-                  !inMonth && "opacity-35",
                   selected === k && "bg-primary/[0.07] ring-1 ring-inset ring-primary/40",
                   view === "week" && "overflow-y-auto scrollbar-thin",
                 )}
@@ -228,25 +264,34 @@ export function CalendarView() {
                   {day.getDate()}
                 </span>
                 <div className="flex flex-col gap-0.5">
-                  {shown.map((it) => (
-                    <span
-                      key={`${it.type}-${it.id}`}
-                      className={cn(
-                        "flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10.5px] leading-tight",
-                        it.type === "event" && "bg-white/[0.06]",
-                        it.type === "assignment" && "bg-warning/15 text-warning",
-                        it.type === "task" &&
-                          (it.kind === "done"
-                            ? "bg-primary/10 text-muted-foreground line-through"
-                            : "bg-primary/15 text-primary"),
-                      )}
-                    >
-                      {it.type === "event" && (
-                        <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", EVENT_DOT[it.kind])} />
-                      )}
-                      <span className="truncate">{it.title}</span>
-                    </span>
-                  ))}
+                  {shown.map((it) => {
+                    const done = it.kind === "done";
+                    // Colour by type; time drives prominence — past items fade back
+                    // like an out-of-month day, future items go bold.
+                    const cls = done
+                      ? "bg-primary/10 text-muted-foreground line-through"
+                      : it.type === "event"
+                        ? cn("bg-white/[0.06]", dayPast && "opacity-35", dayFuture && "font-semibold")
+                        : it.type === "assignment"
+                          ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
+                          : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
+                    return (
+                      <span
+                        key={`${it.type}-${it.id}`}
+                        className={cn(
+                          "flex items-center gap-1 truncate rounded px-1.5 py-0.5 text-[10.5px] leading-tight",
+                          cls,
+                          it.canvas && "ring-1 ring-inset ring-primary/40",
+                        )}
+                        title={it.canvas ? `${it.title} · from Canvas` : it.title}
+                      >
+                        {it.type === "event" && (
+                          <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", EVENT_DOT[it.kind])} />
+                        )}
+                        <span className="truncate">{it.title}</span>
+                      </span>
+                    );
+                  })}
                   {more > 0 && (
                     <span className="px-1.5 text-[10px] font-medium text-primary">+{more} more</span>
                   )}
@@ -268,37 +313,32 @@ export function CalendarView() {
             <span className={cn("h-2 w-2 rounded-full", c)} /> {l}
           </span>
         ))}
+        <span className="flex items-center gap-1.5">
+          <span className="h-2 w-2 rounded-full ring-1 ring-primary/50" /> From Canvas
+        </span>
       </div>
 
-      {selected && (
-        <DayDrawer
-          dateKey={selected}
-          bucket={index.get(selected)}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && <DayDrawer dateKey={selected} onClose={() => setSelected(null)} />}
     </>
   );
 }
 
 /* --------------------------- expandable date view --------------------------- */
 
-function DayDrawer({
-  dateKey,
-  bucket,
-  onClose,
-}: {
-  dateKey: string;
-  bucket?: { tasks: TaskDTO[]; events: EventDTO[]; assignments: AssignmentDTO[] };
-  onClose: () => void;
-}) {
-  const { data, addTask, updateTask, toggleTask, deleteTask, addEvent, deleteEvent, createTaskForAssignment } =
-    useAppData();
+function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void }) {
+  const { data, addTask, updateTask, toggleTask, deleteTask, addEvent, deleteEvent } = useAppData();
   const [taskModal, setTaskModal] = useState<TaskDTO | "new" | null>(null);
   const [eventModal, setEventModal] = useState(false);
+  const [detailFor, setDetailFor] = useState<string | null>(null);
+  const detailAssignment = detailFor
+    ? data.assignments.find((a) => a.id === detailFor) ?? null
+    : null;
 
   const [y, m, d] = dateKey.split("-").map(Number);
   const date = new Date(y, m - 1, d);
+  const todayKey = KEY(new Date());
+  const dayIsPast = dateKey < todayKey;
+  const dayIsFuture = dateKey > todayKey;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && !taskModal && !eventModal && onClose();
@@ -306,12 +346,51 @@ function DayDrawer({
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, taskModal, eventModal]);
 
-  const tasks = bucket?.tasks ?? [];
-  const events = [...(bucket?.events ?? [])].sort((a, b) => a.startAt.localeCompare(b.startAt));
-  const assignments = bucket?.assignments ?? [];
-
   const goals = data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title }));
   const courses = data.courses.map((c) => ({ id: c.id, name: c.name }));
+
+  // Everything for this day — computed here (not from the month-grid index) so the
+  // drawer can show completed / turned-in work too, grouped by state.
+  const dk = dateKey;
+  const events = data.events
+    .filter((e) => KEY(new Date(e.startAt)) === dk)
+    .sort((a, b) => a.startAt.localeCompare(b.startAt));
+
+  const dayTasks = data.tasks.filter(
+    (t) =>
+      (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
+      (t.dueAt && KEY(new Date(t.dueAt)) === dk),
+  );
+  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(new Date(a.dueAt)) === dk);
+
+  type Bucket = "todo" | "planned" | "done";
+  const taskBucket = (t: TaskDTO): Bucket =>
+    t.status === "done" ? "done" : t.scheduledAt ? "planned" : "todo";
+  const assignmentBucket = (a: AssignmentDTO): Bucket =>
+    a.status !== "open" || a.linkedTask?.status === "done"
+      ? "done"
+      : a.linkedTask
+        ? "planned"
+        : "todo";
+
+  const groups: Record<Bucket, { tasks: TaskDTO[]; assignments: AssignmentDTO[] }> = {
+    todo: { tasks: [], assignments: [] },
+    planned: { tasks: [], assignments: [] },
+    done: { tasks: [], assignments: [] },
+  };
+  for (const t of dayTasks) groups[taskBucket(t)].tasks.push(t);
+  for (const a of dayAssignments) groups[assignmentBucket(a)].assignments.push(a);
+
+  const totalItems =
+    events.length +
+    dayTasks.length +
+    dayAssignments.length;
+
+  const BUCKET_META: { key: Bucket; label: string }[] = [
+    { key: "todo", label: "To do" },
+    { key: "planned", label: "Plan created" },
+    { key: "done", label: "Done" },
+  ];
 
   async function saveTask(draft: TaskDraft) {
     const payload = draftToPayload(draft);
@@ -336,8 +415,7 @@ function DayDrawer({
               {date.toLocaleDateString([], { month: "long", day: "numeric" })}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              {tasks.length + events.length + assignments.length} item
-              {tasks.length + events.length + assignments.length === 1 ? "" : "s"}
+              {totalItems} item{totalItems === 1 ? "" : "s"}
             </p>
           </div>
           <button
@@ -359,14 +437,14 @@ function DayDrawer({
         </div>
 
         <div className="flex-1 space-y-5 overflow-y-auto scrollbar-thin p-4">
-          {tasks.length + events.length + assignments.length === 0 && (
+          {totalItems === 0 && (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Nothing scheduled. Add a task or event above.
             </p>
           )}
 
           {events.length > 0 && (
-            <Section title="Events">
+            <Section title="Schedule">
               {events.map((e) => (
                 <div
                   key={e.id}
@@ -392,88 +470,111 @@ function DayDrawer({
             </Section>
           )}
 
-          {tasks.length > 0 && (
-            <Section title="Tasks">
-              {tasks.map((t) => (
-                <div
-                  key={t.id}
-                  className={cn(
-                    "group flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3",
-                    t.status === "done" && "opacity-55",
-                  )}
-                >
+          {BUCKET_META.map(({ key, label }) => {
+            const g = groups[key];
+            if (g.tasks.length + g.assignments.length === 0) return null;
+            return (
+              <Section key={key} title={`${label} · ${g.tasks.length + g.assignments.length}`}>
+                {g.assignments.map((a) => (
                   <button
-                    onClick={() => toggleTask(t.id)}
+                    key={a.id}
+                    onClick={() => setDetailFor(a.id)}
                     className={cn(
-                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all active:scale-90",
-                      t.status === "done"
-                        ? "border-primary bg-gradient-brand text-primary-foreground"
-                        : "border-white/20 hover:border-primary hover:bg-primary/10",
+                      "flex w-full items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-left transition-colors hover:border-primary/40",
+                      (key === "done" || (key === "todo" && dayIsPast)) && "opacity-60",
                     )}
-                    aria-label="Toggle complete"
                   >
-                    {t.status === "done" && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    <GraduationCap className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "truncate text-sm",
+                          key !== "done" && dayIsFuture ? "font-semibold" : "font-medium",
+                          key === "done" && "line-through",
+                        )}
+                      >
+                        {a.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.course?.name ?? "No course"}
+                        {a.status === "submitted" && " · turned in"}
+                        {a.status === "graded" && ` · ${a.gradeValue ?? "graded"}`}
+                        {a.status === "open" && a.linkedTask && " · has a plan"}
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-muted-foreground">
+                      {a.linkedTask || a.status !== "open" ? "Open" : "+ Task"}
+                    </span>
                   </button>
-                  <div className="min-w-0 flex-1">
-                    <p className={cn("text-sm font-medium", t.status === "done" && "line-through")}>
-                      {t.title}
-                    </p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <Badge tone="muted" className="capitalize">{t.priority}</Badge>
-                      {t.category && <span>{t.category}</span>}
-                      {t.estimatedMinutes ? (
-                        <span className="inline-flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {t.estimatedMinutes}m
-                        </span>
-                      ) : null}
+                ))}
+
+                {g.tasks.map((t) => (
+                  <div
+                    key={t.id}
+                    className={cn(
+                      "group flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3",
+                      (key === "done" || (key === "todo" && dayIsPast)) && "opacity-60",
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleTask(t.id)}
+                      className={cn(
+                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all active:scale-90",
+                        t.status === "done"
+                          ? "border-primary bg-gradient-brand text-primary-foreground"
+                          : "border-white/20 hover:border-primary hover:bg-primary/10",
+                      )}
+                      aria-label="Toggle complete"
+                    >
+                      {t.status === "done" && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+                    </button>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "text-sm",
+                          t.status !== "done" && dayIsFuture ? "font-semibold" : "font-medium",
+                          t.status === "done" && "line-through",
+                        )}
+                      >
+                        {t.title}
+                      </p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <Badge tone="muted" className="capitalize">{t.priority}</Badge>
+                        {t.category && <span>{t.category}</span>}
+                        {t.scheduledAt && key === "planned" && (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {fmtTime(t.scheduledAt)}
+                          </span>
+                        )}
+                        {t.estimatedMinutes ? <span>~{t.estimatedMinutes}m</span> : null}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={() => setTaskModal(t)}
+                        className="rounded p-1 text-muted-foreground hover:text-foreground"
+                        aria-label="Edit task"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => deleteTask(t.id)}
+                        className="rounded p-1 text-muted-foreground hover:text-destructive"
+                        aria-label="Delete task"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button
-                      onClick={() => setTaskModal(t)}
-                      className="rounded p-1 text-muted-foreground hover:text-foreground"
-                      aria-label="Edit task"
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => deleteTask(t.id)}
-                      className="rounded p-1 text-muted-foreground hover:text-destructive"
-                      aria-label="Delete task"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </Section>
-          )}
-
-          {assignments.length > 0 && (
-            <Section title="Assignments due">
-              {assignments.map((a) => (
-                <div
-                  key={a.id}
-                  className="flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"
-                >
-                  <GraduationCap className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{a.title}</p>
-                    <p className="text-xs text-muted-foreground">{a.course?.name ?? "No course"}</p>
-                  </div>
-                  <button
-                    onClick={() => createTaskForAssignment(a.id)}
-                    className="rounded-md border border-white/10 px-2 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
-                  >
-                    + Task
-                  </button>
-                </div>
-              ))}
-            </Section>
-          )}
+                ))}
+              </Section>
+            );
+          })}
         </div>
       </aside>
+
+      <AssignmentDetail assignment={detailAssignment} onClose={() => setDetailFor(null)} />
 
       <TaskEditor
         open={taskModal !== null}

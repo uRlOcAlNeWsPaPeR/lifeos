@@ -118,8 +118,9 @@ provider configured the link is returned in dev so the flow is testable.
 
 ## Pricing
 
-Three tiers (Free / Pro $7.99 / Student+ $12.99) with real feature gating
-(`lib/ai/PLAN_LIMITS` — e.g. Free = 3 Brain Dumps/day, no analytics history).
+Two tiers (Free / Student+ $12.99) with real feature gating
+(`lib/plan-limits.ts` — e.g. Free = 5 Brain Dumps/week, no analytics history).
+Every AI feature is capped on both plans so no user can run up the API bill.
 
 **Payments are not implemented.** `POST /api/plan` flips the user's plan instantly in
 demo mode with no charge. Swap it for a billing-provider checkout session when ready.

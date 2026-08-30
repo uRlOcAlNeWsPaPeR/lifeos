@@ -4,11 +4,13 @@ import type {
   AssistantResult,
   BrainDumpItem,
   BrainDumpResult,
+  EssayCoachResult,
+  EssayHighlight,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
 import { HeuristicProvider } from "./heuristic";
-import { guessDueDate } from "./nlp";
+import { guessDueDate, tightenTitle } from "./nlp";
 import { scoreTasks } from "./score";
 
 /**
@@ -26,8 +28,16 @@ export abstract class LLMProvider implements AIProvider {
   abstract readonly name: AIEngine;
   protected fallback = new HeuristicProvider();
 
-  /** Raw completion. Must return the model's text output (ideally JSON). */
-  protected abstract complete(system: string, user: string): Promise<string>;
+  /**
+   * Raw completion. Must return the model's text output (ideally JSON).
+   * `opts.schema` is a JSON-schema the provider MAY use to force the output shape
+   * (Gemini honours it; others can ignore it).
+   */
+  protected abstract complete(
+    system: string,
+    user: string,
+    opts?: { schema?: unknown },
+  ): Promise<string>;
 
   protected snapshot(ctx: LifeOSContext): string {
     const d = (x?: Date | null) => (x ? x.toISOString() : null);
@@ -49,46 +59,103 @@ export abstract class LLMProvider implements AIProvider {
     );
   }
 
-  private async json<T>(system: string, user: string): Promise<T> {
-    const raw = (await this.complete(system, user)).trim();
+  private async json<T>(
+    system: string,
+    user: string,
+    opts?: { schema?: unknown },
+  ): Promise<T> {
+    const raw = (await this.complete(system, user, opts)).trim();
     return JSON.parse(extractJsonObject(raw)) as T;
   }
 
   async parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult> {
     try {
-      const system =
-        "You convert a student's messy brain dump into structured tasks for the LifeOS app. " +
-        "Rules: (1) NEVER invent a due date — only set suggestedDueAt (ISO 8601) when the student explicitly stated a day/date; otherwise null and dueDateWasExplicit=false. " +
-        "(2) Titles must be short and action-oriented (e.g. 'Study for Physics'). " +
-        "(3) Estimate realistic minutes. (4) suggestedPriority in {low,medium,high,urgent}. " +
-        "(5) suggestedSlot is a short human phrase or null. (6) reasoning is one short sentence. " +
-        'Respond ONLY with minified JSON of shape: {"items":[{"title":string,"category":string|null,"suggestedPriority":string,"suggestedDueAt":string|null,"dueDateWasExplicit":boolean,"estimatedMinutes":number|null,"suggestedSlot":string|null,"reasoning":string}],"summary":string}';
-      const parsed = await this.json<{ items: BrainDumpItem[]; summary: string }>(
-        system,
-        `Today is ${ctx.now.toDateString()}. Use the dateReference in the data for any weekday the student names.\n\n` +
-          `Student's LifeOS data:\n${this.snapshot(ctx)}\n\nBrain dump:\n"""${text}"""`,
-      );
+      const system = BRAIN_DUMP_SYSTEM;
+      const user =
+        `Today is ${ctx.now.toDateString()}.\n\n` +
+        `Reference data (course list + weekday→date map — use ONLY for matching, never copy tasks from it):\n` +
+        `${brainDumpContext(ctx)}\n\n` +
+        `The student's brain dump:\n"""${text.slice(0, 4000)}"""`;
+
+      const parsed = await this.json<{ items?: unknown; summary?: unknown }>(system, user, {
+        schema: BRAIN_DUMP_SCHEMA,
+      });
+
+      // ---- validate the shape (section 14) ----
+      if (!parsed || !Array.isArray(parsed.items)) {
+        throw new Error("model did not return an items array");
+      }
 
       const textHasAnyDate = guessDueDate(text, ctx.now).explicit;
       const floor = ctx.now.getTime() - 24 * 3600_000; // yesterday
       const ceil = ctx.now.getTime() + 200 * 24 * 3600_000; // ~6.5 months out
+      const courseNames = ctx.courses.map((c) => c.name);
+      const PRIORITIES = new Set(["low", "medium", "high", "urgent"]);
+      const seen = new Set<string>();
 
-      const items = parsed.items.map((it) => {
-        // (1) The whole dump has no date words at all → nothing may be dated.
-        if (!textHasAnyDate && it.suggestedDueAt) {
-          return { ...it, suggestedDueAt: null, dueDateWasExplicit: false };
-        }
-        // (2) Drop model dates that landed in the past or absurdly far out —
-        //     almost always a weekday-math mistake.
-        if (it.suggestedDueAt) {
-          const t = Date.parse(it.suggestedDueAt);
-          if (Number.isNaN(t) || t < floor || t > ceil) {
-            return { ...it, suggestedDueAt: null, dueDateWasExplicit: false };
+      const items: BrainDumpItem[] = (parsed.items as Record<string, unknown>[])
+        .map((raw): BrainDumpItem | null => {
+          const rawTitle = typeof raw?.title === "string" ? raw.title.trim() : "";
+          if (!rawTitle) return null;
+
+          const title = tightenTitle(rawTitle);
+          const key = title.toLowerCase().replace(/[^a-z0-9]+/g, "");
+          if (!key || seen.has(key)) return null; // section 15 — no dup titles
+          seen.add(key);
+
+          // Respect the model's own "was this date actually stated?" flag — that's
+          // the guard against a date being copied onto a task that never had one.
+          let suggestedDueAt =
+            typeof raw.suggestedDueAt === "string" && raw.suggestedDueAt ? raw.suggestedDueAt : null;
+          if (
+            suggestedDueAt &&
+            (raw.dueDateWasExplicit !== true ||
+              !textHasAnyDate ||
+              outOfRange(suggestedDueAt, floor, ceil))
+          ) {
+            suggestedDueAt = null;
           }
-        }
-        return { ...it, dueDateWasExplicit: Boolean(it.suggestedDueAt) };
-      });
-      return { engine: this.name, items, summary: parsed.summary };
+
+          const cat = typeof raw.category === "string" ? raw.category.trim() : "";
+          const category =
+            cat &&
+            (courseNames.some((n) => n.toLowerCase() === cat.toLowerCase()) || cat.length <= 40)
+              ? matchCourseName(cat, courseNames)
+              : null;
+
+          const p = String(raw.suggestedPriority ?? "").toLowerCase();
+
+          return {
+            title,
+            notes:
+              typeof raw.notes === "string" && raw.notes.trim()
+                ? raw.notes.trim().slice(0, 1500)
+                : null,
+            category,
+            suggestedPriority: (PRIORITIES.has(p) ? p : "medium") as BrainDumpItem["suggestedPriority"],
+            suggestedDueAt,
+            dueDateWasExplicit: Boolean(suggestedDueAt),
+            estimatedMinutes:
+              typeof raw.estimatedMinutes === "number" && raw.estimatedMinutes > 0
+                ? Math.round(raw.estimatedMinutes)
+                : null,
+            suggestedSlot:
+              typeof raw.suggestedSlot === "string" && raw.suggestedSlot.trim()
+                ? raw.suggestedSlot.trim()
+                : null,
+            reasoning: typeof raw.reasoning === "string" ? raw.reasoning : "",
+          };
+        })
+        .filter((x): x is BrainDumpItem => x !== null);
+
+      if (!items.length) throw new Error("model returned no usable tasks");
+
+      const summary =
+        typeof parsed.summary === "string" && parsed.summary
+          ? parsed.summary
+          : `Organised into ${items.length} task${items.length === 1 ? "" : "s"}.`;
+
+      return { engine: this.name, items, summary };
     } catch (e) {
       console.error(`[ai:${this.name}] brain dump fell back to heuristic:`, (e as Error).message);
       return this.fallback.parseBrainDump(text, ctx);
@@ -141,6 +208,212 @@ export abstract class LLMProvider implements AIProvider {
       return this.fallback.assist(question, ctx);
     }
   }
+
+  async essayCoach(essay: string): Promise<EssayCoachResult> {
+    try {
+      const system =
+        "You are a supportive but rigorous writing coach for a student essay. Respond ONLY with valid JSON.";
+      const user = buildCoachPrompt(essay.slice(0, 24_000));
+      const parsed = await this.json<{
+        summary?: unknown;
+        scores?: unknown;
+        highlights?: unknown;
+      }>(system, user, { schema: ESSAY_COACH_SCHEMA });
+
+      const scores: Record<string, number> = {};
+      if (parsed.scores && typeof parsed.scores === "object") {
+        for (const [k, v] of Object.entries(parsed.scores as Record<string, unknown>)) {
+          const n = typeof v === "number" ? v : Number(v);
+          if (Number.isFinite(n)) scores[k] = Math.max(0, Math.min(100, Math.round(n)));
+        }
+      }
+
+      const seen = new Set<string>();
+      const highlights: EssayHighlight[] = (
+        Array.isArray(parsed.highlights) ? (parsed.highlights as Record<string, unknown>[]) : []
+      )
+        .map((h): EssayHighlight | null => {
+          const quote = typeof h?.quote === "string" ? h.quote.trim() : "";
+          // The quote MUST be locatable verbatim in the essay — same guard the
+          // Klarity UI applies at render time, done here so bad rows never ship.
+          if (!quote || !essay.includes(quote) || seen.has(quote)) return null;
+          seen.add(quote);
+          const revisions = Array.isArray(h.revisions)
+            ? (h.revisions as unknown[])
+                .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
+                .slice(0, 4)
+            : [];
+          return {
+            quote,
+            issue: typeof h.issue === "string" && h.issue.trim() ? h.issue.trim() : "Revise",
+            why: typeof h.why === "string" ? h.why.trim() : "",
+            revisions,
+          };
+        })
+        .filter((x): x is EssayHighlight => x !== null);
+
+      return {
+        engine: this.name,
+        summary: typeof parsed.summary === "string" ? parsed.summary : "",
+        scores,
+        highlights,
+      };
+    } catch (e) {
+      console.error(`[ai:${this.name}] essay coach fell back to heuristic:`, (e as Error).message);
+      return this.fallback.essayCoach(essay);
+    }
+  }
+}
+
+/* ----------------------------- essay coach ----------------------------- */
+
+function buildCoachPrompt(essayText: string): string {
+  return (
+    "You are a supportive but rigorous writing coach for a student essay. Do NOT rewrite the essay yourself. " +
+    "Instead, identify specific sentences or short phrases that could be improved, and explain why.\n\n" +
+    "Evaluate: thesis strength, organization, flow, clarity, evidence quality, counterarguments, grammar, style, " +
+    "word choice, transitions, repetition, and paragraph structure.\n\n" +
+    "Respond with ONLY valid JSON (no markdown fences, no commentary) matching exactly this shape:\n" +
+    "{\n" +
+    '  "summary": "2-3 sentence overall assessment of the essay",\n' +
+    '  "scores": {"thesis": 0-100, "organization": 0-100, "clarity": 0-100, "evidence": 0-100, "grammar": 0-100, "style": 0-100},\n' +
+    '  "highlights": [ {\n' +
+    '    "quote": "the exact sentence or phrase copied verbatim from the essay below",\n' +
+    '    "issue": "short 2-5 word label, e.g. Weak thesis, Unsupported claim, Awkward transition",\n' +
+    '    "why": "1-3 sentence explanation of why this could be improved",\n' +
+    '    "revisions": ["revision option 1", "revision option 2", "revision option 3 (optional)"]\n' +
+    "  } ]\n" +
+    "}\n\n" +
+    "Aim for 6-14 highlights spread across the whole essay, ordered by where they appear in the text. " +
+    'The "quote" field MUST be copied exactly, character-for-character, from the essay text below so it can be located.\n\n' +
+    "ESSAY:\n" +
+    essayText
+  );
+}
+
+const ESSAY_COACH_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    scores: {
+      type: "object",
+      properties: {
+        thesis: { type: "number" },
+        organization: { type: "number" },
+        clarity: { type: "number" },
+        evidence: { type: "number" },
+        grammar: { type: "number" },
+        style: { type: "number" },
+      },
+    },
+    highlights: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          quote: { type: "string" },
+          issue: { type: "string" },
+          why: { type: "string" },
+          revisions: { type: "array", items: { type: "string" } },
+        },
+        required: ["quote", "issue"],
+        propertyOrdering: ["quote", "issue", "why", "revisions"],
+      },
+    },
+  },
+  required: ["summary", "highlights"],
+} as const;
+
+/* ----------------------------- brain dump ----------------------------- */
+
+const BRAIN_DUMP_SYSTEM = [
+  "You are LifeOS's task organiser. A student types a messy, run-on brain dump; you turn it into a clean JSON LIST of separate tasks. Messy thoughts in, organised tasks out.",
+  "",
+  "SPLITTING — the #1 rule:",
+  "- A brain dump almost always holds SEVERAL separate to-dos. Output one task object per distinct action. Most dumps yield 3–8 tasks.",
+  '- Example: "finish calc homework tonight, study for physics Friday, email my counselor, and work on my research paper" → FOUR tasks: "Finish calculus homework", "Study for physics", "Email counselor", "Work on research paper".',
+  "- Different verbs = different tasks, EVEN when they refer to the same assignment.",
+  '- "finish my essay, find three sources for it, and submit it on Canvas" → THREE tasks: "Finish English essay", "Find three sources", "Submit English essay". ("find sources" and "submit" are actions the student must DO — not details.)',
+  "- NEVER put the whole brain dump into one task. NEVER invent a task the student didn't mention.",
+  "",
+  "DETAIL vs TASK — the test:",
+  "- A DETAIL describes a property of a task: how long, what format, what it covers, specific problems/pages, who requires it, instructions. It goes in that task's `notes`.",
+  "- A TASK is something the student has to DO. If the student names an action, it is its own task.",
+  '- "Finish my essay. It has to be 5 pages and use 3 sources" → ONE task "Finish English essay", notes "Must be 5 pages and use 3 sources" (5 pages / 3 sources are properties, not actions).',
+  "",
+  "TITLES (`title`): 2–7 words, plain and scannable — \"Finish calculus homework\", \"Study for physics\", \"Email counselor\", \"Submit English essay\". No full sentences, no requirement lists, no dates in the title.",
+  "",
+  "NOTES (`notes`): put EVERY supporting detail here for that task, rephrased cleanly and completely — page counts, source counts, question numbers, instructions, who requires what. Organise, do not summarise information away. null when the student gave no detail for that task.",
+  "",
+  "DUE DATE (`suggestedDueAt`): ONLY when the student explicitly stated a day/date FOR THAT SPECIFIC TASK. If they said \"physics test Friday\" the Friday date is on the physics task ONLY — do NOT copy it to the email or the paper. If a task has no stated date: suggestedDueAt=null AND dueDateWasExplicit=false. Resolve \"Friday\"/\"tomorrow\"/\"next week\" via the weekday→date map; output ISO YYYY-MM-DD. Set dueDateWasExplicit=true ONLY when the student stated that task's date. Never guess, never spread one date across tasks.",
+  "",
+  "SUBJECT (`category`): if the student names a class that appears in the `courses` list, set `category` to that exact course name. If they name a subject not in the list, use the plain subject word (\"Physics\"). Otherwise null. Never invent a class.",
+  "",
+  "PRIORITY (`suggestedPriority` ∈ low|medium|high|urgent): base it ONLY on urgency the student expressed (\"ASAP\", \"really important\", \"highest priority\") or a stated due date within ~2 days. Do NOT make everything high just because it's schoolwork. Default \"medium\".",
+  "",
+  "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` a short phrase for when to do it or null; `reasoning` one short sentence.",
+  "",
+  'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning"}],"summary"}. `summary` is one sentence on what you organised.',
+].join("\n");
+
+// Kept deliberately loose — its only job is to GUARANTEE `items` is an array of
+// task objects (that's the fix for "everything in one task"). Nullability and
+// defaults are handled in the post-processing below, so no `nullable` here
+// (some API versions reject it and 400 the whole request).
+const BRAIN_DUMP_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          notes: { type: "string" },
+          category: { type: "string" },
+          suggestedPriority: { type: "string" },
+          suggestedDueAt: { type: "string" },
+          dueDateWasExplicit: { type: "boolean" },
+          estimatedMinutes: { type: "number" },
+          suggestedSlot: { type: "string" },
+          reasoning: { type: "string" },
+        },
+        required: ["title"],
+        propertyOrdering: [
+          "title",
+          "notes",
+          "category",
+          "suggestedPriority",
+          "suggestedDueAt",
+          "dueDateWasExplicit",
+          "estimatedMinutes",
+          "suggestedSlot",
+          "reasoning",
+        ],
+      },
+    },
+    summary: { type: "string" },
+  },
+  required: ["items"],
+} as const;
+
+/** Just what brain dump needs — NOT the full LifeOS dump (that only confuses splitting). */
+function brainDumpContext(ctx: LifeOSContext): string {
+  return JSON.stringify({
+    today: ctx.now.toISOString().slice(0, 10),
+    weekdayDates: dateReference(ctx.now),
+    courses: ctx.courses.map((c) => c.name),
+  });
+}
+
+function outOfRange(iso: string, floor: number, ceil: number): boolean {
+  const t = Date.parse(iso);
+  return Number.isNaN(t) || t < floor || t > ceil;
+}
+
+function matchCourseName(value: string, courseNames: string[]): string {
+  const hit = courseNames.find((n) => n.toLowerCase() === value.toLowerCase());
+  return hit ?? value;
 }
 
 /**

@@ -7,19 +7,19 @@ export const metadata: Metadata = { title: "Pricing — LifeOS" };
 const FAQ = [
   [
     "Is there really a free plan?",
-    "Yes. Unlimited tasks, the calendar and up to 3 goals are free forever, plus 3 Brain Dumps and 5 AI Assistant questions a day.",
+    "Yes. Unlimited tasks and calendar, up to 3 goals and 8 courses, Canvas sync, plus 5 Brain Dumps a week and 5 AI Assistant questions a day — free forever.",
   ],
   [
-    "What's the difference between Pro and Student+?",
-    "Pro lifts the day-to-day caps — unlimited Brain Dumps, 100 Assistant questions a day, 25 goals, 15 courses, and full analytics. Student+ removes the caps entirely and adds semester planning and early access to new AI features.",
+    "What does Student+ add?",
+    "More AI headroom — 50 Brain Dumps a week and 150 Assistant questions a day — plus 100 goals, 60 courses, full 6-week analytics, semester planning and early access to new AI features.",
   ],
   [
     "Are payments live?",
-    "Not in this MVP. Upgrading flips your plan instantly in demo mode so you can try Pro and Student+ features. Real checkout will be added with a billing provider.",
+    "Not in this MVP. Upgrading flips your plan instantly in demo mode so you can try Student+ features. Real checkout will be added with a billing provider.",
   ],
   [
-    "What about Canvas and Infinite Campus?",
-    "Those integrations are on the roadmap and will use official APIs or district-approved access. LifeOS will never ask for your school password.",
+    "What about Canvas?",
+    "Canvas is built in — connect your school account and your courses, assignments and deadlines flow into LifeOS. It uses Canvas's official OAuth and never asks for your password.",
   ],
   [
     "Can I switch plans later?",

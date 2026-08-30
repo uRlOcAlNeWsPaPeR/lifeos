@@ -4,7 +4,6 @@ import { PLAN_COMPARISON } from "@/lib/pricing";
 
 const COLS = [
   { key: "free", label: "Free" },
-  { key: "pro", label: "Pro" },
   { key: "student_plus", label: "Student+" },
 ] as const;
 
@@ -33,7 +32,7 @@ export function PlanComparison() {
             <Fragment key={group.group}>
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={COLS.length + 1}
                   className="border-t border-border pt-4 pb-1.5 text-xs font-semibold uppercase tracking-wide text-primary"
                 >
                   {group.group}

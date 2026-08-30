@@ -38,7 +38,7 @@ export function PricingTable({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-3">
+    <div className="mx-auto grid max-w-3xl gap-6 sm:grid-cols-2">
       {PLAN_TIERS.map((tier) => {
         const isCurrent = currentPlan === tier.id;
         return (

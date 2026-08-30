@@ -40,7 +40,7 @@ export default function AnalyticsPage() {
           <div>
             <p className="font-semibold">That&apos;s your this-week snapshot</p>
             <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-              Pro and Student+ unlock your 6-week completion history, 30-day completion rate,
+              Student+ unlocks your 6-week completion history, 30-day completion rate,
               7-day workload forecast and a breakdown of where your open work sits.
             </p>
           </div>

@@ -50,7 +50,7 @@ export function Sidebar({
     router.replace("/login");
   }
 
-  const planLabel = plan === "student_plus" ? "Student+" : plan === "pro" ? "Pro" : "Free";
+  const planLabel = plan === "student_plus" ? "Student+" : "Free";
 
   const body = (
     <div className="flex h-full flex-col">

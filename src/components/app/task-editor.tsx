@@ -99,8 +99,10 @@ export function TaskEditor({
     setDraft({ ...draft, scheduledDate: toInputDate(d.toISOString()) });
   }
 
+  const isEdit = Boolean(task && task.id);
+
   return (
-    <Modal open={open} onClose={onClose} title={task ? "Edit task" : "New task"}>
+    <Modal open={open} onClose={onClose} title={isEdit ? "Edit task" : "New task"}>
       <form onSubmit={submit} className="space-y-4">
         <Field label="Title">
           <Input
@@ -312,7 +314,7 @@ export function TaskEditor({
             Cancel
           </Button>
           <Button type="submit" loading={saving}>
-            {task ? "Save changes" : "Add task"}
+            {isEdit ? "Save changes" : "Add task"}
           </Button>
         </div>
       </form>

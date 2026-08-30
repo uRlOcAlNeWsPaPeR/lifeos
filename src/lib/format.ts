@@ -12,6 +12,8 @@ export function parseDate(d: string | Date): Date {
 export function relativeDue(due: string | Date | null | undefined): {
   label: string;
   tone: "muted" | "primary" | "warning" | "destructive";
+  /** true once the due date is in the past — render the row less prominently. */
+  past: boolean;
 } | null {
   if (!due) return null;
   const d = parseDate(due);
@@ -20,11 +22,17 @@ export function relativeDue(due: string | Date | null | undefined): {
   const startOfDue = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const days = Math.round((startOfDue.getTime() - startOfToday.getTime()) / 86400000);
 
-  if (days < 0) return { label: days === -1 ? "Yesterday" : `${Math.abs(days)}d overdue`, tone: "destructive" };
-  if (days === 0) return { label: "Today", tone: "warning" };
-  if (days === 1) return { label: "Tomorrow", tone: "primary" };
-  if (days < 7) return { label: d.toLocaleDateString([], { weekday: "long" }), tone: "primary" };
-  return { label: d.toLocaleDateString([], { month: "short", day: "numeric" }), tone: "muted" };
+  // Past = still visible, just quieter. Upcoming = prominent.
+  if (days < 0)
+    return { label: days === -1 ? "Yesterday" : `${Math.abs(days)}d ago`, tone: "muted", past: true };
+  if (days === 0) return { label: "Today", tone: "warning", past: false };
+  if (days === 1) return { label: "Tomorrow", tone: "primary", past: false };
+  if (days < 7) return { label: d.toLocaleDateString([], { weekday: "long" }), tone: "primary", past: false };
+  return {
+    label: d.toLocaleDateString([], { month: "short", day: "numeric" }),
+    tone: "primary",
+    past: false,
+  };
 }
 
 export function fmtDate(d: string | Date | null | undefined, opts?: Intl.DateTimeFormatOptions) {
@@ -63,4 +71,39 @@ export function greeting(d = new Date()) {
   if (h < 12) return "Good morning";
   if (h < 18) return "Good afternoon";
   return "Good evening";
+}
+
+/**
+ * A deadline this far past is treated as stale — hidden from workload / deadline /
+ * overdue surfaces (dashboard, daily brief, calendar). The item still exists; it
+ * just stops nagging. Turned-in work is hidden regardless of age.
+ */
+export const STALE_OVERDUE_DAYS = 20;
+
+export function isStaleOverdue(
+  dueAt: string | Date | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!dueAt) return false;
+  const d = parseDate(dueAt).getTime();
+  if (Number.isNaN(d)) return false;
+  return d < now.getTime() - STALE_OVERDUE_DAYS * 86_400_000;
+}
+
+/** "just now" / "3 min ago" / "2 hours ago" / "yesterday" / "Mar 4". */
+export function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "never";
+  const sec = Math.round((Date.now() - then) / 1000);
+  if (sec < 45) return "just now";
+  if (sec < 90) return "a minute ago";
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.round(hr / 24);
+  if (day === 1) return "yesterday";
+  if (day < 7) return `${day} days ago`;
+  return fmtDate(iso, { month: "short", day: "numeric" });
 }

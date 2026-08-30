@@ -21,10 +21,13 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { useAppData } from "@/lib/store/app-data";
 import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
+import { AppOrbit } from "./app-orbit";
 import { NAV_ICONS } from "./nav-deck";
 import { QuickAdd } from "./quick-add";
+import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
+import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
-import { greeting } from "@/lib/format";
+import { greeting, relativeDue, isStaleOverdue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -43,6 +46,9 @@ type Phase = "home" | "boom" | "console" | "closing";
 // detonation timeline (ms) — deliberately unhurried
 const T = { charge: 220, burst: 720, shock: 820, shard: 880, flash: 680, reveal: 760 };
 const TO_CONSOLE = 1650;
+// routed apps (Writing …) have no console to reveal — navigate the moment the
+// burst clears (charge + burst), not after the full console-reveal wait.
+const TO_ROUTE = T.charge + T.burst + 90;
 // reverse — collapse the console back into the Core
 const TC = { implode: 380, flash: 560, reform: 780, reformDelay: 240, welcome: 760 };
 const TO_HOME = 1180;
@@ -59,11 +65,16 @@ export function CorePortal() {
   const router = useRouter();
   const { logout } = useAuth();
 
+  const studyIndex = STUDY_APP_INDEX < 0 ? 0 : STUDY_APP_INDEX;
   const [cinematic, setCinematic] = useState(false);
   const [phase, setPhase] = useState<Phase>("home");
   const phaseRef = useRef<Phase>("home");
   phaseRef.current = phase;
   const [menu, setMenu] = useState(false);
+  const [appIndex, setAppIndex] = useState(studyIndex);
+  // when a non-Study app is entered we run the SAME detonation, tinted with that
+  // app's hue, then navigate to its route instead of opening the Study console.
+  const [boomApp, setBoomApp] = useState<LifeApp | null>(null);
   const now = useMemo(() => new Date(), []);
 
   useEffect(() => {
@@ -72,7 +83,9 @@ export function CorePortal() {
     const big = window.matchMedia("(min-width: 1024px)").matches;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setCinematic(big && !reduce);
-  }, []);
+    // warm the routed apps so navigation lands the instant the burst clears
+    LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
+  }, [router]);
 
   const firstName = data.profile.name.split(" ")[0] || "there";
   const m = useMemo(() => buildModel(data, analytics, now), [data, analytics, now]);
@@ -83,12 +96,46 @@ export function CorePortal() {
 
   const detonate = () => {
     if (phaseRef.current !== "home") return;
+    if (!cinematic) {
+      setPhase("console");
+      requestAnimationFrame(() =>
+        document.getElementById("console")?.scrollIntoView({ behavior: "smooth" }),
+      );
+      return;
+    }
     setPhase("boom");
     window.setTimeout(() => setPhase("console"), reduced() ? 300 : TO_CONSOLE);
   };
 
+  // Entry point from the app orbit: Study runs the existing detonation; other
+  // internal apps (Writing) detonate the same way — same timeline, same shard
+  // burst — just tinted with the app's own hue, then route to it. External apps
+  // open in a tab.
+  const enterApp = (app: LifeApp) => {
+    if (phaseRef.current !== "home") return;
+    if (app.id === "study") {
+      detonate();
+      return;
+    }
+    if (app.kind === "internal" && app.route) {
+      const to = app.route;
+      if (!cinematic) {
+        router.push(to);
+        return;
+      }
+      setBoomApp(app);
+      setPhase("boom");
+      window.setTimeout(() => router.push(to), reduced() ? 300 : TO_ROUTE);
+      return;
+    }
+    if (app.href) window.open(app.href, "_blank", "noopener,noreferrer");
+    else toast(`The ${app.name} Tool isn't set up yet.`, "error");
+  };
+
   const exitToCore = () => {
     if (phaseRef.current !== "console") return;
+    setAppIndex(studyIndex);
+    setBoomApp(null);
     setPhase("closing");
     window.setTimeout(() => setPhase("home"), reduced() ? 260 : TO_HOME);
   };
@@ -197,18 +244,17 @@ export function CorePortal() {
       <>
         {topBar}
         <div ref={stage} className="relative min-h-screen px-4 pb-24 pt-16 sm:px-8">
-          <div className="flex min-h-[70svh] flex-col items-center justify-center gap-9 py-10 text-center">
+          <div className="flex min-h-[70svh] flex-col items-center justify-center py-8 text-center">
             {welcome}
-            <button
-              onClick={() => {
-                setPhase("console");
-                document.getElementById("console")?.scrollIntoView({ behavior: "smooth" });
-              }}
-              aria-label="Open the console"
-              className="rounded-full transition-transform active:scale-95"
-            >
-              <LifeosCore variant="hero" state={m.state} />
-            </button>
+            <div className="mt-16 w-full">
+              <AppOrbit
+                apps={LIFE_APPS}
+                activeIndex={appIndex}
+                onActiveChange={setAppIndex}
+                onEnter={enterApp}
+                reducedMotion
+              />
+            </div>
           </div>
           <div id="console" className="mx-auto mt-4 max-w-6xl">
             <Console model={m} constrained={false} />
@@ -255,40 +301,45 @@ export function CorePortal() {
           </div>
         )}
 
-        {/* the Core + detonation / reform */}
-        {phase !== "console" && (
-          <div className="absolute inset-0 grid place-items-center">
-            {phase === "boom" && <BoomFx />}
-            {phase === "closing" && <CloseFx />}
-            <button
-              onClick={detonate}
-              disabled={phase !== "home"}
-              aria-label="Enter LifeOS"
-              className="group relative rounded-full outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-4 focus-visible:ring-offset-background"
-              style={{
-                transition: "transform 0.2s ease",
-                animation:
-                  phase === "boom"
-                    ? `core-charge ${T.charge}ms ease-in forwards, core-burst ${T.burst}ms cubic-bezier(0.16,1,0.3,1) ${T.charge}ms forwards`
-                    : phase === "closing"
-                      ? `core-reform ${TC.reform}ms cubic-bezier(0.22,1,0.36,1) ${TC.reformDelay}ms both`
-                      : undefined,
-              }}
-            >
-              <span className="pointer-events-none block transition-transform duration-300 group-hover:scale-[1.04]">
-                <LifeosCore variant="hero" state={m.state} />
-              </span>
-              {phase === "home" && (
-                <span className="pointer-events-none absolute inset-x-0 -bottom-10 text-center text-[10px] uppercase tracking-[0.32em] text-muted-foreground/70 transition-opacity group-hover:text-primary">
-                  Tap to enter
-                </span>
-              )}
-            </button>
+        {/* the app orbit (home) */}
+        {phase === "home" && (
+          <div className="absolute inset-x-0 top-[34%] bottom-6 z-10 flex items-start justify-center px-4">
+            <AppOrbit
+              apps={LIFE_APPS}
+              activeIndex={appIndex}
+              onActiveChange={setAppIndex}
+              onEnter={enterApp}
+            />
           </div>
         )}
 
-        {/* the console */}
-        {phase !== "home" && (
+        {/* Study sphere detonating / reforming */}
+        {(phase === "boom" || phase === "closing") && (
+          <div className="absolute inset-0 grid place-items-center">
+            {phase === "boom" && <BoomFx hue={boomApp?.hue} />}
+            {phase === "closing" && <CloseFx />}
+            <div
+              className="relative"
+              style={{
+                animation:
+                  phase === "boom"
+                    ? `core-charge ${T.charge}ms ease-in forwards, core-burst ${T.burst}ms cubic-bezier(0.16,1,0.3,1) ${T.charge}ms forwards`
+                    : `core-reform ${TC.reform}ms cubic-bezier(0.22,1,0.36,1) ${TC.reformDelay}ms both`,
+              }}
+            >
+              <span className="pointer-events-none block">
+                <LifeosCore
+                  variant="hero"
+                  state={m.state}
+                  {...(boomApp ? { hueOverride: boomApp.hue, motif: boomApp.motif } : {})}
+                />
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* the console — skipped when a routed app is detonating (it navigates away) */}
+        {phase !== "home" && !boomApp && (
           <div
             className="absolute inset-0 z-20 flex flex-col px-4 pb-6 pt-[4.75rem] sm:px-8"
             style={{
@@ -313,7 +364,7 @@ export function CorePortal() {
 
 /* ------------------------------- boom fx ------------------------------- */
 
-function BoomFx() {
+function BoomFx({ hue = 150 }: { hue?: number }) {
   const shards = useMemo(
     () =>
       Array.from({ length: 26 }, (_, i) => {
@@ -327,6 +378,8 @@ function BoomFx() {
       }),
     [],
   );
+  // same burst — recoloured to the app's hue (Study stays at 150)
+  const h2 = hue + 12;
 
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -334,14 +387,14 @@ function BoomFx() {
       <span
         className="absolute h-40 w-40 rounded-full"
         style={{
-          border: "3px solid hsl(150 92% 68%)",
+          border: `3px solid hsl(${hue} 92% 68%)`,
           animation: `core-shock ${T.shock}ms cubic-bezier(0.15,0.7,0.3,1) ${T.charge}ms forwards`,
         }}
       />
       <span
         className="absolute h-40 w-40 rounded-full"
         style={{
-          border: "2px solid hsl(162 82% 60%)",
+          border: `2px solid hsl(${h2} 82% 60%)`,
           animation: `core-shock ${T.shock + 90}ms cubic-bezier(0.15,0.7,0.3,1) ${T.charge + 120}ms forwards`,
         }}
       />
@@ -353,8 +406,8 @@ function BoomFx() {
           style={{
             width: s.size,
             height: s.size,
-            background: "hsl(150 88% 64%)",
-            boxShadow: "0 0 8px 1px hsl(150 90% 60% / 0.7)",
+            background: `hsl(${hue} 88% 64%)`,
+            boxShadow: `0 0 8px 1px hsl(${hue} 90% 60% / 0.7)`,
             ["--dx" as string]: s.dx,
             ["--dy" as string]: s.dy,
             animation: `core-shard ${T.shard}ms cubic-bezier(0.2,0.6,0.25,1) ${T.charge}ms forwards`,
@@ -365,8 +418,7 @@ function BoomFx() {
       <span
         className="absolute inset-0"
         style={{
-          background:
-            "radial-gradient(circle at 50% 50%, #ffffff, hsl(150 100% 68%) 26%, hsl(152 70% 44% / 0.4) 52%, transparent 74%)",
+          background: `radial-gradient(circle at 50% 50%, #ffffff, hsl(${hue} 100% 68%) 26%, hsl(${hue + 2} 70% 44% / 0.4) 52%, transparent 74%)`,
           animation: `core-flash ${T.flash}ms ease-out ${T.charge + 240}ms forwards`,
         }}
       />
@@ -480,6 +532,41 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
           </p>
         </div>
 
+        {model.school.total > 0 && (
+          <div>
+            <Header title="School" href="/school" cta="All" small />
+            <p className="mb-1.5 text-xs text-muted-foreground">
+              <b className="text-foreground">{model.school.dueSoon}</b> due soon
+              {model.school.dueTomorrow > 0 && (
+                <> · <b className="text-warning">{model.school.dueTomorrow}</b> tomorrow</>
+              )}
+            </p>
+            <ul className="space-y-1">
+              {model.school.items.map((s) => {
+                const due = relativeDue(s.dueAt);
+                return (
+                  <li key={s.id}>
+                    <Link
+                      href="/school"
+                      className="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-xs transition-colors hover:bg-white/5"
+                    >
+                      <span className="min-w-0 truncate">
+                        {s.course && <span className="text-muted-foreground">{s.course} · </span>}
+                        {s.title}
+                      </span>
+                      {due && (
+                        <span className={cn("shrink-0", due.tone === "destructive" ? "text-destructive" : "text-muted-foreground")}>
+                          {due.label}
+                        </span>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {model.deadlineItems.length > 0 && (
           <div>
             <Header title="Coming up" href="/calendar" cta="All" small />
@@ -568,6 +655,12 @@ interface Model {
   goals: { id: string; title: string; pct: number }[];
   streak: number;
   done7: number;
+  school: {
+    total: number;
+    dueSoon: number;
+    dueTomorrow: number;
+    items: { id: string; title: string; course: string | null; dueAt: string }[];
+  };
 }
 
 function buildModel(
@@ -579,7 +672,9 @@ function buildModel(
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const open = data.tasks.filter((t) => t.status === "todo");
 
-  const overdue = open.filter((t) => t.dueAt && new Date(t.dueAt) < start);
+  const overdue = open.filter(
+    (t) => t.dueAt && new Date(t.dueAt) < start && !isStaleOverdue(t.dueAt, now),
+  );
   const dueToday = open.filter(
     (t) => t.dueAt && new Date(t.dueAt) >= start && new Date(t.dueAt) <= end,
   );
@@ -621,7 +716,7 @@ function buildModel(
       context: t.course?.name ?? t.category ?? undefined,
     }));
   const upAssign = data.assignments
-    .filter((a) => a.status !== "graded" && a.dueAt && new Date(a.dueAt) >= start)
+    .filter((a) => a.status === "open" && a.dueAt && new Date(a.dueAt) >= start)
     .map((a) => ({
       id: a.id,
       title: a.title,
@@ -638,6 +733,27 @@ function buildModel(
     .filter((g) => g.status === "active")
     .slice(0, 3)
     .map((g) => ({ id: g.id, title: g.title, pct: goalProgress(g) }));
+
+  // SCHOOL — assignment workload. Only open (not turned-in) assignments, and
+  // nothing that's been overdue for weeks.
+  const tomorrowEnd = new Date(end.getTime() + 86400000);
+  const soonEnd = new Date(start.getTime() + 3 * 86400000);
+  const openAssignments = data.assignments
+    .filter((a) => a.status === "open" && a.dueAt && !isStaleOverdue(a.dueAt, now))
+    .sort((a, b) => +new Date(a.dueAt!) - +new Date(b.dueAt!));
+  const school = {
+    total: openAssignments.length,
+    dueSoon: openAssignments.filter((a) => new Date(a.dueAt!) <= soonEnd).length,
+    dueTomorrow: openAssignments.filter(
+      (a) => new Date(a.dueAt!) > end && new Date(a.dueAt!) <= tomorrowEnd,
+    ).length,
+    items: openAssignments.slice(0, 3).map((a) => ({
+      id: a.id,
+      title: a.title,
+      course: a.course?.name ?? null,
+      dueAt: a.dueAt!,
+    })),
+  };
 
   const score = dueToday.length + overdue.length * 2;
   const state: CoreState =
@@ -664,5 +780,6 @@ function buildModel(
     goals,
     streak: analytics.streakDays,
     done7: analytics.completed7d,
+    school,
   };
 }

@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { AppDataProvider, useAppData } from "@/lib/store/app-data";
 import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
+import { CanvasSyncNudge } from "@/components/canvas/canvas-sync-nudge";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -38,13 +39,18 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
   if (!ready) return <FullscreenLoader label="Loading your workspace…" />;
   if (!data.profile.onboarded) return <FullscreenLoader />;
 
-  // The dashboard is its own full-bleed "LifeOS Core" experience — no sidebar,
-  // window-level scroll for the zoom-in sequence. Every other page keeps the rail.
-  if (pathname === "/dashboard") {
+  // The dashboard and the Writing app are their own full-bleed experiences —
+  // no sidebar, reached from the hub. Every other page keeps the rail.
+  if (pathname === "/dashboard" || pathname === "/writing") {
     return (
       <>
         <main className="min-h-screen">{children}</main>
-        <DailyBrief />
+        {pathname === "/dashboard" && (
+          <>
+            <DailyBrief />
+            <CanvasSyncNudge />
+          </>
+        )}
       </>
     );
   }
@@ -61,6 +67,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <DailyBrief />
+      <CanvasSyncNudge />
     </div>
   );
 }

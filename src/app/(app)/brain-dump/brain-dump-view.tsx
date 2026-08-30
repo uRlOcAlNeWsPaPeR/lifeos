@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Brain,
-  Sparkles,
   Check,
   Clock,
   Lightbulb,
@@ -29,6 +28,7 @@ const rid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Ma
 
 interface AiItem {
   title: string;
+  notes: string | null;
   category: string | null;
   suggestedPriority: (typeof PRIORITIES)[number];
   suggestedDueAt: string | null;
@@ -39,7 +39,7 @@ interface AiItem {
 }
 
 const EXAMPLE =
-  "I have a physics test Friday, an English essay Monday, need to email my counselor, and want to work on my coding project tonight.";
+  "I have a history test Friday on the French Revolution, Napoleon and the Congress of Vienna. English essay due Monday about symbolism in The Great Gatsby. Need to email my counselor and work on my coding project tonight.";
 
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 type Phase = "input" | "loading" | "review";
@@ -47,6 +47,7 @@ type Phase = "input" | "loading" | "review";
 interface DraftItem {
   id: string;
   title: string;
+  notes: string;
   category: string;
   priority: (typeof PRIORITIES)[number];
   due: string;
@@ -61,6 +62,7 @@ function toDraft(i: AiItem): DraftItem {
   return {
     id: rid(),
     title: i.title,
+    notes: i.notes ?? "",
     category: i.category ?? "",
     priority: i.suggestedPriority,
     due: toInputDate(i.suggestedDueAt),
@@ -75,38 +77,43 @@ function toDraft(i: AiItem): DraftItem {
 export function BrainDumpView() {
   const { data, commitBrainDump } = useAppData();
   const engineLabel = data.ai.label;
-  const dailyLimit = data.limits.brainDumpsPerDay;
+  const weeklyLimit = data.limits.brainDumpsPerWeek;
 
   const [phase, setPhase] = useState<Phase>("input");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [usedToday, setUsedToday] = useState(data.limits.brainDumpsUsedToday);
+  const [usedThisWeek, setUsedThisWeek] = useState(data.limits.brainDumpsUsedThisWeek);
 
   const [items, setItems] = useState<DraftItem[]>([]);
   const [step, setStep] = useState(0);
   const [committing, setCommitting] = useState(false);
+  const [engineUsed, setEngineUsed] = useState<string | null>(null);
+  // guards against a double request (fast double-click, click + Cmd-Enter, StrictMode)
+  const inFlight = useRef(false);
 
-  const atLimit = dailyLimit !== null && usedToday >= dailyLimit;
-  const remaining = dailyLimit === null ? null : Math.max(0, dailyLimit - usedToday);
+  const atLimit = weeklyLimit !== null && usedThisWeek >= weeklyLimit;
+  const remaining = weeklyLimit === null ? null : Math.max(0, weeklyLimit - usedThisWeek);
 
   async function organize() {
-    if (text.trim().length < 3 || atLimit) return;
+    if (text.trim().length < 3 || atLimit || inFlight.current) return;
+    inFlight.current = true;
     setError(null);
     setPhase("loading");
     const started = Date.now();
     const settle = () => new Promise((r) => setTimeout(r, Math.max(0, 1000 - (Date.now() - started))));
     try {
-      const res = await authedApi<{ items: AiItem[] }>("/api/brain-dump", {
+      const res = await authedApi<{ items: AiItem[]; engine?: string }>("/api/brain-dump", {
         method: "POST",
         body: { text },
       });
       await settle();
-      if (!res.items.length) {
+      if (!res.items?.length) {
         setPhase("input");
         setError("I couldn't find any tasks in that. Add a bit more detail and try again.");
         return;
       }
-      setUsedToday((n) => n + 1);
+      setUsedThisWeek((n) => n + 1);
+      setEngineUsed(res.engine ?? null);
       setItems(res.items.map(toDraft));
       setStep(0);
       setPhase("review");
@@ -114,6 +121,8 @@ export function BrainDumpView() {
       await settle();
       setPhase("input");
       setError(e instanceof Error ? e.message : "That didn't work. Please try again.");
+    } finally {
+      inFlight.current = false;
     }
   }
 
@@ -138,12 +147,14 @@ export function BrainDumpView() {
   }
 
   async function finish(final: DraftItem[]) {
+    if (inFlight.current) return;
     const kept = final.filter((i) => i.keep);
     if (!kept.length) {
       toast("No tasks added.", "info");
       cancel();
       return;
     }
+    inFlight.current = true;
     setCommitting(true);
     try {
       const count = await commitBrainDump(
@@ -153,9 +164,14 @@ export function BrainDumpView() {
           priority: it.priority,
           dueAt: it.due || null,
           estimatedMinutes: it.minutes,
-          notes: [it.slot ? `Suggested time: ${it.slot}` : null, it.reason ? `Why: ${it.reason}` : null]
-            .filter(Boolean)
-            .join("\n") || null,
+          notes:
+            [
+              it.notes.trim() || null,
+              it.slot ? `Suggested time: ${it.slot}` : null,
+              it.reason ? `Why: ${it.reason}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n\n") || null,
         })),
         text,
       );
@@ -165,6 +181,8 @@ export function BrainDumpView() {
     } catch (e) {
       toast(e instanceof Error ? e.message : "Couldn't save.", "error");
       setCommitting(false);
+    } finally {
+      inFlight.current = false;
     }
   }
 
@@ -200,8 +218,16 @@ export function BrainDumpView() {
           </button>
         </div>
 
-        <p className="mb-2 text-xs text-muted-foreground">
-          Task {step + 1} of {items.length}
+        <p className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
+          <span>Task {step + 1} of {items.length}</span>
+          <span>
+            {items.length} task{items.length === 1 ? "" : "s"} ·{" "}
+            {engineUsed === "gemini"
+              ? "organized by Gemini"
+              : engineUsed === "anthropic"
+                ? "organized by Claude"
+                : "organized by LifeOS's offline engine"}
+          </span>
         </p>
 
         <Card key={it.id} className="animate-scale-in p-5">
@@ -273,6 +299,18 @@ export function BrainDumpView() {
             </p>
           )}
 
+          {/* notes — what the AI folded into this one task (topics / prompt) */}
+          <div className="mt-4">
+            <p className="mb-1.5 text-xs font-medium text-muted-foreground">Details</p>
+            <Textarea
+              rows={it.notes ? 3 : 2}
+              value={it.notes}
+              onChange={(e) => patchCurrent({ notes: e.target.value })}
+              placeholder="Topics it covers, the prompt, instructions…"
+              className="text-sm"
+            />
+          </div>
+
           {/* details (reason + category) — tucked away */}
           <Details item={it} onChange={patchCurrent} />
         </Card>
@@ -302,12 +340,8 @@ export function BrainDumpView() {
         description="Type everything on your mind. LifeOS turns it into tasks you review one by one."
         action={
           remaining !== null ? (
-            <Badge tone={remaining === 0 ? "destructive" : "muted"}>{remaining} left today</Badge>
-          ) : (
-            <Badge tone="primary">
-              <Sparkles className="h-3 w-3" /> Unlimited
-            </Badge>
-          )
+            <Badge tone={remaining === 0 ? "destructive" : "muted"}>{remaining} left this week</Badge>
+          ) : null
         }
       />
 
@@ -348,11 +382,12 @@ export function BrainDumpView() {
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
             <Lock className="h-4 w-4 text-warning" />
             <span>
-              You&apos;ve used your {dailyLimit} free Brain Dumps today.{" "}
+              You&apos;ve used your {weeklyLimit} Brain Dump{weeklyLimit === 1 ? "" : "s"} for this
+              week.{" "}
               <Link href="/settings" className="font-medium text-primary hover:underline">
-                Upgrade
+                Upgrade to Student+
               </Link>{" "}
-              for unlimited.
+              for more.
             </span>
           </div>
         )}

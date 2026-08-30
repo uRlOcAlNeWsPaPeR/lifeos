@@ -40,20 +40,33 @@ export interface LifeOSContext {
     habitPerWeek?: number | null;
     habitLogsThisWeek?: number;
   }[];
-  courses: { id: string; name: string; code?: string | null; currentGrade?: string | null }[];
+  courses: {
+    id: string;
+    name: string;
+    code?: string | null;
+    currentGrade?: string | null;
+    source?: string | null;
+  }[];
   assignments: {
     id: string;
     title: string;
     courseName?: string | null;
     dueAt?: Date | null;
     status: string;
+    source?: string | null;
     hasLinkedTask: boolean;
   }[];
   events: { id: string; title: string; startAt: Date; endAt: Date; kind: string }[];
 }
 
 export interface BrainDumpItem {
+  /** Short — 2–5 words, keyword-style (e.g. "History test", "English essay"). */
   title: string;
+  /**
+   * Details the student elaborated on — topics a test covers, essay prompt,
+   * instructions — folded into ONE task instead of split into many.
+   */
+  notes: string | null;
   category?: string | null;
   suggestedPriority: Priority;
   suggestedDueAt: string | null; // ISO — only when a date was explicit in the text
@@ -93,9 +106,27 @@ export interface AssistantResult {
   references: AssistantReference[];
 }
 
+/** One sentence/phrase the essay coach flagged, with revision options. */
+export interface EssayHighlight {
+  quote: string;
+  issue: string;
+  why: string;
+  revisions: string[];
+}
+
+export interface EssayCoachResult {
+  engine: AIEngine;
+  summary: string;
+  /** thesis / organization / clarity / evidence / grammar / style → 0..100 */
+  scores: Record<string, number>;
+  highlights: EssayHighlight[];
+}
+
 export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
   prioritize(ctx: LifeOSContext): Promise<PrioritizeResult>;
   assist(question: string, ctx: LifeOSContext): Promise<AssistantResult>;
+  /** Writing tool — coach an essay: scored feedback + inline revision suggestions. */
+  essayCoach(essay: string): Promise<EssayCoachResult>;
 }
