@@ -278,12 +278,10 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
     }
 
     /* --------------------------- de-dup assignments ----------------------- *
-     * Fold together assignments that describe the same work:
-     *   - exact repeats of one Canvas assignment id, and
-     *   - same title + same course, when a Canvas-synced row can be the keeper
-     *     (usually a copy the student made by hand before connecting Canvas).
-     * Tasks pointing at a removed row are re-pointed at the survivor. Two purely
-     * manual assignments are left alone. */
+     * Fold together assignments that describe the same work: exact repeats of
+     * one Canvas assignment id, and — regardless of source — any that share a
+     * course and a name (case / whitespace-insensitive). Canvas-backed rows and
+     * then the oldest win. Tasks pointing at a removed row are re-pointed. */
     {
       const norm = (s: unknown) =>
         String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -308,8 +306,7 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
         if (cid && keptByCanvasId.has(cid)) {
           keeper = keptByCanvasId.get(cid);
         } else if (norm(a.title) && keptByTitleCourse.has(titleKey)) {
-          const cand = keptByTitleCourse.get(titleKey)!;
-          if (cand.canvasAssignmentId || a.canvasAssignmentId) keeper = cand;
+          keeper = keptByTitleCourse.get(titleKey);
         }
 
         if (keeper && keeper.id !== a.id) {

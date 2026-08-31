@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc,
   deleteDoc,
@@ -88,6 +88,55 @@ interface StoreData {
 }
 
 const orNull = (n: number) => (n === Infinity ? null : n);
+
+/**
+ * Find assignment rows that are duplicates of each other — same course and the
+ * same name (case / whitespace-insensitive). Returns the ids to drop plus a map
+ * from each dropped id to the survivor it should be merged into.
+ *
+ * The survivor is the richest copy: a Canvas-linked row wins, then one that
+ * carries a grade, then a non-open one, then one with a due date, then the
+ * oldest. Used both to hide dupes from the UI immediately and to delete the
+ * extra docs in the background.
+ */
+function findDuplicateAssignments(
+  rows: Raw<Record<string, unknown>>[],
+): { drop: Set<string>; mergeInto: Map<string, string> } {
+  const norm = (s: unknown) =>
+    String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  const groups = new Map<string, Raw<Record<string, unknown>>[]>();
+  for (const a of rows) {
+    if (!norm(a.title)) continue;
+    const key = `${(a.courseId as string) ?? ""}|${norm(a.title)}`;
+    const g = groups.get(key);
+    if (g) g.push(a);
+    else groups.set(key, [a]);
+  }
+
+  const drop = new Set<string>();
+  const mergeInto = new Map<string, string>();
+  const score = (a: Raw<Record<string, unknown>>) =>
+    (a.canvasAssignmentId ? 8 : 0) +
+    (a.pointsEarned != null || a.gradeValue ? 4 : 0) +
+    (a.status && a.status !== "open" ? 2 : 0) +
+    (a.dueAt ? 1 : 0);
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    const sorted = [...group].sort(
+      (a, b) =>
+        score(b) - score(a) ||
+        String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
+        a.id.localeCompare(b.id),
+    );
+    const keeper = sorted[0];
+    for (const a of sorted.slice(1)) {
+      drop.add(a.id);
+      mergeInto.set(a.id, keeper.id);
+    }
+  }
+  return { drop, mergeInto };
+}
 
 type TaskInput = {
   title?: string;
@@ -236,6 +285,41 @@ export function AppDataProvider({
 
   const ready = Object.values(loaded).every(Boolean);
 
+  /* Background cleanup: permanently delete same-course, same-name duplicate
+     assignments (keeping the richest copy) and re-point any tasks at the
+     survivor. Runs whenever a fresh batch of dupes appears; the UI already
+     hides them, this just tidies the database. */
+  const dedupingAssignments = useRef(false);
+  useEffect(() => {
+    if (!ready || dedupingAssignments.current) return;
+    const { drop, mergeInto } = findDuplicateAssignments(assignmentsRaw);
+    if (drop.size === 0) return;
+
+    dedupingAssignments.current = true;
+    (async () => {
+      const batch = writeBatch(db());
+      for (const t of tasksRaw) {
+        const linked = t.assignmentId as string | undefined;
+        if (linked && mergeInto.has(linked)) {
+          batch.update(entityDoc(uid, "tasks", t.id), {
+            assignmentId: mergeInto.get(linked),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+      for (const id of drop) batch.delete(entityDoc(uid, "assignments", id));
+      await batch.commit();
+      toast(
+        `Removed ${drop.size} duplicate assignment${drop.size === 1 ? "" : "s"}`,
+        "success",
+      );
+    })()
+      .catch((e) => console.error("[store] assignment dedupe failed", e))
+      .finally(() => {
+        dedupingAssignments.current = false;
+      });
+  }, [ready, uid, assignmentsRaw, tasksRaw]);
+
   /* -------- derive enriched DTOs (writes stay flat, reads are rich) -------- */
   const data = useMemo<StoreData>(() => {
     const courseLite = new Map(
@@ -291,23 +375,28 @@ export function AppDataProvider({
       };
     });
 
-    const assignments: AssignmentDTO[] = assignmentsRaw.map((a) => ({
-      id: a.id,
-      title: (a.title as string) ?? "",
-      description: (a.description as string) ?? null,
-      courseId: (a.courseId as string) ?? null,
-      dueAt: (a.dueAt as string) ?? null,
-      status: (a.status as AssignmentDTO["status"]) ?? "open",
-      gradeValue: (a.gradeValue as string) ?? null,
-      pointsEarned: (a.pointsEarned as number) ?? null,
-      pointsPossible: (a.pointsPossible as number) ?? null,
-      provider: (a.provider as string) ?? null,
-      canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
-      canvasUrl: (a.canvasUrl as string) ?? null,
-      course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
-      tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
-      linkedTask: null as AssignmentDTO["linkedTask"],
-    }));
+    // Hide same-course, same-name duplicates so the list shows each once.
+    const { drop: dupeAssignmentIds } = findDuplicateAssignments(assignmentsRaw);
+
+    const assignments: AssignmentDTO[] = assignmentsRaw
+      .filter((a) => !dupeAssignmentIds.has(a.id))
+      .map((a) => ({
+        id: a.id,
+        title: (a.title as string) ?? "",
+        description: (a.description as string) ?? null,
+        courseId: (a.courseId as string) ?? null,
+        dueAt: (a.dueAt as string) ?? null,
+        status: (a.status as AssignmentDTO["status"]) ?? "open",
+        gradeValue: (a.gradeValue as string) ?? null,
+        pointsEarned: (a.pointsEarned as number) ?? null,
+        pointsPossible: (a.pointsPossible as number) ?? null,
+        provider: (a.provider as string) ?? null,
+        canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
+        canvasUrl: (a.canvasUrl as string) ?? null,
+        course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
+        tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
+        linkedTask: null as AssignmentDTO["linkedTask"],
+      }));
 
     /* --- shadow-task dedup: a task that mirrors an assignment (same name, same
        due day, or an explicit link) becomes that assignment's planning layer and
