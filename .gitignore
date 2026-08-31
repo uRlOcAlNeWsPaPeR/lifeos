@@ -25,3 +25,4 @@ next-env.d.ts
 cj2.txt
 *.cookies
 cookies.txt
+.env*
