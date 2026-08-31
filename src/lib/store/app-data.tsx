@@ -89,54 +89,101 @@ interface StoreData {
 
 const orNull = (n: number) => (n === Infinity ? null : n);
 
-/**
- * Find assignment rows that are duplicates of each other — same course and the
- * same name (case / whitespace-insensitive). Returns the ids to drop plus a map
- * from each dropped id to the survivor it should be merged into.
- *
- * The survivor is the richest copy: a Canvas-linked row wins, then one that
- * carries a grade, then a non-open one, then one with a due date, then the
- * oldest. Used both to hide dupes from the UI immediately and to delete the
- * extra docs in the background.
- */
-function findDuplicateAssignments(
-  rows: Raw<Record<string, unknown>>[],
-): { drop: Set<string>; mergeInto: Map<string, string> } {
-  const norm = (s: unknown) =>
-    String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-  const groups = new Map<string, Raw<Record<string, unknown>>[]>();
-  for (const a of rows) {
-    if (!norm(a.title)) continue;
-    const key = `${(a.courseId as string) ?? ""}|${norm(a.title)}`;
+/* --------------------------- duplicate detection --------------------------- *
+ * One pass, reused for every collection: group rows by a key, and inside any
+ * group of 2+ keep the highest-scoring row (ties → oldest, then lowest id).
+ * Feeds both the UI (hide the extras) and a background cleanup (delete them).  */
+
+type DupRow = Raw<Record<string, unknown>>;
+type DupResult = { drop: Set<string>; mergeInto: Map<string, string> };
+
+const normStr = (s: unknown) =>
+  String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
+/** ISO string → "YYYY-MM-DD"; anything unparseable is passed through as-is. */
+const dayOf = (v: unknown) => {
+  const s = String(v ?? "");
+  if (!s) return "";
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? s : d.toISOString().slice(0, 10);
+};
+
+function findDuplicates(
+  rows: DupRow[],
+  keyOf: (r: DupRow) => string,
+  scoreOf: (r: DupRow) => number,
+): DupResult {
+  const groups = new Map<string, DupRow[]>();
+  for (const r of rows) {
+    const key = keyOf(r);
+    if (!key) continue; // "" opts a row out of de-duping
     const g = groups.get(key);
-    if (g) g.push(a);
-    else groups.set(key, [a]);
+    if (g) g.push(r);
+    else groups.set(key, [r]);
   }
 
   const drop = new Set<string>();
   const mergeInto = new Map<string, string>();
-  const score = (a: Raw<Record<string, unknown>>) =>
-    (a.canvasAssignmentId ? 8 : 0) +
-    (a.pointsEarned != null || a.gradeValue ? 4 : 0) +
-    (a.status && a.status !== "open" ? 2 : 0) +
-    (a.dueAt ? 1 : 0);
-
   for (const group of groups.values()) {
     if (group.length < 2) continue;
-    const sorted = [...group].sort(
+    const [keeper, ...rest] = [...group].sort(
       (a, b) =>
-        score(b) - score(a) ||
+        scoreOf(b) - scoreOf(a) ||
         String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? "")) ||
         a.id.localeCompare(b.id),
     );
-    const keeper = sorted[0];
-    for (const a of sorted.slice(1)) {
-      drop.add(a.id);
-      mergeInto.set(a.id, keeper.id);
+    for (const r of rest) {
+      drop.add(r.id);
+      mergeInto.set(r.id, keeper.id);
     }
   }
   return { drop, mergeInto };
 }
+
+/** How each collection decides "same thing twice", and which copy to keep. */
+const DUPLICATE_RULES: Record<
+  "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms",
+  { keyOf: (r: DupRow) => string; scoreOf: (r: DupRow) => number }
+> = {
+  tasks: {
+    // recurring tasks legitimately repeat — never fold those
+    keyOf: (t) =>
+      t.recurrence && t.recurrence !== "none"
+        ? ""
+        : `${normStr(t.title)}|${dayOf(t.dueAt)}|${(t.courseId as string) ?? ""}|${(t.goalId as string) ?? ""}`,
+    scoreOf: (t) =>
+      (t.status === "done" ? 8 : 0) +
+      (t.notes || t.estimatedMinutes != null || t.scheduledAt ? 4 : 0) +
+      (t.assignmentId ? 2 : 0) +
+      (t.dueAt ? 1 : 0),
+  },
+  goals: {
+    keyOf: (g) => normStr(g.title),
+    scoreOf: (g) =>
+      (Number(g.progress) || 0) + (((g.milestones as unknown[]) ?? []).length ? 50 : 0),
+  },
+  courses: {
+    keyOf: (c) => normStr(c.name),
+    scoreOf: (c) => (c.canvasCourseId ? 8 : 0) + (c.currentGrade ? 2 : 0) + (c.code ? 1 : 0),
+  },
+  assignments: {
+    keyOf: (a) => `${(a.courseId as string) ?? ""}|${normStr(a.title)}`,
+    scoreOf: (a) =>
+      (a.canvasAssignmentId ? 8 : 0) +
+      (a.pointsEarned != null || a.gradeValue ? 4 : 0) +
+      (a.status && a.status !== "open" ? 2 : 0) +
+      (a.dueAt ? 1 : 0),
+  },
+  events: {
+    keyOf: (e) => `${normStr(e.title)}|${String(e.startAt ?? "")}`,
+    scoreOf: (e) => (e.canvasEventId ? 4 : 0) + (e.description ? 1 : 0),
+  },
+  alarms: {
+    keyOf: (a) => `${String(a.time ?? "")}|${normStr(a.label)}`,
+    scoreOf: (a) =>
+      (a.enabled !== false ? 2 : 0) + (((a.repeatDays as unknown[]) ?? []).length ? 1 : 0),
+  },
+};
 
 type TaskInput = {
   title?: string;
@@ -285,49 +332,110 @@ export function AppDataProvider({
 
   const ready = Object.values(loaded).every(Boolean);
 
-  /* Background cleanup: permanently delete same-course, same-name duplicate
-     assignments (keeping the richest copy) and re-point any tasks at the
-     survivor. Runs whenever a fresh batch of dupes appears; the UI already
-     hides them, this just tidies the database. */
-  const dedupingAssignments = useRef(false);
+  /* Background cleanup: once data is loaded, permanently delete the duplicate
+     rows the UI is already hiding (keeping the richest copy of each) and
+     re-point anything that linked to a deleted row at its survivor. Re-runs
+     only when a fresh batch of dupes shows up. */
+  const deduping = useRef(false);
   useEffect(() => {
-    if (!ready || dedupingAssignments.current) return;
-    const { drop, mergeInto } = findDuplicateAssignments(assignmentsRaw);
-    if (drop.size === 0) return;
+    if (!ready || deduping.current) return;
 
-    dedupingAssignments.current = true;
+    const d = {
+      tasks: findDuplicates(tasksRaw, DUPLICATE_RULES.tasks.keyOf, DUPLICATE_RULES.tasks.scoreOf),
+      goals: findDuplicates(goalsRaw, DUPLICATE_RULES.goals.keyOf, DUPLICATE_RULES.goals.scoreOf),
+      courses: findDuplicates(coursesRaw, DUPLICATE_RULES.courses.keyOf, DUPLICATE_RULES.courses.scoreOf),
+      assignments: findDuplicates(assignmentsRaw, DUPLICATE_RULES.assignments.keyOf, DUPLICATE_RULES.assignments.scoreOf),
+      events: findDuplicates(eventsRaw, DUPLICATE_RULES.events.keyOf, DUPLICATE_RULES.events.scoreOf),
+      alarms: findDuplicates(alarmsRaw, DUPLICATE_RULES.alarms.keyOf, DUPLICATE_RULES.alarms.scoreOf),
+    };
+    const total =
+      d.tasks.drop.size + d.goals.drop.size + d.courses.drop.size +
+      d.assignments.drop.size + d.events.drop.size + d.alarms.drop.size;
+    if (total === 0) return;
+
+    deduping.current = true;
     (async () => {
       const batch = writeBatch(db());
+      const remap = (id: unknown, m: Map<string, string>) =>
+        typeof id === "string" && m.has(id) ? m.get(id) : undefined;
+
+      // surviving tasks: follow merged course / goal / assignment links
       for (const t of tasksRaw) {
-        const linked = t.assignmentId as string | undefined;
-        if (linked && mergeInto.has(linked)) {
-          batch.update(entityDoc(uid, "tasks", t.id), {
-            assignmentId: mergeInto.get(linked),
+        if (d.tasks.drop.has(t.id)) continue;
+        const patch: Record<string, unknown> = {};
+        const c = remap(t.courseId, d.courses.mergeInto);
+        const g = remap(t.goalId, d.goals.mergeInto);
+        const a = remap(t.assignmentId, d.assignments.mergeInto);
+        if (c !== undefined) patch.courseId = c;
+        if (g !== undefined) patch.goalId = g;
+        if (a !== undefined) patch.assignmentId = a;
+        if (Object.keys(patch).length) {
+          patch.updatedAt = serverTimestamp();
+          batch.update(entityDoc(uid, "tasks", t.id), patch);
+        }
+      }
+      // surviving assignments: follow merged course links
+      for (const a of assignmentsRaw) {
+        if (d.assignments.drop.has(a.id)) continue;
+        const c = remap(a.courseId, d.courses.mergeInto);
+        if (c !== undefined) {
+          batch.update(entityDoc(uid, "assignments", a.id), {
+            courseId: c,
             updatedAt: serverTimestamp(),
           });
         }
       }
-      for (const id of drop) batch.delete(entityDoc(uid, "assignments", id));
+
+      const del = (name: Parameters<typeof entityDoc>[1], ids: Set<string>) =>
+        ids.forEach((id) => batch.delete(entityDoc(uid, name, id)));
+      del("tasks", d.tasks.drop);
+      del("goals", d.goals.drop);
+      del("courses", d.courses.drop);
+      del("assignments", d.assignments.drop);
+      del("events", d.events.drop);
+      del("alarms", d.alarms.drop);
+
       await batch.commit();
-      toast(
-        `Removed ${drop.size} duplicate assignment${drop.size === 1 ? "" : "s"}`,
-        "success",
-      );
+      toast(`Removed ${total} duplicate item${total === 1 ? "" : "s"}`, "success");
     })()
-      .catch((e) => console.error("[store] assignment dedupe failed", e))
+      .catch((e) => console.error("[store] dedupe failed", e))
       .finally(() => {
-        dedupingAssignments.current = false;
+        deduping.current = false;
       });
-  }, [ready, uid, assignmentsRaw, tasksRaw]);
+  }, [ready, uid, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw]);
 
   /* -------- derive enriched DTOs (writes stay flat, reads are rich) -------- */
   const data = useMemo<StoreData>(() => {
-    const courseLite = new Map(
-      coursesRaw.map((c) => [c.id, { id: c.id, name: c.name as string, color: (c.color as string) ?? "#22d67e" }]),
-    );
-    const goalLite = new Map(goalsRaw.map((g) => [g.id, { id: g.id, title: g.title as string }]));
+    // Hide every kind of duplicate (same-name goal, course, event, alarm, task,
+    // assignment) so nothing shows twice; a background pass deletes the extras.
+    const dup = {
+      tasks: findDuplicates(tasksRaw, DUPLICATE_RULES.tasks.keyOf, DUPLICATE_RULES.tasks.scoreOf),
+      goals: findDuplicates(goalsRaw, DUPLICATE_RULES.goals.keyOf, DUPLICATE_RULES.goals.scoreOf),
+      courses: findDuplicates(coursesRaw, DUPLICATE_RULES.courses.keyOf, DUPLICATE_RULES.courses.scoreOf),
+      assignments: findDuplicates(assignmentsRaw, DUPLICATE_RULES.assignments.keyOf, DUPLICATE_RULES.assignments.scoreOf),
+      events: findDuplicates(eventsRaw, DUPLICATE_RULES.events.keyOf, DUPLICATE_RULES.events.scoreOf),
+      alarms: findDuplicates(alarmsRaw, DUPLICATE_RULES.alarms.keyOf, DUPLICATE_RULES.alarms.scoreOf),
+    };
 
-    const allTasks: TaskDTO[] = tasksRaw.map((t) => ({
+    const courseRows = coursesRaw.filter((c) => !dup.courses.drop.has(c.id));
+    const goalRows = goalsRaw.filter((g) => !dup.goals.drop.has(g.id));
+    const taskRows = tasksRaw.filter((t) => !dup.tasks.drop.has(t.id));
+
+    const courseLite = new Map(
+      courseRows.map((c) => [c.id, { id: c.id, name: c.name as string, color: (c.color as string) ?? "#22d67e" }]),
+    );
+    const goalLite = new Map(goalRows.map((g) => [g.id, { id: g.id, title: g.title as string }]));
+    // a link to a duplicate that's about to be deleted resolves to its survivor
+    for (const [gone, keeper] of dup.courses.mergeInto) {
+      const v = courseLite.get(keeper);
+      if (v) courseLite.set(gone, v);
+    }
+    for (const [gone, keeper] of dup.goals.mergeInto) {
+      const v = goalLite.get(keeper);
+      if (v) goalLite.set(gone, v);
+    }
+
+    const allTasks: TaskDTO[] = taskRows.map((t) => ({
       id: t.id,
       title: (t.title as string) ?? "",
       notes: (t.notes as string) ?? null,
@@ -355,7 +463,7 @@ export function AppDataProvider({
       assignment: null,
     }));
 
-    const goals: GoalDTO[] = goalsRaw.map((g) => {
+    const goals: GoalDTO[] = goalRows.map((g) => {
       const milestones = ((g.milestones as MilestoneDTO[]) ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
       return {
         id: g.id,
@@ -375,11 +483,8 @@ export function AppDataProvider({
       };
     });
 
-    // Hide same-course, same-name duplicates so the list shows each once.
-    const { drop: dupeAssignmentIds } = findDuplicateAssignments(assignmentsRaw);
-
     const assignments: AssignmentDTO[] = assignmentsRaw
-      .filter((a) => !dupeAssignmentIds.has(a.id))
+      .filter((a) => !dup.assignments.drop.has(a.id))
       .map((a) => ({
         id: a.id,
         title: (a.title as string) ?? "",
@@ -439,7 +544,7 @@ export function AppDataProvider({
 
     const tasks = allTasks.filter((t) => !t.shadowOfAssignmentId);
 
-    const courses: CourseDTO[] = coursesRaw.map((c) => ({
+    const courses: CourseDTO[] = courseRows.map((c) => ({
       id: c.id,
       name: (c.name as string) ?? "",
       code: (c.code as string) ?? null,
@@ -455,7 +560,9 @@ export function AppDataProvider({
         .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
     }));
 
-    const events: EventDTO[] = eventsRaw.map((e) => ({
+    const events: EventDTO[] = eventsRaw
+      .filter((e) => !dup.events.drop.has(e.id))
+      .map((e) => ({
       id: e.id,
       title: (e.title as string) ?? "",
       description: (e.description as string) ?? null,
@@ -471,6 +578,7 @@ export function AppDataProvider({
     }));
 
     const alarms: AlarmDTO[] = alarmsRaw
+      .filter((a) => !dup.alarms.drop.has(a.id))
       .map((a) => ({
         id: a.id,
         label: (a.label as string) ?? "Alarm",
