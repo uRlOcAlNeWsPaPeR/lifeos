@@ -30,6 +30,7 @@ import { relativeDue, fmtDate, timeAgo, isStaleOverdue } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 import { ConnectCanvas } from "@/components/canvas/connect-canvas";
+import { CanvasCoursePicker } from "@/components/canvas/course-picker";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import type { AssignmentDTO, CourseDTO } from "@/lib/types";
@@ -285,7 +286,8 @@ function CourseCard({
 }
 
 function CanvasIntegrationCard() {
-  const { status, loading, syncing, busy, connect, connectWithToken, sync } = useCanvas();
+  const canvas = useCanvas();
+  const { status, loading, syncing, busy, connect, connectWithToken, sync } = canvas;
   const connected = status?.connected;
   const attention = status?.status === "error" || status?.status === "reauth_required";
 
@@ -335,6 +337,14 @@ function CanvasIntegrationCard() {
                 <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
                 {syncing ? "Syncing…" : status?.status === "error" ? "Try again" : "Sync now"}
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={canvas.openCoursePicker}
+                disabled={busy || canvas.coursePicker.loading}
+              >
+                Choose courses
+              </Button>
               <Button variant="ghost" size="sm" onClick={() => (window.location.href = "/settings?tab=school")}>
                 Manage in Settings
               </Button>
@@ -351,6 +361,7 @@ function CanvasIntegrationCard() {
           <ConnectCanvas status={status} busy={busy} onConnect={(url) => connect(url, "school")} onConnectToken={connectWithToken} />
         </div>
       )}
+      <CanvasCoursePicker canvas={canvas} />
     </Card>
   );
 }

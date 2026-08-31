@@ -5,6 +5,7 @@ import { CanvasClient, CanvasReauthError } from "./client";
 import { getConnection, markConnection, requireConnection } from "./connection";
 import type {
   CanvasAssignment,
+  CanvasCourse,
   CanvasSubmission,
   CanvasSyncCounts,
 } from "./types";
@@ -21,6 +22,26 @@ const EVENT_LOOKAHEAD_DAYS = 60;
 
 type Row = Record<string, unknown> & { id: string };
 
+/**
+ * Collapse the raw `/courses` list to one row per live student course.
+ * Canvas returns a row per enrollment, so cross-listed sections repeat; it also
+ * hands back archived / concluded / dropped courses. Shared by the sync and the
+ * "choose which courses sync" picker so both see exactly the same set.
+ */
+export function liveCanvasCourses(raw: CanvasCourse[]): CanvasCourse[] {
+  const DEAD_ENROLLMENT = new Set(["completed", "inactive", "deleted", "rejected"]);
+  const seen = new Set<string>();
+  return raw.filter((cc) => {
+    const id = String(cc.id);
+    if (seen.has(id)) return false;
+    seen.add(id);
+    if (cc.workflow_state && cc.workflow_state !== "available") return false;
+    const enr = cc.enrollments?.find((e) => e.type === "student") ?? cc.enrollments?.[0];
+    if (enr?.enrollment_state && DEAD_ENROLLMENT.has(enr.enrollment_state)) return false;
+    return true;
+  });
+}
+
 export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
   const conn = await requireConnection(uid);
   const client = CanvasClient.from(conn);
@@ -34,32 +55,34 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
       base.collection("events").get(),
     ]);
     const existingCourses = rows(courseSnap);
-    const existingAssignments = rows(assignmentSnap);
+    let existingAssignments = rows(assignmentSnap);
     const existingTasks = rows(taskSnap);
     const existingEvents = rows(eventSnap);
 
     const batch = adminDb().batch();
     let writes = 0;
-    const counts: CanvasSyncCounts = { courses: 0, assignments: 0, tasks: 0, events: 0 };
+    const counts: CanvasSyncCounts = {
+      courses: 0,
+      assignments: 0,
+      tasks: 0,
+      events: 0,
+      duplicatesRemoved: 0,
+    };
     const now = new Date().toISOString();
     const nowMs = Date.now();
 
     /* ------------------------------- courses ------------------------------- */
     const rawCanvasCourses = await client.listActiveCourses();
+    const liveCourses = liveCanvasCourses(rawCanvasCourses);
 
-    // De-dupe (Canvas returns a row per enrollment — cross-listed sections repeat)
-    // and drop anything archived / concluded / not a live student enrollment.
-    const DEAD_ENROLLMENT = new Set(["completed", "inactive", "deleted", "rejected"]);
-    const seenCourseIds = new Set<string>();
-    const canvasCourses = rawCanvasCourses.filter((cc) => {
-      const id = String(cc.id);
-      if (seenCourseIds.has(id)) return false;
-      seenCourseIds.add(id);
-      if (cc.workflow_state && cc.workflow_state !== "available") return false;
-      const enr = cc.enrollments?.find((e) => e.type === "student") ?? cc.enrollments?.[0];
-      if (enr?.enrollment_state && DEAD_ENROLLMENT.has(enr.enrollment_state)) return false;
-      return true;
-    });
+    // The student picks which courses land in LifeOS (Settings → School, or the
+    // prompt right after connecting). `null` = sync them all. Anything they
+    // de-selected is treated exactly like a dropped course below — its mirrored
+    // assignments are removed and open tasks pruned.
+    const selection = conn.selectedCanvasCourseIds ?? null;
+    const canvasCourses = selection
+      ? liveCourses.filter((c) => selection.includes(String(c.id)))
+      : liveCourses;
     const activeCourseIds = new Set(canvasCourses.map((c) => String(c.id)));
 
     // canvasCourseId -> LifeOS course doc id
@@ -197,6 +220,8 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
             );
             writes++;
           }
+          // keep the in-memory row current so the de-dup pass below sees truth
+          Object.assign(existingA, desiredA);
         } else {
           const doc = base.collection("assignments").doc();
           lifeosAssignmentId = doc.id;
@@ -249,6 +274,69 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
             }
           }
         }
+      }
+    }
+
+    /* --------------------------- de-dup assignments ----------------------- *
+     * Fold together assignments that describe the same work:
+     *   - exact repeats of one Canvas assignment id, and
+     *   - same title + same course, when a Canvas-synced row can be the keeper
+     *     (usually a copy the student made by hand before connecting Canvas).
+     * Tasks pointing at a removed row are re-pointed at the survivor. Two purely
+     * manual assignments are left alone. */
+    {
+      const norm = (s: unknown) =>
+        String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+      const keptByCanvasId = new Map<string, Row>();
+      const keptByTitleCourse = new Map<string, Row>();
+      const remap = new Map<string, string>(); // removed assignment id -> keeper id
+      const removed = new Set<string>();
+
+      // Canvas-backed rows first, then oldest — the survivor is deterministic.
+      const ordered = [...existingAssignments].sort((a, b) => {
+        const rank = (r: Row) => (r.canvasAssignmentId ? 0 : 1);
+        if (rank(a) !== rank(b)) return rank(a) - rank(b);
+        return String(a.createdAt ?? "").localeCompare(String(b.createdAt ?? ""));
+      });
+
+      for (const a of ordered) {
+        if (removed.has(a.id)) continue;
+        const cid = a.canvasAssignmentId ? String(a.canvasAssignmentId) : null;
+        const titleKey = `${norm(a.title)}|${a.courseId ?? ""}`;
+
+        let keeper: Row | undefined;
+        if (cid && keptByCanvasId.has(cid)) {
+          keeper = keptByCanvasId.get(cid);
+        } else if (norm(a.title) && keptByTitleCourse.has(titleKey)) {
+          const cand = keptByTitleCourse.get(titleKey)!;
+          if (cand.canvasAssignmentId || a.canvasAssignmentId) keeper = cand;
+        }
+
+        if (keeper && keeper.id !== a.id) {
+          batch.delete(base.collection("assignments").doc(a.id));
+          writes++;
+          removed.add(a.id);
+          remap.set(a.id, keeper.id);
+          continue;
+        }
+        if (cid) keptByCanvasId.set(cid, a);
+        if (norm(a.title)) keptByTitleCourse.set(titleKey, a);
+      }
+
+      if (removed.size) {
+        for (const t of existingTasks) {
+          const linkedTo = t.assignmentId ? String(t.assignmentId) : null;
+          if (linkedTo && remap.has(linkedTo)) {
+            batch.set(
+              base.collection("tasks").doc(t.id),
+              stamped({ assignmentId: remap.get(linkedTo) }, now),
+              { merge: true },
+            );
+            writes++;
+          }
+        }
+        existingAssignments = existingAssignments.filter((a) => !removed.has(a.id));
+        counts.duplicatesRemoved = removed.size;
       }
     }
 

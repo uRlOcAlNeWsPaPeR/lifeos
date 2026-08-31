@@ -9,13 +9,15 @@ import { toast } from "@/components/ui/toaster";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 import { timeAgo } from "@/lib/format";
 import { ConnectCanvas } from "@/components/canvas/connect-canvas";
+import { CanvasCoursePicker } from "@/components/canvas/course-picker";
 import { cn } from "@/lib/utils";
 
 // Settings → School. Connection status, manual sync, disconnect. Canvas being
 // unavailable never disables the rest of LifeOS.
 export function CanvasSettings() {
+  const canvas = useCanvas();
   const { status, loading, syncing, busy, connect, connectWithToken, sync, disconnect } =
-    useCanvas();
+    canvas;
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [syncedLabel, setSyncedLabel] = useState<string | null>(null);
   const handledFlag = useRef(false);
@@ -136,6 +138,14 @@ export function CanvasSettings() {
                 {syncing ? "Syncing Canvas…" : errored ? "Try again" : "Sync now"}
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={canvas.openCoursePicker}
+                disabled={busy || canvas.coursePicker.loading}
+              >
+                <GraduationCap className="h-4 w-4" /> Choose courses
+              </Button>
+              <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowDisconnect(true)}
@@ -147,6 +157,8 @@ export function CanvasSettings() {
           )}
         </>
       )}
+
+      <CanvasCoursePicker canvas={canvas} />
 
       <DisconnectModal
         open={showDisconnect}

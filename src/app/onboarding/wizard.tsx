@@ -25,6 +25,7 @@ import { DEFAULT_PREFS } from "@/lib/firebase/schema";
 import { fmt12 } from "@/lib/scheduling/sleep";
 import { toast } from "@/components/ui/toaster";
 import { ConnectCanvas } from "@/components/canvas/connect-canvas";
+import { CanvasCoursePicker } from "@/components/canvas/course-picker";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -208,15 +209,24 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
               subtitle="Connect Canvas to automatically bring your courses, assignments and deadlines into LifeOS. This is optional — you can skip it and connect later in Settings."
             >
               {canvas.status?.connected ? (
-                <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  <div>
-                    <p className="font-medium">Canvas connected</p>
-                    <p className="text-sm text-muted-foreground">
-                      {canvas.status.school ? `${canvas.status.school} — ` : ""}
-                      we&apos;ll import your courses and assignments right after setup.
-                    </p>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 rounded-xl border border-primary/25 bg-primary/[0.06] p-4">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div>
+                      <p className="font-medium">Canvas connected</p>
+                      <p className="text-sm text-muted-foreground">
+                        {canvas.status.school ? `${canvas.status.school} — ` : ""}
+                        we&apos;ll import the courses you picked right after setup.
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={canvas.openCoursePicker}
+                    className="text-xs font-medium text-primary hover:underline"
+                  >
+                    Choose which courses sync
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -237,6 +247,7 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
                   />
                 </div>
               )}
+              <CanvasCoursePicker canvas={canvas} />
             </Step>
           )}
 

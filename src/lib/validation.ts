@@ -160,6 +160,11 @@ export const canvasDisconnectSchema = z.object({
   canvasTasks: z.enum(["keep", "remove"]).default("keep"),
 });
 
+export const canvasCoursesSelectSchema = z.object({
+  // null = sync every active course; an array = only these Canvas course ids.
+  selectedIds: z.array(z.string().min(1).max(64)).max(200).nullable(),
+});
+
 // DEV ONLY — pasted Canvas personal access token.
 export const canvasTokenConnectSchema = z.object({
   instanceUrl: z.string().min(3).max(255),

@@ -3,13 +3,27 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authedApi, ApiClientError } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
-import type { CanvasStatusDTO, CanvasSyncCounts } from "./types";
+import type {
+  CanvasCourseOption,
+  CanvasCoursesDTO,
+  CanvasStatusDTO,
+  CanvasSyncCounts,
+} from "./types";
 
 type Origin = "settings" | "onboarding" | "school";
 
 const AUTO_SYNC_STALE_MS = 30 * 60 * 1000;
 // Module-level so multiple mounted <useCanvas> consumers only auto-sync once/session.
 let autoSyncTried = false;
+
+interface CoursePickerState {
+  open: boolean;
+  loading: boolean;
+  saving: boolean;
+  courses: CanvasCourseOption[];
+  /** null = "sync every course" is the current choice. */
+  selectedIds: string[] | null;
+}
 
 interface UseCanvas {
   status: CanvasStatusDTO | null;
@@ -22,6 +36,10 @@ interface UseCanvas {
   sync: (opts?: { silent?: boolean }) => Promise<CanvasSyncCounts | null>;
   disconnect: (canvasTasks: "keep" | "remove") => Promise<boolean>;
   checkForUpdates: () => Promise<CanvasUpdateCheck | null>;
+  coursePicker: CoursePickerState;
+  openCoursePicker: () => Promise<void>;
+  closeCoursePicker: () => void;
+  saveCoursePicker: (selectedIds: string[] | null) => Promise<boolean>;
 }
 
 export interface CanvasUpdateCheck {
@@ -36,6 +54,13 @@ export function useCanvas(): UseCanvas {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [coursePicker, setCoursePicker] = useState<CoursePickerState>({
+    open: false,
+    loading: false,
+    saving: false,
+    courses: [],
+    selectedIds: null,
+  });
   const mounted = useRef(true);
 
   useEffect(() => {
@@ -65,7 +90,15 @@ export function useCanvas(): UseCanvas {
           method: "POST",
         });
         await refresh();
-        if (!silent) toast("Canvas synced", "success");
+        if (!silent) {
+          const dupes = res.counts?.duplicatesRemoved ?? 0;
+          toast(
+            dupes > 0
+              ? `Canvas synced · cleaned up ${dupes} duplicate assignment${dupes === 1 ? "" : "s"}`
+              : "Canvas synced",
+            "success",
+          );
+        }
         return res.counts;
       } catch (e) {
         if (!silent) {
@@ -79,6 +112,66 @@ export function useCanvas(): UseCanvas {
         return null;
       } finally {
         if (mounted.current) setSyncing(false);
+      }
+    },
+    [refresh],
+  );
+
+  const openCoursePicker = useCallback<UseCanvas["openCoursePicker"]>(async () => {
+    setCoursePicker((s) => ({ ...s, open: true, loading: true }));
+    try {
+      const dto = await authedApi<CanvasCoursesDTO>("/api/canvas/courses");
+      if (!mounted.current) return;
+      setCoursePicker((s) => ({
+        ...s,
+        loading: false,
+        courses: dto.courses,
+        selectedIds: dto.selectedIds,
+      }));
+    } catch (e) {
+      if (!mounted.current) return;
+      const msg =
+        e instanceof ApiClientError && e.status === 401
+          ? "Your Canvas authorization expired — reconnect in Settings."
+          : "Couldn't load your Canvas courses. Try again from Settings → School.";
+      toast(msg, "error");
+      setCoursePicker((s) => ({ ...s, open: false, loading: false }));
+    }
+  }, []);
+
+  const closeCoursePicker = useCallback<UseCanvas["closeCoursePicker"]>(() => {
+    setCoursePicker((s) => ({ ...s, open: false }));
+  }, []);
+
+  const saveCoursePicker = useCallback<UseCanvas["saveCoursePicker"]>(
+    async (selectedIds) => {
+      setCoursePicker((s) => ({ ...s, saving: true }));
+      try {
+        await authedApi("/api/canvas/courses", {
+          method: "PUT",
+          body: { selectedIds },
+        });
+        await refresh();
+        if (mounted.current) {
+          setCoursePicker((s) => ({ ...s, open: false, saving: false, selectedIds }));
+        }
+        toast(
+          selectedIds
+            ? "Synced your selected courses"
+            : "Syncing all your Canvas courses",
+          "success",
+        );
+        return true;
+      } catch (e) {
+        const msg =
+          e instanceof ApiClientError && e.status === 401
+            ? "Your Canvas authorization expired — reconnect in Settings."
+            : e instanceof ApiClientError
+              ? e.message
+              : "Couldn't save your course choices. Please try again.";
+        toast(msg, "error");
+        if (mounted.current) setCoursePicker((s) => ({ ...s, saving: false }));
+        return false;
       }
     },
     [refresh],
@@ -109,7 +202,8 @@ export function useCanvas(): UseCanvas {
         if (result.ok) {
           toast("Canvas connected", "success");
           await refresh();
-          await sync({ silent: true });
+          void sync({ silent: true });
+          void openCoursePicker();
         } else if (result.reason === "denied") {
           toast("Canvas wasn't connected. You can try again anytime in Settings.", "error");
         } else if (result.reason === "closed") {
@@ -125,7 +219,7 @@ export function useCanvas(): UseCanvas {
         if (mounted.current) setBusy(false);
       }
     },
-    [refresh, sync],
+    [refresh, sync, openCoursePicker],
   );
 
   const connectWithToken = useCallback<UseCanvas["connectWithToken"]>(
@@ -138,7 +232,8 @@ export function useCanvas(): UseCanvas {
         });
         toast("Canvas connected", "success");
         await refresh();
-        await sync({ silent: true });
+        void sync({ silent: true });
+        void openCoursePicker();
         return true;
       } catch (e) {
         const msg =
@@ -153,7 +248,7 @@ export function useCanvas(): UseCanvas {
         if (mounted.current) setBusy(false);
       }
     },
-    [refresh, sync],
+    [refresh, sync, openCoursePicker],
   );
 
   const disconnect = useCallback<UseCanvas["disconnect"]>(
@@ -211,6 +306,10 @@ export function useCanvas(): UseCanvas {
     sync,
     disconnect,
     checkForUpdates,
+    coursePicker,
+    openCoursePicker,
+    closeCoursePicker,
+    saveCoursePicker,
   };
 }
 

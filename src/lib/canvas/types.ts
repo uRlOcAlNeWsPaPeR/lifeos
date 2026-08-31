@@ -16,6 +16,11 @@ export interface CanvasConnectionDoc {
   /** ISO string — when the access token stops working. */
   accessTokenExpiresAt: string | null;
   scope: string | null;
+  /**
+   * Canvas course ids (as strings) the student chose to sync into LifeOS.
+   * `null` / absent = sync every active course (and auto-pick up new ones).
+   */
+  selectedCanvasCourseIds?: string[] | null;
   status: CanvasConnectionStatus;
   /** Technical detail for server logs / debugging. NEVER sent to the browser. */
   lastError: string | null;
@@ -55,6 +60,23 @@ export interface CanvasSyncCounts {
   assignments: number;
   tasks: number;
   events: number;
+  /** Duplicate assignments folded into their canonical row this sync. */
+  duplicatesRemoved: number;
+}
+
+/** One selectable Canvas course, for the "choose which courses sync" picker. */
+export interface CanvasCourseOption {
+  canvasCourseId: string;
+  name: string;
+  code: string | null;
+  term: string | null;
+}
+
+/** GET /api/canvas/courses — the picker's data. */
+export interface CanvasCoursesDTO {
+  courses: CanvasCourseOption[];
+  /** `null` = every active course syncs; an array = only those ids. */
+  selectedIds: string[] | null;
 }
 
 /** Canvas token endpoint response (authorization_code and refresh_token grants). */

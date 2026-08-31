@@ -117,6 +117,20 @@ export async function updateAccessToken(
   );
 }
 
+/**
+ * Persist the student's course choice. `null` = sync every active course (and
+ * automatically include courses added later); an array = only those Canvas ids.
+ */
+export async function setCourseSelection(
+  uid: string,
+  selectedCanvasCourseIds: string[] | null,
+): Promise<void> {
+  await ref(uid).set(
+    { selectedCanvasCourseIds, updatedAt: new Date().toISOString() },
+    { merge: true },
+  );
+}
+
 export async function markConnection(
   uid: string,
   patch: Partial<
