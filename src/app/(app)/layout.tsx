@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
 import { CanvasSyncNudge } from "@/components/canvas/canvas-sync-nudge";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
+import { UndoBar } from "@/components/ui/undo-bar";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, initializing, configured } = useAuth();
@@ -51,6 +52,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
             <CanvasSyncNudge />
           </>
         )}
+        <UndoBar />
       </>
     );
   }
@@ -68,6 +70,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
       </main>
       <DailyBrief />
       <CanvasSyncNudge />
+      <UndoBar className="lg:left-[calc(16rem+1rem)]" />
     </div>
   );
 }

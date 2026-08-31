@@ -27,6 +27,7 @@ import { deriveAnalytics, goalProgress, type AnalyticsSummary } from "@/lib/anal
 import { limitsFor, effectivePlan } from "@/lib/plan-limits";
 import { api } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
+import { pushUndo } from "@/components/ui/undo-bar";
 import type {
   AlarmDTO,
   AssignmentDTO,
@@ -40,6 +41,12 @@ import type {
 
 const rid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const now = () => new Date().toISOString();
+
+/** Drop the synthetic `id` so a captured snapshot can be written straight back. */
+const stripId = <T extends { id: string }>(o: T): Omit<T, "id"> => {
+  const { id: _omit, ...rest } = o;
+  return rest;
+};
 
 type Raw<T> = T & { id: string };
 
@@ -522,10 +529,32 @@ export function AppDataProvider({
             completedAt: nextDone ? now() : null,
             updatedAt: serverTimestamp(),
           });
+          if (nextDone) {
+            pushUndo({
+              label: `Completed “${String(cur?.title || "task")}”`,
+              undoneMessage: "Marked as not done",
+              onUndo: () =>
+                updateDoc(entityDoc(uid, "tasks", id), {
+                  status: "todo",
+                  completedAt: null,
+                  updatedAt: serverTimestamp(),
+                }),
+            });
+          }
         }, "Couldn't update task").then(() => undefined),
 
       deleteTask: (id) =>
-        guard(() => deleteDoc(entityDoc(uid, "tasks", id)), "Couldn't delete task").then(() => undefined),
+        guard(async () => {
+          const snap = tasksRaw.find((t) => t.id === id);
+          await deleteDoc(entityDoc(uid, "tasks", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted “${String(snap.title || "task")}”`,
+              onUndo: () => setDoc(entityDoc(uid, "tasks", id), restore),
+            });
+          }
+        }, "Couldn't delete task").then(() => undefined),
 
       reorderTasks: (ids) =>
         guard(async () => {
@@ -555,7 +584,17 @@ export function AppDataProvider({
         guard(() => updateDoc(entityDoc(uid, "events", id), patch as Record<string, unknown>), "Couldn't update event").then(() => undefined),
 
       deleteEvent: (id) =>
-        guard(() => deleteDoc(entityDoc(uid, "events", id)), "Couldn't delete event").then(() => undefined),
+        guard(async () => {
+          const snap = eventsRaw.find((e) => e.id === id);
+          await deleteDoc(entityDoc(uid, "events", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted “${String(snap.title || "event")}”`,
+              onUndo: () => setDoc(entityDoc(uid, "events", id), restore),
+            });
+          }
+        }, "Couldn't delete event").then(() => undefined),
 
       addGoal: (input) => {
         const cap = data.limits.maxActiveGoals;
@@ -598,7 +637,17 @@ export function AppDataProvider({
         }, "Couldn't update goal").then(() => undefined),
 
       deleteGoal: (id) =>
-        guard(() => deleteDoc(entityDoc(uid, "goals", id)), "Couldn't delete goal").then(() => undefined),
+        guard(async () => {
+          const snap = goalsRaw.find((g) => g.id === id);
+          await deleteDoc(entityDoc(uid, "goals", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted goal “${String(snap.title || "goal")}”`,
+              onUndo: () => setDoc(entityDoc(uid, "goals", id), restore),
+            });
+          }
+        }, "Couldn't delete goal").then(() => undefined),
 
       goalAction: (id, body) =>
         guard(async () => {
@@ -652,10 +701,25 @@ export function AppDataProvider({
 
       deleteCourse: (id) =>
         guard(async () => {
+          const courseSnap = coursesRaw.find((c) => c.id === id);
+          const children = assignmentsRaw.filter((a) => a.courseId === id);
           const batch = writeBatch(db());
           batch.delete(entityDoc(uid, "courses", id));
-          assignmentsRaw.filter((a) => a.courseId === id).forEach((a) => batch.delete(entityDoc(uid, "assignments", a.id)));
+          children.forEach((a) => batch.delete(entityDoc(uid, "assignments", a.id)));
           await batch.commit();
+          if (courseSnap) {
+            const courseRestore = stripId(courseSnap);
+            const childRestore = children.map((a) => ({ id: a.id, data: stripId(a) }));
+            pushUndo({
+              label: `Deleted course “${String(courseSnap.name || "course")}”`,
+              onUndo: async () => {
+                const b = writeBatch(db());
+                b.set(entityDoc(uid, "courses", id), courseRestore);
+                childRestore.forEach((c) => b.set(entityDoc(uid, "assignments", c.id), c.data));
+                await b.commit();
+              },
+            });
+          }
         }, "Couldn't delete course").then(() => undefined),
 
       addAssignment: (input) =>
@@ -679,7 +743,17 @@ export function AppDataProvider({
         guard(() => updateDoc(entityDoc(uid, "assignments", id), patch as Record<string, unknown>), "Couldn't update assignment").then(() => undefined),
 
       deleteAssignment: (id) =>
-        guard(() => deleteDoc(entityDoc(uid, "assignments", id)), "Couldn't delete assignment").then(() => undefined),
+        guard(async () => {
+          const snap = assignmentsRaw.find((a) => a.id === id);
+          await deleteDoc(entityDoc(uid, "assignments", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted “${String(snap.title || "assignment")}”`,
+              onUndo: () => setDoc(entityDoc(uid, "assignments", id), restore),
+            });
+          }
+        }, "Couldn't delete assignment").then(() => undefined),
 
       createTaskForAssignment: (assignmentId) =>
         guard(async () => {
@@ -791,7 +865,17 @@ export function AppDataProvider({
         guard(() => updateDoc(entityDoc(uid, "alarms", id), patch as Record<string, unknown>), "Couldn't update alarm").then(() => undefined),
 
       deleteAlarm: (id) =>
-        guard(() => deleteDoc(entityDoc(uid, "alarms", id)), "Couldn't delete alarm").then(() => undefined),
+        guard(async () => {
+          const snap = alarmsRaw.find((a) => a.id === id);
+          await deleteDoc(entityDoc(uid, "alarms", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted alarm “${String(snap.label || "alarm")}”`,
+              onUndo: () => setDoc(entityDoc(uid, "alarms", id), restore),
+            });
+          }
+        }, "Couldn't delete alarm").then(() => undefined),
 
       logFocusSession: (s) =>
         guard(async () => {
