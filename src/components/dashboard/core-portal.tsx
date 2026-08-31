@@ -46,7 +46,7 @@ type Phase = "home" | "boom" | "console" | "closing";
 // detonation timeline (ms) — deliberately unhurried
 const T = { charge: 220, burst: 720, shock: 820, shard: 880, flash: 680, reveal: 760 };
 const TO_CONSOLE = 1650;
-// routed apps (Writing …) have no console to reveal — navigate the moment the
+// routed apps have no console to reveal — navigate the moment the
 // burst clears (charge + burst), not after the full console-reveal wait.
 const TO_ROUTE = T.charge + T.burst + 90;
 // reverse — collapse the console back into the Core
@@ -107,8 +107,8 @@ export function CorePortal() {
     window.setTimeout(() => setPhase("console"), reduced() ? 300 : TO_CONSOLE);
   };
 
-  // Entry point from the app orbit: Study runs the existing detonation; other
-  // internal apps (Writing) detonate the same way — same timeline, same shard
+  // Entry point from the app orbit: Study runs the existing detonation; any
+  // other internal app detonates the same way — same timeline, same shard
   // burst — just tinted with the app's own hue, then route to it. External apps
   // open in a tab.
   const enterApp = (app: LifeApp) => {

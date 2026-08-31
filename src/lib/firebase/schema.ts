@@ -118,8 +118,6 @@ export interface ProfileDoc {
   brainDumpUsage: Record<string, number>;
   /** { "2026-08-28": 4 } — per-day AI Assistant question count */
   assistantUsage?: Record<string, number>;
-  /** { "2026-W35": 2 } — per-WEEK Essay Coach run count (Writing tool) */
-  essayCoachUsage?: Record<string, number>;
 }
 
 export function emptyProfile(name: string, email: string): ProfileDoc {
@@ -139,7 +137,6 @@ export function emptyProfile(name: string, email: string): ProfileDoc {
     prefs: DEFAULT_PREFS,
     brainDumpUsage: {},
     assistantUsage: {},
-    essayCoachUsage: {},
   };
 }
 

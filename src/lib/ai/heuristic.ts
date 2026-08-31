@@ -4,7 +4,6 @@ import type {
   AssistantReference,
   BrainDumpItem,
   BrainDumpResult,
-  EssayCoachResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
@@ -314,19 +313,6 @@ export class HeuristicProvider implements AIProvider {
       "_Ask me things like “what should I work on tonight?”, “when should I study for my physics test?”, or “make me a study plan for this week.”_",
     ];
     return { engine: "heuristic", answer: lines.filter((l) => l !== undefined).join("\n"), references: refs };
-  }
-
-  async essayCoach(_essay: string): Promise<EssayCoachResult> {
-    void _essay;
-    // The essay coach needs a real language model — the offline engine can't do
-    // structured writing feedback. Return an honest, non-failing result.
-    return {
-      engine: "heuristic",
-      summary:
-        "The Essay Coach needs an AI model. Add a Gemini or Claude API key to enable scored feedback and inline suggestions. The AI Detector and Humanizer work fully offline.",
-      scores: {},
-      highlights: [],
-    };
   }
 }
 

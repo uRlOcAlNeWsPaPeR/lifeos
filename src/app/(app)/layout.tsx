@@ -39,9 +39,9 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
   if (!ready) return <FullscreenLoader label="Loading your workspace…" />;
   if (!data.profile.onboarded) return <FullscreenLoader />;
 
-  // The dashboard and the Writing app are their own full-bleed experiences —
-  // no sidebar, reached from the hub. Every other page keeps the rail.
-  if (pathname === "/dashboard" || pathname === "/writing") {
+  // The dashboard is its own full-bleed experience — no sidebar, reached from
+  // the hub. Every other page keeps the rail.
+  if (pathname === "/dashboard") {
     return (
       <>
         <main className="min-h-screen">{children}</main>

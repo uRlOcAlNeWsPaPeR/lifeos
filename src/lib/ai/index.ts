@@ -38,7 +38,7 @@ export function aiStatus() {
 
 export { PLAN_LIMITS, limitsFor, effectivePlan, type PlanId } from "@/lib/plan-limits";
 
-type MeteredFeature = "brainDump" | "assistant" | "essayCoach";
+type MeteredFeature = "brainDump" | "assistant";
 
 const FEATURE_CONFIG: Record<
   MeteredFeature,
@@ -60,12 +60,6 @@ const FEATURE_CONFIG: Record<
     period: "day",
     cap: (l) => l.assistantPerDay,
     noun: "AI Assistant question",
-  },
-  essayCoach: {
-    usageField: "essayCoachUsage",
-    period: "week",
-    cap: (l) => l.essayCoachPerWeek,
-    noun: "Essay Coach run",
   },
 };
 

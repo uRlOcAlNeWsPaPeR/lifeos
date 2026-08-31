@@ -41,7 +41,7 @@ export function LifeosCore({
   className?: string;
   variant?: "panel" | "hero" | "orbit";
   /** Subtle etched cue inside the orb (dashboard hub). */
-  motif?: "study" | "writing" | "generic";
+  motif?: "study" | "generic";
   /** Force a specific `--core-hue` (per-app identity) instead of the state colour. */
   hueOverride?: number;
   /** `orbit` only — the centred/active sphere blooms into the full treatment. */
@@ -231,7 +231,7 @@ function OrbitCore({
   className,
 }: {
   hue: string;
-  motif: "study" | "writing" | "generic";
+  motif: "study" | "generic";
   active: boolean;
   className?: string;
 }) {
@@ -329,7 +329,7 @@ function OrbitCore({
 }
 
 /** A faint etched pattern inside a hub sphere — signals what the app is for. */
-function CoreMotif({ motif }: { motif: "study" | "writing" | "generic" }) {
+function CoreMotif({ motif }: { motif: "study" | "generic" }) {
   if (motif === "generic") return null;
   return (
     <svg
@@ -340,21 +340,12 @@ function CoreMotif({ motif }: { motif: "study" | "writing" | "generic" }) {
       stroke="currentColor"
       strokeLinecap="round"
     >
-      {motif === "writing" ? (
-        // lines of text, decreasing width
-        <g strokeWidth="3" opacity="0.16">
-          <line x1="30" y1="38" x2="72" y2="38" />
-          <line x1="30" y1="50" x2="68" y2="50" />
-          <line x1="30" y1="62" x2="58" y2="62" />
-        </g>
-      ) : (
-        // concentric arcs + a data tick — study / progress cue
-        <g opacity="0.16">
-          <path d="M28 62 A24 24 0 0 1 72 62" strokeWidth="3" />
-          <path d="M36 55 A15 15 0 0 1 64 55" strokeWidth="2.5" />
-          <line x1="50" y1="30" x2="50" y2="40" strokeWidth="3" />
-        </g>
-      )}
+      {/* concentric arcs + a data tick — study / progress cue */}
+      <g opacity="0.16">
+        <path d="M28 62 A24 24 0 0 1 72 62" strokeWidth="3" />
+        <path d="M36 55 A15 15 0 0 1 64 55" strokeWidth="2.5" />
+        <line x1="50" y1="30" x2="50" y2="40" strokeWidth="3" />
+      </g>
     </svg>
   );
 }

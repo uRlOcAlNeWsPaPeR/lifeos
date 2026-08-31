@@ -6,7 +6,6 @@ export const PLAN_LIMITS = {
   free: {
     brainDumpsPerWeek: 5,
     assistantPerDay: 5,
-    essayCoachPerWeek: 5,
     maxActiveGoals: 3,
     maxCourses: 8,
     fullAnalytics: false,
@@ -14,7 +13,6 @@ export const PLAN_LIMITS = {
   student_plus: {
     brainDumpsPerWeek: 50,
     assistantPerDay: 150,
-    essayCoachPerWeek: 50,
     maxActiveGoals: 100,
     maxCourses: 60,
     fullAnalytics: true,

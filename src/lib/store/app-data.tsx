@@ -74,8 +74,6 @@ interface StoreData {
     brainDumpsUsedThisWeek: number;
     assistantPerDay: number | null;
     assistantUsedToday: number;
-    essayCoachPerWeek: number | null;
-    essayCoachUsedThisWeek: number;
     maxActiveGoals: number | null;
     maxCourses: number | null;
     fullAnalytics: boolean;
@@ -433,8 +431,6 @@ export function AppDataProvider({
         brainDumpsUsedThisWeek: profile?.brainDumpUsage?.[weekKey()] ?? 0,
         assistantPerDay: orNull(planLimits.assistantPerDay),
         assistantUsedToday: profile?.assistantUsage?.[todayKey()] ?? 0,
-        essayCoachPerWeek: orNull(planLimits.essayCoachPerWeek),
-        essayCoachUsedThisWeek: profile?.essayCoachUsage?.[weekKey()] ?? 0,
         maxActiveGoals: orNull(planLimits.maxActiveGoals),
         maxCourses: orNull(planLimits.maxCourses),
         fullAnalytics: planLimits.fullAnalytics,

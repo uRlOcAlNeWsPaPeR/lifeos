@@ -106,27 +106,9 @@ export interface AssistantResult {
   references: AssistantReference[];
 }
 
-/** One sentence/phrase the essay coach flagged, with revision options. */
-export interface EssayHighlight {
-  quote: string;
-  issue: string;
-  why: string;
-  revisions: string[];
-}
-
-export interface EssayCoachResult {
-  engine: AIEngine;
-  summary: string;
-  /** thesis / organization / clarity / evidence / grammar / style → 0..100 */
-  scores: Record<string, number>;
-  highlights: EssayHighlight[];
-}
-
 export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
   prioritize(ctx: LifeOSContext): Promise<PrioritizeResult>;
   assist(question: string, ctx: LifeOSContext): Promise<AssistantResult>;
-  /** Writing tool — coach an essay: scored feedback + inline revision suggestions. */
-  essayCoach(essay: string): Promise<EssayCoachResult>;
 }

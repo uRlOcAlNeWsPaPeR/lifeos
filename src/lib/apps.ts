@@ -9,7 +9,7 @@ export interface LifeApp {
   /** One honest line — no invented features. */
   tagline: string;
   /** Subtle etched cue inside the sphere; all stay in the green LifeOS family. */
-  motif: "study" | "writing" | "generic";
+  motif: "study" | "generic";
   /** Sphere hue (HSL hue channel for `--core-hue`). ~152 green … ~172 green-teal. */
   hue: number;
   /** "internal" = lives inside LifeOS. "external" = opens in a new tab. */
@@ -30,16 +30,6 @@ export const LIFE_APPS: LifeApp[] = [
     hue: 152,
     kind: "internal",
     enterLabel: "Enter Study",
-  },
-  {
-    id: "writing",
-    name: "Writing",
-    tagline: "AI detector, humanizer and essay coach — know the score before you turn it in.",
-    motif: "writing",
-    hue: 170,
-    kind: "internal",
-    route: "/writing",
-    enterLabel: "Enter Writing",
   },
 ];
 

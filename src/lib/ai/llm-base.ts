@@ -4,8 +4,6 @@ import type {
   AssistantResult,
   BrainDumpItem,
   BrainDumpResult,
-  EssayCoachResult,
-  EssayHighlight,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
@@ -208,121 +206,7 @@ export abstract class LLMProvider implements AIProvider {
       return this.fallback.assist(question, ctx);
     }
   }
-
-  async essayCoach(essay: string): Promise<EssayCoachResult> {
-    try {
-      const system =
-        "You are a supportive but rigorous writing coach for a student essay. Respond ONLY with valid JSON.";
-      const user = buildCoachPrompt(essay.slice(0, 24_000));
-      const parsed = await this.json<{
-        summary?: unknown;
-        scores?: unknown;
-        highlights?: unknown;
-      }>(system, user, { schema: ESSAY_COACH_SCHEMA });
-
-      const scores: Record<string, number> = {};
-      if (parsed.scores && typeof parsed.scores === "object") {
-        for (const [k, v] of Object.entries(parsed.scores as Record<string, unknown>)) {
-          const n = typeof v === "number" ? v : Number(v);
-          if (Number.isFinite(n)) scores[k] = Math.max(0, Math.min(100, Math.round(n)));
-        }
-      }
-
-      const seen = new Set<string>();
-      const highlights: EssayHighlight[] = (
-        Array.isArray(parsed.highlights) ? (parsed.highlights as Record<string, unknown>[]) : []
-      )
-        .map((h): EssayHighlight | null => {
-          const quote = typeof h?.quote === "string" ? h.quote.trim() : "";
-          // The quote MUST be locatable verbatim in the essay — same guard the
-          // Klarity UI applies at render time, done here so bad rows never ship.
-          if (!quote || !essay.includes(quote) || seen.has(quote)) return null;
-          seen.add(quote);
-          const revisions = Array.isArray(h.revisions)
-            ? (h.revisions as unknown[])
-                .filter((r): r is string => typeof r === "string" && r.trim().length > 0)
-                .slice(0, 4)
-            : [];
-          return {
-            quote,
-            issue: typeof h.issue === "string" && h.issue.trim() ? h.issue.trim() : "Revise",
-            why: typeof h.why === "string" ? h.why.trim() : "",
-            revisions,
-          };
-        })
-        .filter((x): x is EssayHighlight => x !== null);
-
-      return {
-        engine: this.name,
-        summary: typeof parsed.summary === "string" ? parsed.summary : "",
-        scores,
-        highlights,
-      };
-    } catch (e) {
-      console.error(`[ai:${this.name}] essay coach fell back to heuristic:`, (e as Error).message);
-      return this.fallback.essayCoach(essay);
-    }
-  }
 }
-
-/* ----------------------------- essay coach ----------------------------- */
-
-function buildCoachPrompt(essayText: string): string {
-  return (
-    "You are a supportive but rigorous writing coach for a student essay. Do NOT rewrite the essay yourself. " +
-    "Instead, identify specific sentences or short phrases that could be improved, and explain why.\n\n" +
-    "Evaluate: thesis strength, organization, flow, clarity, evidence quality, counterarguments, grammar, style, " +
-    "word choice, transitions, repetition, and paragraph structure.\n\n" +
-    "Respond with ONLY valid JSON (no markdown fences, no commentary) matching exactly this shape:\n" +
-    "{\n" +
-    '  "summary": "2-3 sentence overall assessment of the essay",\n' +
-    '  "scores": {"thesis": 0-100, "organization": 0-100, "clarity": 0-100, "evidence": 0-100, "grammar": 0-100, "style": 0-100},\n' +
-    '  "highlights": [ {\n' +
-    '    "quote": "the exact sentence or phrase copied verbatim from the essay below",\n' +
-    '    "issue": "short 2-5 word label, e.g. Weak thesis, Unsupported claim, Awkward transition",\n' +
-    '    "why": "1-3 sentence explanation of why this could be improved",\n' +
-    '    "revisions": ["revision option 1", "revision option 2", "revision option 3 (optional)"]\n' +
-    "  } ]\n" +
-    "}\n\n" +
-    "Aim for 6-14 highlights spread across the whole essay, ordered by where they appear in the text. " +
-    'The "quote" field MUST be copied exactly, character-for-character, from the essay text below so it can be located.\n\n' +
-    "ESSAY:\n" +
-    essayText
-  );
-}
-
-const ESSAY_COACH_SCHEMA = {
-  type: "object",
-  properties: {
-    summary: { type: "string" },
-    scores: {
-      type: "object",
-      properties: {
-        thesis: { type: "number" },
-        organization: { type: "number" },
-        clarity: { type: "number" },
-        evidence: { type: "number" },
-        grammar: { type: "number" },
-        style: { type: "number" },
-      },
-    },
-    highlights: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          quote: { type: "string" },
-          issue: { type: "string" },
-          why: { type: "string" },
-          revisions: { type: "array", items: { type: "string" } },
-        },
-        required: ["quote", "issue"],
-        propertyOrdering: ["quote", "issue", "why", "revisions"],
-      },
-    },
-  },
-  required: ["summary", "highlights"],
-} as const;
 
 /* ----------------------------- brain dump ----------------------------- */
 
