@@ -66,6 +66,36 @@ export function toInputDateTime(d: string | Date | null | undefined) {
   return new Date(date.getTime() - off * 60000).toISOString().slice(0, 16);
 }
 
+/**
+ * Best-effort "last name" from an instructor / teacher string.
+ *   "Ms. York"       → "York"
+ *   "Jane York"      → "York"
+ *   "York, Jane"     → "York"
+ *   "Dr. A. B. Chen" → "Chen"
+ */
+export function lastName(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  let s = raw.trim();
+  if (!s) return null;
+  // "Last, First" — the surname is what precedes the comma
+  if (s.includes(",")) s = s.split(",")[0].trim();
+  // drop common honorifics / titles
+  s = s.replace(/\b(mrs?|ms|mx|mr|dr|prof|professor|sr|sra|mme|coach)\.?\s+/gi, "").trim();
+  const parts = s.split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : null;
+}
+
+/** Append " - Lastname" to a course name, unless it's already there. */
+export function courseNameWithTeacher(
+  name: string,
+  instructor: string | null | undefined,
+): string {
+  const base = name.trim();
+  const ln = lastName(instructor);
+  if (!ln) return base;
+  return base.toLowerCase().endsWith(`- ${ln.toLowerCase()}`) ? base : `${base} - ${ln}`;
+}
+
 export function greeting(d = new Date()) {
   const h = d.getHours();
   if (h < 12) return "Good morning";

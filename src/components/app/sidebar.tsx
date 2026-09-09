@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Target,
   GraduationCap,
+  Percent,
   BarChart3,
   Sparkles,
   LogOut,
@@ -29,6 +30,7 @@ const NAV = [
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
   { href: "/goals", label: "Goals", icon: Target },
   { href: "/school", label: "School", icon: GraduationCap },
+  { href: "/grades", label: "Grades", icon: Percent },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/assistant", label: "AI Assistant", icon: Sparkles },
 ];

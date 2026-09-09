@@ -18,7 +18,9 @@ export interface CanvasConnectionDoc {
   scope: string | null;
   /**
    * Canvas course ids (as strings) the student chose to sync into LifeOS.
-   * `null` / absent = sync every active course (and auto-pick up new ones).
+   * An array = sync exactly those, nothing else (a new Canvas class is not
+   * auto-added). `null` / absent = not chosen yet: the first sync imports all,
+   * then only the already-imported set keeps syncing until the picker is used.
    */
   selectedCanvasCourseIds?: string[] | null;
   status: CanvasConnectionStatus;
@@ -104,6 +106,8 @@ export interface CanvasCourse {
     computed_current_grade?: string | null;
     computed_current_score?: number | null;
   }[];
+  /** Present with `include[]=teachers` — the course's teacher(s). */
+  teachers?: { id: number; display_name?: string; short_name?: string }[];
 }
 
 export interface CanvasSubmission {

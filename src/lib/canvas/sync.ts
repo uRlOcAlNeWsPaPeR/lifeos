@@ -1,6 +1,7 @@
 import "server-only";
 import type { QuerySnapshot } from "firebase-admin/firestore";
 import { adminDb } from "@/lib/firebase/admin";
+import { courseNameWithTeacher } from "@/lib/format";
 import { CanvasClient, CanvasReauthError } from "./client";
 import { getConnection, markConnection, requireConnection } from "./connection";
 import type {
@@ -76,10 +77,21 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
     const liveCourses = liveCanvasCourses(rawCanvasCourses);
 
     // The student picks which courses land in LifeOS (Settings → School, or the
-    // prompt right after connecting). `null` = sync them all. Anything they
-    // de-selected is treated exactly like a dropped course below — its mirrored
-    // assignments are removed and open tasks pruned.
-    const selection = conn.selectedCanvasCourseIds ?? null;
+    // prompt right after connecting). A course they didn't pick is treated like a
+    // dropped course below — its mirrored assignments are removed and open tasks
+    // pruned — and a brand-new Canvas class is NOT auto-added.
+    //
+    // `selectedCanvasCourseIds` semantics:
+    //   • an array  → sync exactly those ids, nothing else.
+    //   • null/absent → not chosen yet. On the first sync (no Canvas courses here
+    //     yet) import everything so the picker has something to show; once some
+    //     exist, keep syncing just those and wait for an explicit opt-in.
+    const explicitSelection = conn.selectedCanvasCourseIds ?? null;
+    const knownCanvasIds = existingCourses
+      .filter((c) => c.provider === "canvas" && c.canvasCourseId)
+      .map((c) => String(c.canvasCourseId));
+    const selection =
+      explicitSelection ?? (knownCanvasIds.length ? knownCanvasIds : null);
     const canvasCourses = selection
       ? liveCourses.filter((c) => selection.includes(String(c.id)))
       : liveCourses;
@@ -98,11 +110,15 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
     for (const cc of canvasCourses) {
       const canvasCourseId = String(cc.id);
       const enrollment = cc.enrollments?.find((e) => e.type === "student") ?? cc.enrollments?.[0];
+      const teacher = cc.teachers?.[0]?.display_name?.trim() || null;
+      const baseName = cc.name?.trim() || `Canvas course ${canvasCourseId}`;
       const desired = {
-        name: cc.name?.trim() || `Canvas course ${canvasCourseId}`,
+        // "AP Calculus AB" + teacher "Ms. York" → "AP Calculus AB - York"
+        name: courseNameWithTeacher(baseName, teacher),
         code: cc.course_code?.trim() || null,
         term: cc.term?.name ?? null,
         currentGrade: enrollment?.computed_current_grade ?? null,
+        currentScore: enrollment?.computed_current_score ?? null,
         provider: "canvas",
         canvasCourseId,
         canvasUrl: `${conn.instanceUrl}/courses/${canvasCourseId}`,
@@ -110,7 +126,8 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
 
       const match =
         existingCourses.find((c) => c.canvasCourseId === canvasCourseId) ??
-        manualByName.get(desired.name.trim().toLowerCase());
+        manualByName.get(desired.name.trim().toLowerCase()) ??
+        manualByName.get(baseName.trim().toLowerCase());
       if (match) {
         courseIdByCanvas.set(canvasCourseId, match.id);
         const patch = changedFields(match, desired);
@@ -125,7 +142,7 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
         courseIdByCanvas.set(canvasCourseId, doc.id);
         batch.set(doc, {
           ...desired,
-          instructor: null,
+          instructor: teacher,
           color: COURSE_PALETTE[paletteCursor++ % COURSE_PALETTE.length],
           createdAt: now,
           updatedAt: now,

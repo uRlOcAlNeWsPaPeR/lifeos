@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/firebase/auth-context";
 import { AppDataProvider, useAppData } from "@/lib/store/app-data";
 import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
-import { CanvasSyncNudge } from "@/components/canvas/canvas-sync-nudge";
+import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
 import { UndoBar } from "@/components/ui/undo-bar";
 
@@ -49,7 +49,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         {pathname === "/dashboard" && (
           <>
             <DailyBrief />
-            <CanvasSyncNudge />
+            <CanvasAutoSync />
           </>
         )}
         <UndoBar />
@@ -69,7 +69,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
       <DailyBrief />
-      <CanvasSyncNudge />
+      <CanvasAutoSync />
       <UndoBar className="lg:left-[calc(16rem+1rem)]" />
     </div>
   );

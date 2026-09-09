@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import { ExternalLink } from "lucide-react";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -19,6 +24,32 @@ export function CanvasBadge({ className }: { className?: string }) {
   );
 }
 
+const SKIP_KEY = "lifeos:canvas-open-no-prompt";
+
+function skipPrompt(): boolean {
+  try {
+    return localStorage.getItem(SKIP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Force Canvas to re-run its login (→ Google account picker) instead of reusing
+ *  whatever session — right or wrong — is already there. */
+function canvasDeepLink(raw: string): string {
+  try {
+    const u = new URL(raw);
+    u.searchParams.set("force_login", "1");
+    return u.toString();
+  } catch {
+    return raw;
+  }
+}
+
+function openCanvas(url: string) {
+  window.open(canvasDeepLink(url), "_blank", "noopener,noreferrer");
+}
+
 /** "Open in Canvas" deep link. Renders nothing without a URL. */
 export function OpenInCanvas({
   url,
@@ -29,22 +60,108 @@ export function OpenInCanvas({
   className?: string;
   compact?: boolean;
 }) {
+  const [prompting, setPrompting] = useState(false);
   if (!url) return null;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (skipPrompt()) openCanvas(url);
+    else setPrompting(true);
+  };
+
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className={cn(
-        "inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary",
-        className,
-      )}
-      title="Open in Canvas"
-    >
-      <ExternalLink className="h-3.5 w-3.5" />
-      {!compact && "Open in Canvas"}
-    </a>
+    <>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={handleClick}
+        className={cn(
+          "inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary",
+          className,
+        )}
+        title="Open in Canvas"
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+        {!compact && "Open in Canvas"}
+      </a>
+
+      <CanvasOpenPrompt
+        open={prompting}
+        onClose={() => setPrompting(false)}
+        onConfirm={() => {
+          setPrompting(false);
+          openCanvas(url);
+        }}
+      />
+    </>
+  );
+}
+
+function CanvasOpenPrompt({
+  open,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const [dontAsk, setDontAsk] = useState(false);
+
+  const confirm = () => {
+    if (dontAsk) {
+      try {
+        localStorage.setItem(SKIP_KEY, "1");
+      } catch {
+        /* private mode — just skip persisting */
+      }
+    }
+    onConfirm();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Opening Canvas">
+      <div className="space-y-4 text-sm">
+        <p className="text-muted-foreground">
+          Canvas signs in with Google. If you&apos;re signed into more than one Google
+          account in this browser, choose your{" "}
+          <span className="font-medium text-foreground">school</span> account on the next
+          screen — a personal Gmail won&apos;t have your classes.
+        </p>
+
+        <a
+          href="https://accounts.google.com/AccountChooser"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Check or switch your Google account first
+        </a>
+
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={dontAsk}
+            onChange={(e) => setDontAsk(e.target.checked)}
+            className="h-3.5 w-3.5 accent-primary"
+          />
+          Don&apos;t remind me again on this device
+        </label>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={confirm}>
+            <ExternalLink className="h-3.5 w-3.5" />
+            Open Canvas
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

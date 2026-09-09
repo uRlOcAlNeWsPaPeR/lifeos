@@ -80,6 +80,8 @@ export interface CourseDTO {
   color: string;
   term: string | null;
   currentGrade: string | null;
+  /** Canvas's own computed current score (0–100), when it syncs one. */
+  currentScore: number | null;
   provider: string | null;
   canvasCourseId?: string | null;
   canvasUrl?: string | null;

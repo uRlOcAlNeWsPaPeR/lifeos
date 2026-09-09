@@ -22,6 +22,7 @@ export const MOCK_COURSES: CanvasCourse[] = [
     enrollments: [
       { type: "student", enrollment_state: "active", computed_current_grade: "A-", computed_current_score: 91 },
     ],
+    teachers: [{ id: 900, display_name: "Ms. Diane York" }],
   },
   {
     id: 102,
@@ -32,6 +33,7 @@ export const MOCK_COURSES: CanvasCourse[] = [
     enrollments: [
       { type: "student", enrollment_state: "active", computed_current_grade: "B+", computed_current_score: 88 },
     ],
+    teachers: [{ id: 901, display_name: "Mr. Alan Reyes" }],
   },
   {
     id: 103,
@@ -40,6 +42,7 @@ export const MOCK_COURSES: CanvasCourse[] = [
     workflow_state: "available",
     term: { id: 1, name: "Fall 2026" },
     enrollments: [{ type: "student", enrollment_state: "active" }],
+    teachers: [{ id: 902, display_name: "Mrs. Karen Odom" }],
   },
   // duplicate row for a cross-listed section — must NOT create a second subject
   {
@@ -49,6 +52,7 @@ export const MOCK_COURSES: CanvasCourse[] = [
     workflow_state: "available",
     term: { id: 1, name: "Fall 2026" },
     enrollments: [{ type: "student", enrollment_state: "active" }],
+    teachers: [{ id: 902, display_name: "Mrs. Karen Odom" }],
   },
   // last year's class — concluded, must be skipped on import
   {
@@ -76,6 +80,40 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
           points_possible: 20,
           published: true,
           submission: { workflow_state: "unsubmitted", submitted_at: null },
+        },
+        {
+          id: 5003,
+          course_id: 101,
+          name: "Unit 1 Test: Limits",
+          description: null,
+          due_at: daysFromNow(-8, 15, 0),
+          html_url: `${base}/5003`,
+          points_possible: 50,
+          published: true,
+          submission: {
+            workflow_state: "graded",
+            submitted_at: daysFromNow(-8, 14, 0),
+            graded_at: daysFromNow(-6, 9, 0),
+            score: 46,
+            grade: "A-",
+          },
+        },
+        {
+          id: 5004,
+          course_id: 101,
+          name: "Math Homework 1-3",
+          description: null,
+          due_at: daysFromNow(-12),
+          html_url: `${base}/5004`,
+          points_possible: 60,
+          published: true,
+          submission: {
+            workflow_state: "graded",
+            submitted_at: daysFromNow(-13, 20, 0),
+            graded_at: daysFromNow(-11, 12, 0),
+            score: 57,
+            grade: "95%",
+          },
         },
         {
           id: 5002,
@@ -127,6 +165,39 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
           points_possible: 100,
           published: true,
           submission: { workflow_state: "unsubmitted", submitted_at: null },
+        },
+        {
+          id: 5202,
+          course_id: 103,
+          name: "Reading Quiz 1",
+          description: null,
+          due_at: daysFromNow(-10, 9, 0),
+          html_url: `${base}/5202`,
+          points_possible: 10,
+          published: true,
+          submission: {
+            workflow_state: "graded",
+            submitted_at: daysFromNow(-10, 8, 0),
+            graded_at: daysFromNow(-9, 10, 0),
+            score: 9,
+          },
+        },
+        {
+          id: 5203,
+          course_id: 103,
+          name: "Vocabulary Test",
+          description: null,
+          due_at: daysFromNow(-4, 9, 0),
+          html_url: `${base}/5203`,
+          points_possible: 25,
+          published: true,
+          submission: {
+            workflow_state: "graded",
+            submitted_at: daysFromNow(-4, 8, 0),
+            graded_at: daysFromNow(-2, 10, 0),
+            score: 22,
+            grade: "B+",
+          },
         },
       ];
     default:

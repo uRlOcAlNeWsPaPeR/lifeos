@@ -26,7 +26,8 @@ import {
   CALENDAR_INTEGRATIONS,
   type IntegrationCardInfo,
 } from "@/lib/integrations/descriptors";
-import { relativeDue, fmtDate, timeAgo, isStaleOverdue } from "@/lib/format";
+import { relativeDue, fmtDate, timeAgo, isStaleOverdue, courseNameWithTeacher, lastName } from "@/lib/format";
+import { assignmentGradeLabel, courseGrade, fmtPct } from "@/lib/grades";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 import { ConnectCanvas } from "@/components/canvas/connect-canvas";
@@ -37,11 +38,16 @@ import type { AssignmentDTO, CourseDTO } from "@/lib/types";
 
 const COURSE_COLORS = ["#22d67e", "#14c9b8", "#4f7dff", "#a855f7", "#ec4899", "#f59e0b", "#ef4444"];
 
+const SOURCE_NOTE: Record<"canvas" | "computed" | "manual", string> = {
+  canvas: "synced from Canvas",
+  computed: "calculated from graded assignments",
+  manual: "you entered",
+};
+
 export function SchoolView() {
   const {
     data,
     addCourse,
-    updateCourse,
     deleteCourse,
     addAssignment,
     updateAssignment,
@@ -86,7 +92,6 @@ export function SchoolView() {
             <CourseCard
               key={c.id}
               course={c}
-              updateCourse={updateCourse}
               deleteCourse={deleteCourse}
               updateAssignment={updateAssignment}
               deleteAssignment={deleteAssignment}
@@ -134,7 +139,6 @@ export function SchoolView() {
 
 function CourseCard({
   course,
-  updateCourse,
   deleteCourse,
   updateAssignment,
   deleteAssignment,
@@ -142,7 +146,6 @@ function CourseCard({
   onAddAssignment,
 }: {
   course: CourseDTO;
-  updateCourse: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteCourse: (id: string) => Promise<void>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
@@ -155,8 +158,8 @@ function CourseCard({
     (a) => !(a.status === "open" && isStaleOverdue(a.dueAt)),
   );
   const [open, setOpen] = useState(assignments.length > 0);
-  const [grade, setGrade] = useState(course.currentGrade ?? "");
   const openCount = assignments.filter((a) => a.status === "open").length;
+  const g = courseGrade(course);
 
   return (
     <Card className="p-6">
@@ -172,22 +175,22 @@ function CourseCard({
               <Badge tone="primary">{course.provider}</Badge>
             ) : null}
           </div>
-          {course.instructor && <p className="text-xs text-muted-foreground">{course.instructor}</p>}
+          {course.instructor && (
+            <p className="mt-1 text-xs text-muted-foreground">{course.instructor}</p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            className="h-8 w-20 text-center text-sm"
-            placeholder="Grade"
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            onBlur={() =>
-              grade !== (course.currentGrade ?? "") &&
-              updateCourse(course.id, { currentGrade: grade || null })
-            }
-          />
+        <div className="flex items-start gap-3">
+          {(g.pct != null || g.letter) && (
+            <div className="text-right leading-tight" title={`Grade ${SOURCE_NOTE[g.source ?? "manual"]}`}>
+              <p className="text-lg font-semibold">{g.letter ?? fmtPct(g.pct)}</p>
+              {g.letter && g.pct != null && (
+                <p className="text-[11px] text-muted-foreground">{fmtPct(g.pct)}</p>
+              )}
+            </div>
+          )}
           <button
             onClick={() => confirm(`Delete ${course.name}?`) && deleteCourse(course.id)}
-            className="text-muted-foreground transition-colors hover:text-destructive"
+            className="mt-0.5 text-muted-foreground transition-colors hover:text-destructive"
             aria-label="Delete course"
           >
             <Trash2 className="h-4 w-4" />
@@ -245,7 +248,9 @@ function CourseCard({
                     <p className="flex items-center gap-2 text-xs text-muted-foreground">
                       <span>
                         {a.dueAt ? fmtDate(a.dueAt, { weekday: "short", month: "short", day: "numeric" }) : "No due date"}
-                        {a.gradeValue ? ` · ${a.gradeValue}` : ""}
+                        {a.status === "graded" && assignmentGradeLabel(a) ? (
+                          <span className="ml-1 font-medium text-foreground">· {assignmentGradeLabel(a)}</span>
+                        ) : null}
                       </span>
                       <OpenInCanvas url={a.canvasUrl} compact />
                     </p>
@@ -262,12 +267,7 @@ function CourseCard({
                   <option value="graded">Graded</option>
                 </Select>
                 {a.status === "graded" && (
-                  <Input
-                    className="h-8 w-16 text-center text-xs"
-                    placeholder="A / 92%"
-                    defaultValue={a.gradeValue ?? ""}
-                    onBlur={(e) => updateAssignment(a.id, { gradeValue: e.target.value || null })}
-                  />
+                  <GradeEntry assignment={a} onSave={(patch) => updateAssignment(a.id, patch)} />
                 )}
                 <button
                   onClick={() => deleteAssignment(a.id)}
@@ -282,6 +282,63 @@ function CourseCard({
         </ul>
       )}
     </Card>
+  );
+}
+
+function parseNum(v: string): number | null {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Inline grade entry on a graded assignment row.
+ *  Manual assignments take points (earned / possible); Canvas owns its own. */
+function GradeEntry({
+  assignment,
+  onSave,
+}: {
+  assignment: AssignmentDTO;
+  onSave: (patch: Record<string, unknown>) => void;
+}) {
+  const [earned, setEarned] = useState(assignment.pointsEarned?.toString() ?? "");
+  const [possible, setPossible] = useState(assignment.pointsPossible?.toString() ?? "");
+
+  if (assignment.provider === "canvas") {
+    return (
+      <span className="w-20 text-center text-xs font-medium text-muted-foreground">
+        {assignmentGradeLabel(assignment) ?? "—"}
+      </span>
+    );
+  }
+
+  const commit = () => {
+    const e = parseNum(earned);
+    const p = parseNum(possible);
+    if (e === (assignment.pointsEarned ?? null) && p === (assignment.pointsPossible ?? null)) return;
+    onSave({ pointsEarned: e, pointsPossible: p });
+  };
+
+  return (
+    <span className="flex items-center gap-1">
+      <Input
+        className="h-8 w-12 text-center text-xs"
+        inputMode="decimal"
+        placeholder="got"
+        value={earned}
+        onChange={(e) => setEarned(e.target.value)}
+        onBlur={commit}
+        aria-label="Points earned"
+      />
+      <span className="text-xs text-muted-foreground">/</span>
+      <Input
+        className="h-8 w-12 text-center text-xs"
+        inputMode="decimal"
+        placeholder="of"
+        value={possible}
+        onChange={(e) => setPossible(e.target.value)}
+        onBlur={commit}
+        aria-label="Points possible"
+      />
+    </span>
   );
 }
 
@@ -426,7 +483,13 @@ function CourseEditor({
     e.preventDefault();
     if (!form.name.trim()) return;
     setSaving(true);
-    const res = await onCreate(form);
+    const instructor = form.instructor.trim();
+    const res = await onCreate({
+      ...form,
+      // "AP Physics" + "Ms. York" → "AP Physics - York"
+      name: courseNameWithTeacher(form.name, instructor),
+      instructor: instructor || null,
+    });
     setSaving(false);
     if (res) {
       onClose();
@@ -450,11 +513,18 @@ function CourseEditor({
           <Field label="Code (optional)">
             <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="PHYS-101" />
           </Field>
-          <Field label="Instructor (optional)">
+          <Field
+            label="Instructor (optional)"
+            hint={
+              lastName(form.instructor)
+                ? `Saved as “${courseNameWithTeacher(form.name || "Course", form.instructor)}”`
+                : "Their last name gets added to the course name"
+            }
+          >
             <Input
               value={form.instructor}
               onChange={(e) => setForm({ ...form, instructor: e.target.value })}
-              placeholder="Ms. Rivera"
+              placeholder="Ms. York"
             />
           </Field>
         </div>
@@ -504,7 +574,7 @@ function AssignmentEditor({
   onClose: () => void;
   onCreate: (input: Record<string, unknown>) => Promise<AssignmentDTO | undefined>;
 }) {
-  const [form, setForm] = useState({ title: "", dueAt: "", description: "" });
+  const [form, setForm] = useState({ title: "", dueAt: "", description: "", pointsPossible: "" });
   const [saving, setSaving] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -516,11 +586,12 @@ function AssignmentEditor({
       dueAt: form.dueAt || null,
       description: form.description.trim() || null,
       courseId: course.id,
+      pointsPossible: parseNum(form.pointsPossible),
     });
     setSaving(false);
     if (res) {
       onClose();
-      setForm({ title: "", dueAt: "", description: "" });
+      setForm({ title: "", dueAt: "", description: "", pointsPossible: "" });
     }
   }
 
@@ -540,9 +611,19 @@ function AssignmentEditor({
             required
           />
         </Field>
-        <Field label="Due date (optional)">
-          <Input type="date" value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Due date (optional)">
+            <Input type="date" value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} />
+          </Field>
+          <Field label="Points possible (optional)" hint="Used to calculate your course grade">
+            <Input
+              inputMode="decimal"
+              placeholder="20"
+              value={form.pointsPossible}
+              onChange={(e) => setForm({ ...form, pointsPossible: e.target.value })}
+            />
+          </Field>
+        </div>
         <Field label="Notes (optional)">
           <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </Field>

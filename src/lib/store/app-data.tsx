@@ -552,6 +552,7 @@ export function AppDataProvider({
       color: (c.color as string) ?? "#22d67e",
       term: (c.term as string) ?? null,
       currentGrade: (c.currentGrade as string) ?? null,
+      currentScore: (c.currentScore as number) ?? null,
       provider: (c.provider as string) ?? null,
       canvasCourseId: (c.canvasCourseId as string) ?? null,
       canvasUrl: (c.canvasUrl as string) ?? null,

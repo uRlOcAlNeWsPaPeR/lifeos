@@ -21,10 +21,21 @@ export const GET = route(async (req) => {
     const items = await CanvasClient.from(conn).getActivityStream();
     const since = conn.lastSyncedAt ? Date.parse(conn.lastSyncedAt) : 0;
 
-    const RELEVANT_MSG = new Set(["Due Date", "Grading", "Late Grading", "All Submissions"]);
+    const RELEVANT_MSG = new Set([
+      "Due Date",
+      "Grading",
+      "Late Grading",
+      "All Submissions",
+      "Assignment Created",
+      "Assignment Changed",
+      "Assignment Due Date Changed",
+      "Submission Graded",
+      "Submissions Posted",
+    ]);
     const newer = items.filter((i) => {
       const relevant =
         i.type === "Submission" ||
+        i.type === "Assignment" ||
         (i.type === "Message" && !!i.notification_category && RELEVANT_MSG.has(i.notification_category));
       if (!relevant) return false;
       const t = Date.parse(i.updated_at || i.created_at || "");

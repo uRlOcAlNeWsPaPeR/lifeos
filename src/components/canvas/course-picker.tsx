@@ -35,8 +35,9 @@ export function CanvasCoursePicker({ canvas }: { canvas: ReturnType<typeof useCa
     });
 
   const handleSave = () => {
-    // "all checked" persists as null so courses added later are picked up too
-    void saveCoursePicker(allOn ? null : [...checked]);
+    // Persist the exact set the student picked. A Canvas course that shows up
+    // later is NOT synced until they come back here and add it.
+    void saveCoursePicker([...checked]);
   };
 
   return (
@@ -44,7 +45,7 @@ export function CanvasCoursePicker({ canvas }: { canvas: ReturnType<typeof useCa
       open={open}
       onClose={closeCoursePicker}
       title="Choose which courses sync"
-      description="Only the courses you pick show up in LifeOS. You can change this any time in Settings → School."
+      description="Only the courses you pick show up in LifeOS — a new Canvas class won't sync until you add it here. Change this any time in Settings → School."
     >
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading your Canvas courses…</p>

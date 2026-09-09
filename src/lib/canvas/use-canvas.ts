@@ -156,9 +156,9 @@ export function useCanvas(): UseCanvas {
           setCoursePicker((s) => ({ ...s, open: false, saving: false, selectedIds }));
         }
         toast(
-          selectedIds
-            ? "Synced your selected courses"
-            : "Syncing all your Canvas courses",
+          selectedIds && selectedIds.length
+            ? `Syncing ${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"}`
+            : "Not syncing any Canvas courses",
           "success",
         );
         return true;

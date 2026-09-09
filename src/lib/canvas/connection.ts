@@ -118,8 +118,9 @@ export async function updateAccessToken(
 }
 
 /**
- * Persist the student's course choice. `null` = sync every active course (and
- * automatically include courses added later); an array = only those Canvas ids.
+ * Persist the student's course choice. An array = sync exactly those Canvas ids
+ * (a class added on Canvas later won't sync until they pick it here). `null` =
+ * not chosen yet.
  */
 export async function setCourseSelection(
   uid: string,
