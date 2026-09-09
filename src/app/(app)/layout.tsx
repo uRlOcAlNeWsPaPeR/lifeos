@@ -45,7 +45,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
   if (pathname === "/dashboard") {
     return (
       <>
-        <main className="min-h-screen">{children}</main>
+        <main className="min-h-[100svh]">{children}</main>
         {pathname === "/dashboard" && (
           <>
             <DailyBrief />

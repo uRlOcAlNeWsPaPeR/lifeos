@@ -115,7 +115,7 @@ export function AssistantView({
         }
       />
 
-      <Card glow className="flex h-[calc(100vh-230px)] min-h-[420px] flex-col overflow-hidden">
+      <Card glow className="flex h-[calc(100svh-230px)] min-h-[420px] flex-col overflow-hidden">
         <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">
           {turns.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">

@@ -78,13 +78,15 @@ export function CorePortal() {
   const now = useMemo(() => new Date(), []);
 
   useEffect(() => {
-    // Cinematic on any real screen; touch is fine (tap the sphere). Only phones
-    // and reduced-motion users get the plain scrolling fallback.
-    const big = window.matchMedia("(min-width: 1024px)").matches;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setCinematic(big && !reduce);
+    // The detonation runs on every screen now — phones included (tap the
+    // sphere). Only reduced-motion users get the plain scrolling fallback.
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setCinematic(!mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
     // warm the routed apps so navigation lands the instant the burst clears
     LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
+    return () => mq.removeEventListener("change", apply);
   }, [router]);
 
   const firstName = data.profile.name.split(" ")[0] || "there";
@@ -163,7 +165,7 @@ export function CorePortal() {
   const onConsole = phase === "console" || phase === "closing";
 
   const topBar = (
-    <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-5 py-3 sm:px-8">
+    <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-8">
       <Link
         href="/"
         aria-label="LifeOS home"
@@ -243,7 +245,7 @@ export function CorePortal() {
     return (
       <>
         {topBar}
-        <div ref={stage} className="relative min-h-screen px-4 pb-24 pt-16 sm:px-8">
+        <div ref={stage} className="relative min-h-[100svh] px-4 pb-24 pt-16 sm:px-8">
           <div className="flex min-h-[70svh] flex-col items-center justify-center py-8 text-center">
             {welcome}
             <div className="mt-16 w-full">
@@ -270,7 +272,7 @@ export function CorePortal() {
   return (
     <>
       {topBar}
-      <div ref={stage} className="relative h-screen overflow-hidden">
+      <div ref={stage} className="relative h-[100svh] overflow-hidden">
         {/* cursor-follow ambient light — translated, not repainted */}
         <div
           aria-hidden
@@ -287,7 +289,7 @@ export function CorePortal() {
         {phase !== "console" && (
           <div
             aria-hidden={phase !== "home"}
-            className="absolute inset-x-0 top-[13%] z-10 flex flex-col items-center px-6 text-center"
+            className="absolute inset-x-0 top-[7%] z-10 flex flex-col items-center px-6 text-center sm:top-[13%]"
             style={{
               animation:
                 phase === "boom"
@@ -303,7 +305,7 @@ export function CorePortal() {
 
         {/* the app orbit (home) */}
         {phase === "home" && (
-          <div className="absolute inset-x-0 top-[34%] bottom-6 z-10 flex items-start justify-center px-4">
+          <div className="absolute inset-x-0 top-[27%] bottom-4 z-10 flex items-start justify-center px-4 sm:top-[34%] sm:bottom-6">
             <AppOrbit
               apps={LIFE_APPS}
               activeIndex={appIndex}
@@ -341,7 +343,7 @@ export function CorePortal() {
         {/* the console — skipped when a routed app is detonating (it navigates away) */}
         {phase !== "home" && !boomApp && (
           <div
-            className="absolute inset-0 z-20 flex flex-col px-4 pb-6 pt-[4.75rem] sm:px-8"
+            className="absolute inset-0 z-20 flex flex-col px-4 pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[4.25rem] sm:px-8 sm:pb-6 sm:pt-[4.75rem]"
             style={{
               animation:
                 phase === "boom"
@@ -479,7 +481,7 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
   return (
     <div
       className={cn(
-        "grid items-start gap-4 lg:grid-cols-3",
+        "grid items-start gap-3 sm:gap-4 lg:grid-cols-3",
         constrained && "min-h-0 flex-1 overflow-y-auto scrollbar-thin pb-1",
       )}
     >

@@ -107,7 +107,7 @@ export function AppOrbit({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={() => (drag.current = null)}
-        className="relative h-[clamp(320px,46vh,500px)] w-full touch-pan-y select-none outline-none"
+        className="relative h-[clamp(240px,42vh,500px)] w-full touch-pan-y select-none outline-none sm:h-[clamp(320px,46vh,500px)]"
         style={{ perspective: "1400px" }}
       >
         {/* soft ground glow under the active sphere */}
@@ -201,17 +201,19 @@ export function AppOrbit({
           <p className="text-xs font-semibold uppercase tracking-[0.3em] text-primary">
             {active.name}
           </p>
-          <p className="mt-2 max-w-xs text-sm text-muted-foreground">{active.tagline}</p>
+          <p className="mt-1.5 max-w-xs text-xs text-muted-foreground sm:mt-2 sm:text-sm">
+            {active.tagline}
+          </p>
         </div>
         <button
           onClick={() => onEnter(active)}
-          className="mt-4 inline-flex items-center gap-2 rounded-full bg-gradient-brand bg-[length:180%_auto] px-6 py-2.5 text-sm font-medium text-white shadow-glow-sm transition-all duration-300 hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-px"
+          className="mt-3 inline-flex items-center gap-2 rounded-full bg-gradient-brand bg-[length:180%_auto] px-6 py-2.5 text-sm font-medium text-white shadow-glow-sm transition-all duration-300 hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-px sm:mt-4"
         >
           {active.enterLabel}
           <ArrowRight className="h-4 w-4" />
         </button>
         {n > 1 && (
-          <div className="mt-4 flex gap-1.5">
+          <div className="mt-3 flex gap-1.5 sm:mt-4">
             {apps.map((a, i) => (
               <button
                 key={a.id}
