@@ -79,14 +79,17 @@ export function CorePortal() {
 
   useEffect(() => {
     // The detonation runs on every screen now — phones included (tap the
-    // sphere). Only reduced-motion users get the plain scrolling fallback.
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const apply = () => setCinematic(!mq.matches);
-    apply();
-    mq.addEventListener("change", apply);
+    // sphere). Reduced-motion users still get it, just instant (the keyframes
+    // self-neutralise via the global reduced-motion rule).
+    let reduce = false;
+    try {
+      reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch {
+      /* matchMedia unavailable — assume full motion */
+    }
+    setCinematic(!reduce);
     // warm the routed apps so navigation lands the instant the burst clears
     LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
-    return () => mq.removeEventListener("change", apply);
   }, [router]);
 
   const firstName = data.profile.name.split(" ")[0] || "there";
