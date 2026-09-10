@@ -14,6 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { goalProgress } from "@/lib/analytics-derive";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
 import { greeting, parseDate } from "@/lib/format";
+import { dueCount } from "@/lib/practice/srs";
 import type { Prefs } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,7 @@ export function CommandCenter() {
     { href: "/brain-dump", label: "Brain Dump", icon: NAV_ICONS.brain, sub: "Clear your head" },
     { href: "/goals", label: "Goals", icon: NAV_ICONS.goals, sub: model.nav.goals },
     { href: "/school", label: "School", icon: NAV_ICONS.school, sub: model.nav.school },
+    { href: "/practice", label: "Practice", icon: NAV_ICONS.practice, sub: model.nav.practice },
     { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics, sub: model.nav.analytics },
   ];
 
@@ -323,7 +325,14 @@ interface Model {
   streak: number;
   done7: number;
   sleepHours: number;
-  nav: { tasks: string; calendar: string; goals: string; school: string; analytics: string };
+  nav: {
+    tasks: string;
+    calendar: string;
+    goals: string;
+    school: string;
+    practice: string;
+    analytics: string;
+  };
 }
 
 function buildModel(
@@ -335,6 +344,7 @@ function buildModel(
   const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const prefs = data.profile.prefs;
   const open = data.tasks.filter((t) => t.status === "todo");
+  const cardsDue = data.decks.reduce((n, d) => n + dueCount(d.cards), 0);
 
   const overdue = open.filter((t) => t.dueAt && parseDate(t.dueAt) < startToday);
   const dueToday = open.filter(
@@ -475,6 +485,7 @@ function buildModel(
       calendar: eventsToday ? `${eventsToday} today` : "Nothing today",
       goals: goals.length ? `${analytics.avgGoalProgress}% avg` : "Set a goal",
       school: openAssign ? `${openAssign} assignment${openAssign === 1 ? "" : "s"}` : "Courses & grades",
+      practice: cardsDue ? `${cardsDue} card${cardsDue === 1 ? "" : "s"} to review` : "Drill with games",
       analytics: `${analytics.completionRate}% completion`,
     },
   };

@@ -17,11 +17,12 @@ import { db } from "./client";
  *   users/{uid}/assignments/{id}
  *   users/{uid}/events/{id}
  *   users/{uid}/brainDumps/{id}
+ *   users/{uid}/decks/{id}          → a Practice study set (cards embedded)
  *
  * All dates are stored as ISO strings to match the DTOs used across the app.
  */
 
-export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms"] as const;
+export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms", "decks"] as const;
 export type CollectionName = (typeof COLLECTIONS)[number];
 type AnyCol = CollectionName | "brainDumps" | "focusSessions";
 

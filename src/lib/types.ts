@@ -163,3 +163,59 @@ export interface FocusSessionDTO {
   taskId: string | null;
   taskTitle: string | null;
 }
+
+/* ------------------------------- Practice ------------------------------- *
+ * A deck is one study set. Cards live *inside* the deck document (the way
+ * milestones live inside a goal) — a deck is capped well under Firestore's 1MB
+ * limit, so the whole thing loads in a single snapshot and a study session is
+ * one write instead of one per card.                                        */
+
+/** How well a card is known. Derived from `streak`, never stored. */
+export type Mastery = "new" | "learning" | "familiar" | "mastered";
+
+export interface CardDTO {
+  id: string;
+  /** Term / question — the prompt side. */
+  front: string;
+  /** Definition / answer — the side being recalled. */
+  back: string;
+  hint: string | null;
+
+  /* --- spaced repetition state --- */
+  /** Consecutive correct answers. Reset to 0 on a miss. */
+  streak: number;
+  /** SM-2 style ease factor, 1.3–3.0. Lower = shown more often. */
+  ease: number;
+  /** ISO — when this card is next due for review. null = never studied. */
+  dueAt: string | null;
+  /** Times a known card was forgotten — flags cards that need a rewrite. */
+  lapses: number;
+  seen: number;
+  correct: number;
+}
+
+export type DeckSource = "manual" | "paste" | "ai";
+
+export interface DeckDTO {
+  id: string;
+  title: string;
+  description: string | null;
+  /** Links the deck to a course so it can be surfaced next to that work. */
+  courseId: string | null;
+  /** Free-text subject, used when the deck isn't tied to a course. */
+  subject: string | null;
+  cards: CardDTO[];
+  source: DeckSource;
+  createdAt: string;
+  lastStudiedAt: string | null;
+  /** Personal bests, for the games that keep score. */
+  bestMatchMs: number | null;
+  bestRushScore: number;
+  sessions: number;
+}
+
+/** The four ways to study a deck. */
+export type GameMode = "flashcards" | "match" | "quiz" | "rush";
+
+/** How the student rated their recall on a flashcard. */
+export type Grade = "again" | "hard" | "good" | "easy";

@@ -13,6 +13,7 @@ import {
   Percent,
   BarChart3,
   Sparkles,
+  Gamepad2,
   LogOut,
   Menu,
   X,
@@ -23,17 +24,67 @@ import { Badge } from "@/components/ui/badge";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/firebase/auth-context";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/brain-dump", label: "Brain Dump", icon: Brain },
-  { href: "/tasks", label: "Tasks", icon: ListChecks },
-  { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/goals", label: "Goals", icon: Target },
-  { href: "/school", label: "School", icon: GraduationCap },
-  { href: "/grades", label: "Grades", icon: Percent },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/assistant", label: "AI Assistant", icon: Sparkles },
+/**
+ * Nav grouped by what the student is actually doing, rather than one flat list
+ * of nine links: what's on today, the school side of it, and how it's going.
+ * The AI Assistant sits on its own below — it's a tool, not a section.
+ */
+const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
+  {
+    label: "Today",
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/brain-dump", label: "Brain Dump", icon: Brain },
+      { href: "/tasks", label: "Tasks", icon: ListChecks },
+      { href: "/calendar", label: "Calendar", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "School",
+    items: [
+      { href: "/school", label: "Courses", icon: GraduationCap },
+      { href: "/grades", label: "Grades", icon: Percent },
+      { href: "/practice", label: "Practice", icon: Gamepad2 },
+    ],
+  },
+  {
+    label: "Progress",
+    items: [
+      { href: "/goals", label: "Goals", icon: Target },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
 ];
+
+const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Sparkles };
+
+function NavLink({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: { href: string; label: string; icon: typeof LayoutDashboard };
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+        active
+          ? "bg-gradient-to-r from-primary/20 via-primary/5 to-transparent text-foreground shadow-[inset_1px_0_0_hsl(var(--glow)/0.6)]"
+          : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+      )}
+    >
+      <item.icon className={cn("h-4 w-4 transition-colors", active && "text-primary")} />
+      {item.label}
+    </Link>
+  );
+}
 
 export function Sidebar({
   user,
@@ -65,28 +116,27 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
-        {NAV.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(item.href + "/");
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={() => setOpen(false)}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all",
-                active
-                  ? "bg-gradient-to-r from-primary/20 via-primary/5 to-transparent text-foreground shadow-[inset_1px_0_0_hsl(var(--glow)/0.6)]"
-                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-              )}
-            >
-              <item.icon
-                className={cn("h-4 w-4 transition-colors", active && "text-primary")}
-              />
-              {item.label}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto px-3 scrollbar-thin">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="mb-4">
+            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+              {group.label}
+            </p>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={() => setOpen(false)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="mt-1 border-t border-white/[0.06] pt-3">
+          <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
+        </div>
       </nav>
 
       <div className="space-y-2 p-3">

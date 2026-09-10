@@ -106,9 +106,22 @@ export interface AssistantResult {
   references: AssistantReference[];
 }
 
+/** One Practice card the model pulled out of a student's notes. */
+export interface GeneratedCard {
+  front: string;
+  back: string;
+}
+
+export interface GenerateCardsResult {
+  engine: AIEngine;
+  cards: GeneratedCard[];
+}
+
 export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
   prioritize(ctx: LifeOSContext): Promise<PrioritizeResult>;
   assist(question: string, ctx: LifeOSContext): Promise<AssistantResult>;
+  /** Turn a block of the student's own notes into study cards. */
+  generateCards(notes: string, title: string | null): Promise<GenerateCardsResult>;
 }

@@ -110,6 +110,21 @@ const config: Config = {
           "0%, 100%": { transform: "translateY(0)" },
           "50%": { transform: "translateY(-8px)" },
         },
+        // Practice games
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%, 60%": { transform: "translateX(-6px)" },
+          "40%, 80%": { transform: "translateX(6px)" },
+        },
+        pop: {
+          "0%": { transform: "scale(0.85)", opacity: "0" },
+          "60%": { transform: "scale(1.04)", opacity: "1" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        "rise-out": {
+          from: { opacity: "1", transform: "translateY(0) scale(1)" },
+          to: { opacity: "0", transform: "translateY(-22px) scale(1.25)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
@@ -121,6 +136,9 @@ const config: Config = {
         "slide-in-right": "slide-in-right 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
         drift: "drift 14s ease-in-out infinite",
         "float-y": "float-y 6s ease-in-out infinite",
+        shake: "shake 0.4s ease-in-out",
+        pop: "pop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both",
+        "rise-out": "rise-out 0.9s ease-out forwards",
       },
     },
   },

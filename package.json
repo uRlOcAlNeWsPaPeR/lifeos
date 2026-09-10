@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "firebase:rules": "firebase deploy --only firestore:rules",
-    "firebase:indexes": "firebase deploy --only firestore:indexes"
+    "firebase:indexes": "firebase deploy --only firestore:indexes",
+    "test": "tsx src/lib/practice/practice.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",

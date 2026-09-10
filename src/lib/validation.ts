@@ -142,6 +142,11 @@ export const brainDumpCommitSchema = z.object({
   ),
 });
 
+export const generateCardsSchema = z.object({
+  notes: z.string().min(40, "Paste a bit more of your notes").max(12000),
+  title: z.string().max(120).optional().nullable(),
+});
+
 export const assistantSchema = z.object({
   question: z.string().min(2).max(1000),
 });
