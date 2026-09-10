@@ -24,7 +24,7 @@ import { Modal } from "@/components/ui/modal";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtTime, toInputDateTime, isStaleOverdue } from "@/lib/format";
+import { fmtTime, toInputDateTime, isStaleOverdue, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, EventDTO, TaskDTO } from "@/lib/types";
 
@@ -85,7 +85,7 @@ export function CalendarView() {
       // only open assignments — turned-in / graded work drops off the calendar —
       // and not the ones long past due
       if (a.dueAt && a.status === "open" && !isStaleOverdue(a.dueAt)) {
-        bucket(KEY(new Date(a.dueAt))).assignments.push(a);
+        bucket(KEY(parseDate(a.dueAt))).assignments.push(a);
       }
     }
     return map;
@@ -373,9 +373,9 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
   const dayTasks = data.tasks.filter(
     (t) =>
       (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
-      (t.dueAt && KEY(new Date(t.dueAt)) === dk),
+      (t.dueAt && KEY(parseDate(t.dueAt)) === dk),
   );
-  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(new Date(a.dueAt)) === dk);
+  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(parseDate(a.dueAt)) === dk);
 
   type Bucket = "todo" | "planned" | "done";
   const taskBucket = (t: TaskDTO): Bucket =>

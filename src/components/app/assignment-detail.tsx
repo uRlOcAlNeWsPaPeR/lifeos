@@ -8,7 +8,7 @@ import { Badge, priorityTone } from "@/components/ui/badge";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtDate, fmtTime, fmtDuration, relativeDue } from "@/lib/format";
+import { fmtDate, fmtTime, fmtDuration, relativeDue, hasTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
 
@@ -110,7 +110,7 @@ export function AssignmentDetail({
                 <CalendarClock className="h-4 w-4" />
                 {assignment.dueAt
                   ? `Due ${fmtDate(assignment.dueAt, { weekday: "short", month: "short", day: "numeric" })}${
-                      new Date(assignment.dueAt).getHours() !== 0
+                      hasTime(assignment.dueAt)
                         ? ` · ${fmtTime(assignment.dueAt)}`
                         : ""
                     }`

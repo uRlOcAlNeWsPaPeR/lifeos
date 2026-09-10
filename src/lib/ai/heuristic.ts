@@ -4,9 +4,11 @@ import type {
   AssistantReference,
   BrainDumpItem,
   BrainDumpResult,
+  GenerateCardsResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
+import { cardsFromNotes, dedupeCards } from "@/lib/practice/parse";
 import {
   consolidateFragments,
   derivePriority,
@@ -25,6 +27,16 @@ import { relativeDue, scoreTasks } from "./score";
  */
 export class HeuristicProvider implements AIProvider {
   readonly name = "heuristic" as const;
+
+  /**
+   * Offline card generation: lift the sentences that are already shaped like a
+   * definition. Deliberately conservative — it would rather return three solid
+   * cards than twenty made-up ones, and it never invents an answer.
+   */
+  async generateCards(notes: string, _title: string | null): Promise<GenerateCardsResult> {
+    void _title;
+    return { engine: this.name, cards: dedupeCards(cardsFromNotes(notes)) };
+  }
 
   async parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult> {
     const slots = freeSlots(ctx, 7);

@@ -1,5 +1,6 @@
 // Pure, client-safe analytics. Operates on already-loaded DTOs so the
 // dashboard / analytics page never needs a server round-trip to recompute.
+import { parseDate } from "@/lib/format";
 import type { AssignmentDTO, GoalDTO, TaskDTO } from "@/lib/types";
 
 export interface AnalyticsSummary {
@@ -32,8 +33,14 @@ export function goalProgress(g: Pick<GoalDTO, "targetType" | "progress" | "miles
 const DAY = 86_400_000;
 const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-const addDays = (d: Date, n: number) => new Date(d.getTime() + n * DAY);
-const parse = (s: string | null | undefined) => (s ? new Date(s) : null);
+/** Calendar-day arithmetic — stepping by 86.4M ms drifts an hour across a DST
+ *  boundary, which can make a day bucket repeat or vanish twice a year. */
+const addDays = (d: Date, n: number) =>
+  new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
+/** `parseDate` reads a bare "YYYY-MM-DD" as LOCAL noon. Plain `new Date()` reads
+ *  it as UTC midnight, which lands on the previous day west of Greenwich — so a
+ *  task due today reads as overdue and every due date charts a day early. */
+const parse = (s: string | null | undefined) => (s ? parseDate(s) : null);
 
 export function deriveAnalytics(
   tasks: TaskDTO[],

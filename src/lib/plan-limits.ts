@@ -8,6 +8,7 @@ export const PLAN_LIMITS = {
     assistantPerDay: 5,
     maxActiveGoals: 3,
     maxCourses: 8,
+    maxDecks: 5,
     fullAnalytics: false,
   },
   student_plus: {
@@ -15,6 +16,7 @@ export const PLAN_LIMITS = {
     assistantPerDay: 150,
     maxActiveGoals: 100,
     maxCourses: 60,
+    maxDecks: 200,
     fullAnalytics: true,
   },
 } as const;

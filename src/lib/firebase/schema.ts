@@ -17,11 +17,12 @@ import { db } from "./client";
  *   users/{uid}/assignments/{id}
  *   users/{uid}/events/{id}
  *   users/{uid}/brainDumps/{id}
+ *   users/{uid}/decks/{id}          → a Practice study set (cards embedded)
  *
  * All dates are stored as ISO strings to match the DTOs used across the app.
  */
 
-export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms"] as const;
+export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms", "decks"] as const;
 export type CollectionName = (typeof COLLECTIONS)[number];
 type AnyCol = CollectionName | "brainDumps" | "focusSessions";
 
@@ -140,7 +141,13 @@ export function emptyProfile(name: string, email: string): ProfileDoc {
   };
 }
 
-export const todayKey = () => new Date().toISOString().slice(0, 10);
+/**
+ * Today as "YYYY-MM-DD" in the *local* timezone. `toISOString()` would key off
+ * UTC, so a student in New York would see their daily AI quota roll over at 8pm
+ * instead of midnight.
+ */
+export const todayKey = (d: Date = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** ISO-week key like "2026-W35" — used to meter weekly quotas (e.g. Brain Dumps). */
 export function weekKey(d: Date = new Date()): string {

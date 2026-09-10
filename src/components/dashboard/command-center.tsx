@@ -8,12 +8,14 @@ import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
 import { NavDeck, NAV_ICONS, type NavItem } from "./nav-deck";
 import { QuickAdd } from "./quick-add";
+import { SearchTrigger } from "@/components/app/command-palette";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList } from "@/components/app/deadline-list";
 import { Progress } from "@/components/ui/progress";
 import { goalProgress } from "@/lib/analytics-derive";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
-import { greeting } from "@/lib/format";
+import { greeting, parseDate } from "@/lib/format";
+import { dueCount } from "@/lib/practice/srs";
 import type { Prefs } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
@@ -45,7 +47,10 @@ export function CommandCenter() {
     { href: "/brain-dump", label: "Brain Dump", icon: NAV_ICONS.brain, sub: "Clear your head" },
     { href: "/goals", label: "Goals", icon: NAV_ICONS.goals, sub: model.nav.goals },
     { href: "/school", label: "School", icon: NAV_ICONS.school, sub: model.nav.school },
+    { href: "/grades", label: "Grades", icon: NAV_ICONS.grades, sub: model.nav.grades },
+    { href: "/practice", label: "Practice", icon: NAV_ICONS.practice, sub: model.nav.practice },
     { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics, sub: model.nav.analytics },
+    { href: "/assistant", label: "AI Assistant", icon: NAV_ICONS.assistant, sub: "Ask about your work" },
   ];
 
   return (
@@ -119,9 +124,12 @@ export function CommandCenter() {
 
       {/* NAVIGATE */}
       <div className="mt-8">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-          Navigate
-        </p>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+            Navigate
+          </p>
+          <SearchTrigger className="max-w-[240px]" />
+        </div>
         <NavDeck items={navItems} />
       </div>
 
@@ -323,7 +331,15 @@ interface Model {
   streak: number;
   done7: number;
   sleepHours: number;
-  nav: { tasks: string; calendar: string; goals: string; school: string; analytics: string };
+  nav: {
+    tasks: string;
+    calendar: string;
+    goals: string;
+    school: string;
+    grades: string;
+    practice: string;
+    analytics: string;
+  };
 }
 
 function buildModel(
@@ -335,10 +351,12 @@ function buildModel(
   const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const prefs = data.profile.prefs;
   const open = data.tasks.filter((t) => t.status === "todo");
+  const cardsDue = data.decks.reduce((n, d) => n + dueCount(d.cards), 0);
+  const gradedCourses = data.courses.filter((c) => c.currentGrade || c.currentScore != null).length;
 
-  const overdue = open.filter((t) => t.dueAt && new Date(t.dueAt) < startToday);
+  const overdue = open.filter((t) => t.dueAt && parseDate(t.dueAt) < startToday);
   const dueToday = open.filter(
-    (t) => t.dueAt && new Date(t.dueAt) >= startToday && new Date(t.dueAt) <= endToday,
+    (t) => t.dueAt && parseDate(t.dueAt) >= startToday && parseDate(t.dueAt) <= endToday,
   );
   const scheduledToday = open.filter(
     (t) => t.scheduledAt && new Date(t.scheduledAt) >= startToday && new Date(t.scheduledAt) <= endToday,
@@ -389,7 +407,7 @@ function buildModel(
   }
   for (const t of dueToday) {
     if (scheduledToday.some((x) => x.id === t.id)) continue;
-    const d = new Date(t.dueAt!);
+    const d = parseDate(t.dueAt!);
     moments.push({
       key: `d-${t.id}`,
       at: d.getHours() === 0 ? endToday : d,
@@ -425,7 +443,7 @@ function buildModel(
 
   // deadlines (beyond today)
   const upTasks = open
-    .filter((t) => t.dueAt && new Date(t.dueAt) > endToday)
+    .filter((t) => t.dueAt && parseDate(t.dueAt) > endToday)
     .map((t) => ({
       id: t.id,
       title: t.title,
@@ -435,7 +453,7 @@ function buildModel(
       context: t.course?.name ?? t.category ?? undefined,
     }));
   const upAssign = data.assignments
-    .filter((a) => a.status !== "graded" && a.dueAt && new Date(a.dueAt) >= startToday)
+    .filter((a) => a.status !== "graded" && a.dueAt && parseDate(a.dueAt) >= startToday)
     .map((a) => ({
       id: a.id,
       title: a.title,
@@ -445,7 +463,7 @@ function buildModel(
       context: a.course?.name ?? undefined,
     }));
   const deadlines = [...upTasks, ...upAssign]
-    .sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt))
+    .sort((a, b) => +parseDate(a.dueAt) - +parseDate(b.dueAt))
     .slice(0, 8);
 
   const goals = data.goals
@@ -475,6 +493,8 @@ function buildModel(
       calendar: eventsToday ? `${eventsToday} today` : "Nothing today",
       goals: goals.length ? `${analytics.avgGoalProgress}% avg` : "Set a goal",
       school: openAssign ? `${openAssign} assignment${openAssign === 1 ? "" : "s"}` : "Courses & grades",
+      grades: gradedCourses ? `${gradedCourses} class${gradedCourses === 1 ? "" : "es"} tracked` : "GPA & calculators",
+      practice: cardsDue ? `${cardsDue} card${cardsDue === 1 ? "" : "s"} to review` : "Drill with games",
       analytics: `${analytics.completionRate}% completion`,
     },
   };

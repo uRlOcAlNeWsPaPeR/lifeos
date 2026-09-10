@@ -28,12 +28,16 @@ import { limitsFor, effectivePlan } from "@/lib/plan-limits";
 import { api } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
 import { pushUndo } from "@/components/ui/undo-bar";
+import { deckMastery, hydrateCard, newCard } from "@/lib/practice/srs";
 import type {
   AlarmDTO,
   AssignmentDTO,
+  CardDTO,
   CourseDTO,
+  DeckDTO,
   EventDTO,
   FocusSessionDTO,
+  GameMode,
   GoalDTO,
   MilestoneDTO,
   TaskDTO,
@@ -49,6 +53,12 @@ const stripId = <T extends { id: string }>(o: T): Omit<T, "id"> => {
 };
 
 type Raw<T> = T & { id: string };
+
+/** Card inputs -> storable cards with fresh spaced-repetition state. */
+const toCards = (input: { front: string; back: string; hint?: string | null }[]): CardDTO[] =>
+  input
+    .map((c) => ({ id: rid(), ...newCard(c.front, c.back, c.hint ?? null) }))
+    .filter((c) => c.front && c.back);
 
 interface StoreData {
   profile: {
@@ -74,6 +84,8 @@ interface StoreData {
   events: EventDTO[];
   alarms: AlarmDTO[];
   focusSessions: FocusSessionDTO[];
+  /** Practice study sets, most recently studied first. */
+  decks: DeckDTO[];
   ai: { engine: string; label: string };
   limits: {
     plan: string;
@@ -83,9 +95,13 @@ interface StoreData {
     assistantUsedToday: number;
     maxActiveGoals: number | null;
     maxCourses: number | null;
+    maxDecks: number | null;
     fullAnalytics: boolean;
   };
 }
+
+/** What a caller hands us to build a card — the SRS fields are ours to set. */
+export type CardInput = { front: string; back: string; hint?: string | null };
 
 const orNull = (n: number) => (n === Infinity ? null : n);
 
@@ -262,6 +278,30 @@ interface AppDataValue {
   deleteAlarm: (id: string) => Promise<void>;
 
   logFocusSession: (s: Omit<FocusSessionDTO, "id">) => Promise<void>;
+
+  addDeck: (input: {
+    title: string;
+    description?: string | null;
+    courseId?: string | null;
+    subject?: string | null;
+    source?: DeckDTO["source"];
+    cards: CardInput[];
+  }) => Promise<DeckDTO | undefined>;
+  updateDeck: (
+    id: string,
+    patch: Partial<Pick<DeckDTO, "title" | "description" | "courseId" | "subject">>,
+  ) => Promise<void>;
+  deleteDeck: (id: string) => Promise<void>;
+  /** Replace a deck's cards wholesale — what the deck editor saves. */
+  setDeckCards: (id: string, cards: CardInput[]) => Promise<void>;
+  /**
+   * Persist the result of one study session: the cards carry their updated
+   * spaced-repetition state, and `score` updates the deck's personal best.
+   */
+  recordSession: (
+    id: string,
+    result: { cards: CardDTO[]; mode: GameMode; score?: number; elapsedMs?: number },
+  ) => Promise<void>;
 }
 
 const Ctx = createContext<AppDataValue | null>(null);
@@ -290,6 +330,7 @@ export function AppDataProvider({
   const [eventsRaw, setEventsRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [alarmsRaw, setAlarmsRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [focusRaw, setFocusRaw] = useState<Raw<Record<string, unknown>>[]>([]);
+  const [decksRaw, setDecksRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [loaded, setLoaded] = useState({ profile: false, tasks: false, goals: false, courses: false, assignments: false, events: false });
 
   useEffect(() => {
@@ -302,7 +343,7 @@ export function AppDataProvider({
     const mark = (k: keyof typeof loaded) => setLoaded((s) => (s[k] ? s : { ...s, [k]: true }));
     const snap =
       <T,>(
-        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions",
+        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions" | "decks",
         set: (v: T[]) => void,
         markKey?: keyof typeof loaded,
       ) =>
@@ -326,6 +367,7 @@ export function AppDataProvider({
       snap("events", setEventsRaw, "events"),
       snap("alarms", setAlarmsRaw),
       snap("focusSessions", setFocusRaw),
+      snap("decks", setDecksRaw),
     ];
     return () => unsubs.forEach((u) => u());
   }, [uid]);
@@ -603,6 +645,30 @@ export function AppDataProvider({
       }))
       .sort((x, y) => y.startedAt.localeCompare(x.startedAt));
 
+    const decks: DeckDTO[] = decksRaw
+      .map((d) => ({
+        id: d.id,
+        title: (d.title as string) ?? "Untitled deck",
+        description: (d.description as string) ?? null,
+        courseId: (d.courseId as string) ?? null,
+        subject: (d.subject as string) ?? null,
+        // Cards are hydrated defensively: a deck may predate a field, or have
+        // been written by an older build of the app.
+        cards: (((d.cards as Partial<CardDTO>[]) ?? []) as Partial<CardDTO>[])
+          .filter((c) => c && (c.front || c.back))
+          .map((c, i) => hydrateCard({ ...c, id: c.id ?? `${d.id}-${i}` })),
+        source: (d.source as DeckDTO["source"]) ?? "manual",
+        createdAt: (d.createdAt as string) ?? now(),
+        lastStudiedAt: (d.lastStudiedAt as string) ?? null,
+        bestMatchMs: typeof d.bestMatchMs === "number" ? d.bestMatchMs : null,
+        bestRushScore: typeof d.bestRushScore === "number" ? d.bestRushScore : 0,
+        sessions: typeof d.sessions === "number" ? d.sessions : 0,
+      }))
+      // Studied most recently first; never-studied decks fall back to creation.
+      .sort((a, b) =>
+        (b.lastStudiedAt ?? b.createdAt).localeCompare(a.lastStudiedAt ?? a.createdAt),
+      );
+
     const email = profile?.email || authEmail || "";
     const plan = effectivePlan(profile?.plan, email);
     const planLimits = limitsFor(plan);
@@ -629,6 +695,7 @@ export function AppDataProvider({
       events,
       alarms,
       focusSessions,
+      decks,
       ai,
       limits: {
         plan,
@@ -638,10 +705,11 @@ export function AppDataProvider({
         assistantUsedToday: profile?.assistantUsage?.[todayKey()] ?? 0,
         maxActiveGoals: orNull(planLimits.maxActiveGoals),
         maxCourses: orNull(planLimits.maxCourses),
+        maxDecks: orNull(planLimits.maxDecks),
         fullAnalytics: planLimits.fullAnalytics,
       },
     };
-  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, ai]);
+  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, ai]);
 
   const analytics = useMemo(
     () => deriveAnalytics(data.allTasks, data.goals, data.assignments),
@@ -1079,8 +1147,91 @@ export function AppDataProvider({
         guard(async () => {
           await addDoc(col(uid, "focusSessions"), { ...s, createdAt: now() });
         }, "Couldn't save session").then(() => undefined),
+
+      /* ------------------------------ Practice ------------------------------ */
+
+      addDeck: (input) =>
+        guard(async () => {
+          const cards = toCards(input.cards);
+          if (!cards.length) throw new Error("A deck needs at least one card.");
+          const doc = {
+            title: input.title.trim().slice(0, 120) || "Untitled deck",
+            description: input.description?.trim() || null,
+            courseId: input.courseId ?? null,
+            subject: input.subject?.trim() || null,
+            cards,
+            source: input.source ?? "manual",
+            createdAt: now(),
+            lastStudiedAt: null,
+            bestMatchMs: null,
+            bestRushScore: 0,
+            sessions: 0,
+          };
+          const ref = await addDoc(col(uid, "decks"), doc);
+          return { id: ref.id, ...doc } as DeckDTO;
+        }, "Couldn't create that deck"),
+
+      updateDeck: (id, patch) =>
+        guard(
+          () => updateDoc(entityDoc(uid, "decks", id), patch as Record<string, unknown>),
+          "Couldn't update that deck",
+        ).then(() => undefined),
+
+      deleteDeck: (id) =>
+        guard(async () => {
+          const snap = decksRaw.find((d) => d.id === id);
+          await deleteDoc(entityDoc(uid, "decks", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted deck \u201C${String(snap.title || "deck")}\u201D`,
+              onUndo: () => setDoc(entityDoc(uid, "decks", id), restore),
+            });
+          }
+        }, "Couldn't delete that deck").then(() => undefined),
+
+      setDeckCards: (id, cards) =>
+        guard(async () => {
+          const existing = decksRaw.find((d) => d.id === id);
+          const before = ((existing?.cards as Partial<CardDTO>[]) ?? []).filter(Boolean);
+          // Preserve each surviving card's spaced-repetition history: match on
+          // the front text so editing a definition doesn't reset the streak.
+          const byFront = new Map(
+            before.map((c) => [String(c.front ?? "").trim().toLowerCase(), c]),
+          );
+          const next = toCards(cards).map((c) => {
+            const prev = byFront.get(c.front.trim().toLowerCase());
+            return prev
+              ? { ...c, streak: prev.streak ?? 0, ease: prev.ease ?? 2.5, dueAt: prev.dueAt ?? null,
+                  lapses: prev.lapses ?? 0, seen: prev.seen ?? 0, correct: prev.correct ?? 0,
+                  id: prev.id ?? c.id }
+              : c;
+          });
+          if (!next.length) throw new Error("A deck needs at least one card.");
+          await updateDoc(entityDoc(uid, "decks", id), { cards: next });
+        }, "Couldn't save those cards").then(() => undefined),
+
+      recordSession: (id, result) =>
+        guard(async () => {
+          const existing = decksRaw.find((d) => d.id === id);
+          const patch: Record<string, unknown> = {
+            cards: result.cards,
+            lastStudiedAt: now(),
+            sessions: (typeof existing?.sessions === "number" ? existing.sessions : 0) + 1,
+          };
+          // Personal bests: fastest Match run, highest Rush score.
+          if (result.mode === "match" && result.elapsedMs != null) {
+            const best = existing?.bestMatchMs;
+            if (typeof best !== "number" || result.elapsedMs < best) patch.bestMatchMs = result.elapsedMs;
+          }
+          if (result.mode === "rush" && result.score != null) {
+            const best = typeof existing?.bestRushScore === "number" ? existing.bestRushScore : 0;
+            if (result.score > best) patch.bestRushScore = result.score;
+          }
+          await updateDoc(entityDoc(uid, "decks", id), patch);
+        }, "Couldn't save your progress").then(() => undefined),
     };
-  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw]);
+  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, decksRaw]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -4,9 +4,11 @@ import type {
   AssistantResult,
   BrainDumpItem,
   BrainDumpResult,
+  GenerateCardsResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
+import { dedupeCards } from "@/lib/practice/parse";
 import { HeuristicProvider } from "./heuristic";
 import { guessDueDate, tightenTitle } from "./nlp";
 import { scoreTasks } from "./score";
@@ -184,6 +186,31 @@ export abstract class LLMProvider implements AIProvider {
     }
   }
 
+  async generateCards(notes: string, title: string | null): Promise<GenerateCardsResult> {
+    try {
+      const parsed = await this.json<{ cards?: unknown }>(
+        CARDS_SYSTEM,
+        `${title ? `Deck topic: ${title}\n\n` : ""}The student's notes:\n"""${notes.slice(0, 12000)}"""`,
+        { schema: CARDS_SCHEMA },
+      );
+      if (!parsed || !Array.isArray(parsed.cards)) throw new Error("model did not return a cards array");
+
+      const cards = dedupeCards(
+        (parsed.cards as Record<string, unknown>[])
+          .map((c) => ({
+            front: typeof c?.front === "string" ? c.front.trim() : "",
+            back: typeof c?.back === "string" ? c.back.trim() : "",
+          }))
+          .filter((c) => c.front && c.back),
+      );
+      if (!cards.length) throw new Error("model returned no usable cards");
+      return { engine: this.name, cards };
+    } catch (e) {
+      console.error(`[ai:${this.name}] card generation fell back to heuristic:`, (e as Error).message);
+      return this.fallback.generateCards(notes, title);
+    }
+  }
+
   async assist(question: string, ctx: LifeOSContext): Promise<AssistantResult> {
     try {
       const system =
@@ -207,6 +234,40 @@ export abstract class LLMProvider implements AIProvider {
     }
   }
 }
+
+/* ------------------------------ practice ------------------------------ */
+
+const CARDS_SYSTEM = [
+  "You turn a student's own notes into study flashcards. Notes in, cards out.",
+  "",
+  "SOURCE — the hard rule: every card must be answerable FROM THE NOTES PROVIDED. Never add a fact the notes don't contain, however well you know the subject. If the notes are thin, return fewer cards. Returning 6 solid cards beats returning 25 with invented answers.",
+  "",
+  "WHAT EARNS A CARD: a term with a definition, a cause and its effect, a date and its event, a formula and what it computes, a person and what they did, a process and its steps. Skip anything that is only administrative (due dates, 'study for this', page numbers) or too vague to have one answer.",
+  "",
+  "FRONT: the prompt — a term or a direct question. Short, 1–8 words where possible. It must be specific enough to have exactly one right answer; \"What is it?\" is useless, \"Osmosis\" or \"What year did the Berlin Wall fall?\" is not.",
+  "",
+  "BACK: the answer, in the student's own terms from the notes, rewritten to be clean and self-contained. Aim for under 20 words. Do NOT restate the front. Do NOT begin with \"It is\" or \"This is\".",
+  "",
+  "COVERAGE: cover the whole set of notes, not just the opening paragraph. Don't write two cards that test the same fact.",
+  "",
+  'Output ONLY minified JSON: {"cards":[{"front":string,"back":string}]}. Aim for 8–25 cards, fewer when the notes are short.',
+].join("\n");
+
+const CARDS_SCHEMA = {
+  type: "object",
+  properties: {
+    cards: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { front: { type: "string" }, back: { type: "string" } },
+        required: ["front", "back"],
+        propertyOrdering: ["front", "back"],
+      },
+    },
+  },
+  required: ["cards"],
+} as const;
 
 /* ----------------------------- brain dump ----------------------------- */
 

@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/misc";
 import { TaskItem } from "@/components/app/task-item";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtDuration } from "@/lib/format";
+import { fmtDuration, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskDTO } from "@/lib/types";
 
@@ -39,8 +39,8 @@ export function TasksView() {
     );
     const open = sorted.filter((t) => t.status === "todo");
     return {
-      today: open.filter((t) => t.dueAt && new Date(t.dueAt) <= eod),
-      upcoming: open.filter((t) => !t.dueAt || new Date(t.dueAt) > eod),
+      today: open.filter((t) => t.dueAt && parseDate(t.dueAt) <= eod),
+      upcoming: open.filter((t) => !t.dueAt || parseDate(t.dueAt) > eod),
       completed: sorted
         .filter((t) => t.status === "done")
         .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")),
@@ -52,7 +52,7 @@ export function TasksView() {
 
   const openTasks = buckets.all;
   const totalMinutes = openTasks.reduce((n, t) => n + (t.estimatedMinutes ?? 0), 0);
-  const overdue = openTasks.filter((t) => t.dueAt && new Date(t.dueAt) < new Date()).length;
+  const overdue = openTasks.filter((t) => t.dueAt && parseDate(t.dueAt) < new Date()).length;
 
   async function save(draft: TaskDraft) {
     const payload = draftToPayload(draft);

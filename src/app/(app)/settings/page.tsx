@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -32,10 +33,39 @@ const TABS = [
   { id: "plan", label: "Plan", icon: CreditCard },
 ] as const;
 
+type TabId = (typeof TABS)[number]["id"];
+
+const isTabId = (v: string | null): v is TabId => TABS.some((t) => t.id === v);
+
+/**
+ * `useSearchParams` opts a route into dynamic rendering unless it sits behind a
+ * Suspense boundary, so the panel is split out and wrapped below.
+ */
 export default function SettingsPage() {
+  return (
+    <Suspense fallback={<PageHeader title="Settings" />}>
+      <SettingsPanel />
+    </Suspense>
+  );
+}
+
+function SettingsPanel() {
   const { data, setPlan } = useAppData();
+  const router = useRouter();
+  const params = useSearchParams();
   const p = data.profile;
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("schedule");
+
+  // The tab lives in the URL, so /settings?tab=school opens on School — that's
+  // where "Canvas settings" over on the Courses page points — and so a tab can
+  // be linked, bookmarked and reached with the back button.
+  const fromUrl = params.get("tab");
+  const [fallbackTab, setFallbackTab] = useState<TabId>("schedule");
+  const tab: TabId = isTabId(fromUrl) ? fromUrl : fallbackTab;
+
+  function selectTab(id: TabId) {
+    setFallbackTab(id);
+    router.replace(`/settings?tab=${id}`, { scroll: false });
+  }
 
   return (
     <>
@@ -46,7 +76,7 @@ export default function SettingsPage() {
           {TABS.map((t) => (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => selectTab(t.id)}
               className={cn(
                 "flex shrink-0 items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all",
                 tab === t.id

@@ -27,7 +27,7 @@ import { QuickAdd } from "./quick-add";
 import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
 import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
-import { greeting, relativeDue, isStaleOverdue } from "@/lib/format";
+import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -674,10 +674,10 @@ function buildModel(
   const open = data.tasks.filter((t) => t.status === "todo");
 
   const overdue = open.filter(
-    (t) => t.dueAt && new Date(t.dueAt) < start && !isStaleOverdue(t.dueAt, now),
+    (t) => t.dueAt && parseDate(t.dueAt) < start && !isStaleOverdue(t.dueAt, now),
   );
   const dueToday = open.filter(
-    (t) => t.dueAt && new Date(t.dueAt) >= start && new Date(t.dueAt) <= end,
+    (t) => t.dueAt && parseDate(t.dueAt) >= start && parseDate(t.dueAt) <= end,
   );
   const scheduledToday = open.filter(
     (t) => t.scheduledAt && new Date(t.scheduledAt) >= start && new Date(t.scheduledAt) <= end,
@@ -701,13 +701,13 @@ function buildModel(
     ...dueToday
       .filter((t) => !scheduledToday.some((x) => x.id === t.id))
       .map((t) => {
-        const d = new Date(t.dueAt!);
+        const d = parseDate(t.dueAt!);
         return { key: `d-${t.id}`, at: d.getHours() === 0 ? end : d, title: `${t.title} — due` };
       }),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const upTasks = open
-    .filter((t) => t.dueAt && new Date(t.dueAt) > end)
+    .filter((t) => t.dueAt && parseDate(t.dueAt) > end)
     .map((t) => ({
       id: t.id,
       title: t.title,
@@ -717,7 +717,7 @@ function buildModel(
       context: t.course?.name ?? t.category ?? undefined,
     }));
   const upAssign = data.assignments
-    .filter((a) => a.status === "open" && a.dueAt && new Date(a.dueAt) >= start)
+    .filter((a) => a.status === "open" && a.dueAt && parseDate(a.dueAt) >= start)
     .map((a) => ({
       id: a.id,
       title: a.title,
@@ -727,7 +727,7 @@ function buildModel(
       context: a.course?.name ?? undefined,
     }));
   const deadlineItems = [...upTasks, ...upAssign].sort(
-    (a, b) => +new Date(a.dueAt) - +new Date(b.dueAt),
+    (a, b) => +parseDate(a.dueAt) - +parseDate(b.dueAt),
   );
 
   const goals = data.goals
@@ -741,12 +741,12 @@ function buildModel(
   const soonEnd = new Date(start.getTime() + 3 * 86400000);
   const openAssignments = data.assignments
     .filter((a) => a.status === "open" && a.dueAt && !isStaleOverdue(a.dueAt, now))
-    .sort((a, b) => +new Date(a.dueAt!) - +new Date(b.dueAt!));
+    .sort((a, b) => +parseDate(a.dueAt!) - +parseDate(b.dueAt!));
   const school = {
     total: openAssignments.length,
-    dueSoon: openAssignments.filter((a) => new Date(a.dueAt!) <= soonEnd).length,
+    dueSoon: openAssignments.filter((a) => parseDate(a.dueAt!) <= soonEnd).length,
     dueTomorrow: openAssignments.filter(
-      (a) => new Date(a.dueAt!) > end && new Date(a.dueAt!) <= tomorrowEnd,
+      (a) => parseDate(a.dueAt!) > end && parseDate(a.dueAt!) <= tomorrowEnd,
     ).length,
     items: openAssignments.slice(0, 3).map((a) => ({
       id: a.id,

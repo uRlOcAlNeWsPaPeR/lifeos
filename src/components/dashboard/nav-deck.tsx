@@ -10,6 +10,9 @@ import {
   GraduationCap,
   BarChart3,
   ArrowUpRight,
+  Gamepad2,
+  Percent,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +30,9 @@ export const NAV_ICONS = {
   goals: Target,
   school: GraduationCap,
   analytics: BarChart3,
+  practice: Gamepad2,
+  grades: Percent,
+  assistant: Sparkles,
 };
 
 /**
