@@ -23,6 +23,8 @@ export const PLAN_LIMITS = {
 
 export type PlanId = keyof typeof PLAN_LIMITS;
 
+const normEmail = (email: string | null | undefined) => (email ?? "").trim().toLowerCase();
+
 /**
  * Accounts that always resolve to the top tier regardless of what's stored in
  * Firestore — the people who build and run LifeOS. Compared case-insensitively.
@@ -31,16 +33,31 @@ export const CREATOR_EMAILS = new Set([
   "lifeos3030@gmail.com",
 ]);
 
+/**
+ * Hand-granted Student+ — friends, testers, comped accounts. Same effect as a
+ * stored `student_plus` plan, but it can't be lost to a plan reset and needs no
+ * Firestore write. Compared case-insensitively.
+ */
+export const COMPED_EMAILS = new Set([
+  "vijey7218@mydusd.org",
+]);
+
 export function isCreator(email: string | null | undefined): boolean {
-  return !!email && CREATOR_EMAILS.has(email.trim().toLowerCase());
+  return CREATOR_EMAILS.has(normEmail(email));
 }
 
-/** The plan actually in force: creator override → stored plan → free fallback. */
+/** Any account granted the top tier by email — creator or comped. */
+export function hasGrantedPlan(email: string | null | undefined): boolean {
+  const e = normEmail(email);
+  return CREATOR_EMAILS.has(e) || COMPED_EMAILS.has(e);
+}
+
+/** The plan actually in force: email grant → stored plan → free fallback. */
 export function effectivePlan(
   plan: string | null | undefined,
   email?: string | null,
 ): PlanId {
-  if (isCreator(email)) return "student_plus";
+  if (hasGrantedPlan(email)) return "student_plus";
   if (plan === "pro") return "student_plus"; // legacy tier — folded into Student+
   return plan && plan in PLAN_LIMITS ? (plan as PlanId) : "free";
 }

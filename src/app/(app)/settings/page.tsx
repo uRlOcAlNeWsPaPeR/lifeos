@@ -16,7 +16,7 @@ import {
 } from "./settings-client";
 import { CanvasSettings } from "./canvas-settings";
 import { useAppData } from "@/lib/store/app-data";
-import { planLabel, isCreator } from "@/lib/plan-limits";
+import { planLabel, isCreator, hasGrantedPlan } from "@/lib/plan-limits";
 import { cn } from "@/lib/utils";
 
 function planSummary(l: ReturnType<typeof useAppData>["data"]["limits"]) {
@@ -163,12 +163,13 @@ function SettingsPanel() {
                 </div>
                 <Badge tone={p.plan === "free" ? "muted" : "primary"}>Current</Badge>
               </Card>
-              {isCreator(p.email) ? (
+              {hasGrantedPlan(p.email) ? (
                 <Card className="flex items-center gap-3 border-primary/30 bg-primary/[0.06] p-4">
                   <Sparkles className="h-4 w-4 shrink-0 text-primary" />
                   <p className="text-sm">
-                    You&apos;re signed in as a LifeOS creator — Student+ is unlocked on this
-                    account and can&apos;t be downgraded.
+                    {isCreator(p.email)
+                      ? "You're signed in as a LifeOS creator — Student+ is unlocked on this account and can't be downgraded."
+                      : "Student+ is unlocked on this account — enjoy."}
                   </p>
                 </Card>
               ) : (
