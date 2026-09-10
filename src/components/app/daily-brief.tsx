@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAppData } from "@/lib/store/app-data";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
-import { greeting, isStaleOverdue } from "@/lib/format";
+import { greeting, isStaleOverdue, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskDTO } from "@/lib/types";
 
@@ -258,12 +258,12 @@ function build(
   const open = data.tasks.filter((t) => t.status === "todo");
 
   const overdue = open
-    .filter((t) => t.dueAt && new Date(t.dueAt) < startToday && !isStaleOverdue(t.dueAt, now))
+    .filter((t) => t.dueAt && parseDate(t.dueAt) < startToday && !isStaleOverdue(t.dueAt, now))
     .sort((a, b) => (a.dueAt ?? "").localeCompare(b.dueAt ?? ""));
 
   const today = open
     .filter((t) => {
-      const due = t.dueAt ? new Date(t.dueAt) : null;
+      const due = t.dueAt ? parseDate(t.dueAt) : null;
       const sched = t.scheduledAt ? new Date(t.scheduledAt) : null;
       return (
         (due && due >= startToday && due <= endToday) ||
@@ -274,7 +274,7 @@ function build(
 
   const upcoming = [
     ...open
-      .filter((t) => t.dueAt && new Date(t.dueAt) > endToday)
+      .filter((t) => t.dueAt && parseDate(t.dueAt) > endToday)
       .map((t) => t),
   ]
     .sort((a, b) => (a.dueAt ?? "").localeCompare(b.dueAt ?? ""))
@@ -379,7 +379,7 @@ function build(
 
 function rank(t: TaskDTO): number {
   const w = { urgent: 4, high: 3, medium: 2, low: 1 }[t.priority] ?? 2;
-  return w + (t.dueAt && new Date(t.dueAt) < new Date() ? 5 : 0);
+  return w + (t.dueAt && parseDate(t.dueAt) < new Date() ? 5 : 0);
 }
 
 function countDoneToday(data: ReturnType<typeof useAppData>["data"]): number {

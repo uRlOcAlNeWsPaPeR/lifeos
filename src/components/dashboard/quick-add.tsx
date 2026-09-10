@@ -8,14 +8,10 @@ import { Modal } from "@/components/ui/modal";
 import { Field, Input, Select } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAppData } from "@/lib/store/app-data";
+import { todayKey } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
 type Sheet = null | "task" | "event" | "study" | "reminder";
-
-const todayKey = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
 
 /**
  * Floating LifeOS control — expands into quick creators. Every action opens the

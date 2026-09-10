@@ -1080,7 +1080,7 @@ export function AppDataProvider({
           await addDoc(col(uid, "focusSessions"), { ...s, createdAt: now() });
         }, "Couldn't save session").then(() => undefined),
     };
-  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw]);
+  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

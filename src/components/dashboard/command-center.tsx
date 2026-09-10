@@ -13,7 +13,7 @@ import { DeadlineList } from "@/components/app/deadline-list";
 import { Progress } from "@/components/ui/progress";
 import { goalProgress } from "@/lib/analytics-derive";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
-import { greeting } from "@/lib/format";
+import { greeting, parseDate } from "@/lib/format";
 import type { Prefs } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
@@ -336,9 +336,9 @@ function buildModel(
   const prefs = data.profile.prefs;
   const open = data.tasks.filter((t) => t.status === "todo");
 
-  const overdue = open.filter((t) => t.dueAt && new Date(t.dueAt) < startToday);
+  const overdue = open.filter((t) => t.dueAt && parseDate(t.dueAt) < startToday);
   const dueToday = open.filter(
-    (t) => t.dueAt && new Date(t.dueAt) >= startToday && new Date(t.dueAt) <= endToday,
+    (t) => t.dueAt && parseDate(t.dueAt) >= startToday && parseDate(t.dueAt) <= endToday,
   );
   const scheduledToday = open.filter(
     (t) => t.scheduledAt && new Date(t.scheduledAt) >= startToday && new Date(t.scheduledAt) <= endToday,
@@ -389,7 +389,7 @@ function buildModel(
   }
   for (const t of dueToday) {
     if (scheduledToday.some((x) => x.id === t.id)) continue;
-    const d = new Date(t.dueAt!);
+    const d = parseDate(t.dueAt!);
     moments.push({
       key: `d-${t.id}`,
       at: d.getHours() === 0 ? endToday : d,
@@ -425,7 +425,7 @@ function buildModel(
 
   // deadlines (beyond today)
   const upTasks = open
-    .filter((t) => t.dueAt && new Date(t.dueAt) > endToday)
+    .filter((t) => t.dueAt && parseDate(t.dueAt) > endToday)
     .map((t) => ({
       id: t.id,
       title: t.title,
@@ -435,7 +435,7 @@ function buildModel(
       context: t.course?.name ?? t.category ?? undefined,
     }));
   const upAssign = data.assignments
-    .filter((a) => a.status !== "graded" && a.dueAt && new Date(a.dueAt) >= startToday)
+    .filter((a) => a.status !== "graded" && a.dueAt && parseDate(a.dueAt) >= startToday)
     .map((a) => ({
       id: a.id,
       title: a.title,
@@ -445,7 +445,7 @@ function buildModel(
       context: a.course?.name ?? undefined,
     }));
   const deadlines = [...upTasks, ...upAssign]
-    .sort((a, b) => +new Date(a.dueAt) - +new Date(b.dueAt))
+    .sort((a, b) => +parseDate(a.dueAt) - +parseDate(b.dueAt))
     .slice(0, 8);
 
   const goals = data.goals

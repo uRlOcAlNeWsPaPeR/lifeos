@@ -44,6 +44,19 @@ export function fmtTime(d: string | Date) {
   return new Date(d).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * Does this stored value carry a clock time, or is it just a calendar day?
+ *
+ * Ask the string, not the parsed Date: a bare "2026-09-10" parsed with
+ * `new Date()` becomes 8pm the previous evening in New York, so a
+ * `getHours() !== 0` test reports a due *time* the student never set.
+ */
+export function hasTime(d: string | Date | null | undefined): boolean {
+  if (!d) return false;
+  if (d instanceof Date) return d.getHours() !== 0 || d.getMinutes() !== 0;
+  return d.includes("T") || d.includes(" ");
+}
+
 export function fmtDuration(minutes: number | null | undefined) {
   if (!minutes) return "";
   if (minutes < 60) return `${minutes}m`;
