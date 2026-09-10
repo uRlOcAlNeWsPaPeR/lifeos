@@ -147,9 +147,25 @@ export const generateCardsSchema = z.object({
   title: z.string().max(120).optional().nullable(),
 });
 
-export const assistantSchema = z.object({
-  question: z.string().min(2).max(1000),
-});
+export const assistantSchema = z
+  .object({
+    // Legacy single-shot form.
+    question: z.string().min(2).max(1000).optional(),
+    // Conversational form — the whole chat so the assistant can follow up.
+    messages: z
+      .array(
+        z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().min(1).max(4000),
+        }),
+      )
+      .min(1)
+      .max(24)
+      .optional(),
+  })
+  .refine((v) => Boolean(v.question) || Boolean(v.messages?.length), {
+    message: "Ask a question",
+  });
 
 export const planUpgradeSchema = z.object({
   plan: z.enum(["free", "student_plus"]),

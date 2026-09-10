@@ -1,8 +1,20 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Sparkles, Send, ListChecks, Target, GraduationCap, CalendarDays } from "lucide-react";
+import {
+  Sparkles,
+  Send,
+  ListChecks,
+  Target,
+  GraduationCap,
+  CalendarDays,
+  Plus,
+  Trash2,
+  Check,
+  X,
+  CircleCheck,
+} from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MiniMarkdown } from "@/components/app/mini-markdown";
 import { authedApi } from "@/lib/client";
+import { useAppData } from "@/lib/store/app-data";
 import { cn } from "@/lib/utils";
+import type { AssistantAction } from "@/lib/ai/types";
 
 interface Reference {
   type: "task" | "goal" | "assignment" | "course" | "event";
@@ -21,15 +35,18 @@ interface Turn {
   role: "user" | "assistant";
   content: string;
   references?: Reference[];
+  actions?: AssistantAction[];
   engine?: string;
 }
 
+type ActionStatus = "idle" | "working" | "done" | "error" | "dismissed";
+
 const SUGGESTIONS = [
   "What should I work on tonight?",
-  "When should I study for my physics test?",
+  "Add a task to study for my physics test Friday",
   "What assignments am I falling behind on?",
-  "Make me a study plan for this week.",
-  "How are my goals doing?",
+  "Add my AP Calc course",
+  "Delete the task called laundry",
 ];
 
 const REF_HREF: Record<Reference["type"], string> = {
@@ -47,6 +64,8 @@ const REF_ICON = {
   event: CalendarDays,
 };
 
+const isDelete = (a: AssistantAction) => a.kind.startsWith("delete_");
+
 export function AssistantView({
   name,
   engineLabel,
@@ -60,29 +79,50 @@ export function AssistantView({
   perDay: number | null;
   usedToday: number;
 }) {
+  const store = useAppData();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [used, setUsed] = useState(usedToday);
+  // keyed "<turnIndex>:<actionIndex>"
+  const [actionState, setActionState] = useState<Record<string, ActionStatus>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const remaining = perDay === null ? null : Math.max(0, perDay - used);
   const atLimit = remaining === 0;
 
+  const scrollDown = () =>
+    setTimeout(() => scrollRef.current?.scrollTo({ top: 9e9, behavior: "smooth" }), 50);
+
   async function ask(question: string) {
     if (!question.trim() || loading || atLimit) return;
-    setTurns((t) => [...t, { role: "user", content: question }]);
+    const history = [...turns, { role: "user" as const, content: question }];
+    setTurns(history);
     setInput("");
     setLoading(true);
+    scrollDown();
     try {
-      const res = await authedApi<{ answer: string; references: Reference[]; engine: string }>(
-        "/api/assistant",
-        { method: "POST", body: { question } },
-      );
+      const res = await authedApi<{
+        answer: string;
+        references: Reference[];
+        actions: AssistantAction[];
+        engine: string;
+      }>("/api/assistant", {
+        method: "POST",
+        body: {
+          messages: history.slice(-24).map((t) => ({ role: t.role, content: t.content })),
+        },
+      });
       setUsed((n) => n + 1);
       setTurns((t) => [
         ...t,
-        { role: "assistant", content: res.answer, references: res.references, engine: res.engine },
+        {
+          role: "assistant",
+          content: res.answer,
+          references: res.references,
+          actions: res.actions,
+          engine: res.engine,
+        },
       ]);
     } catch (e) {
       setTurns((t) => [
@@ -94,7 +134,17 @@ export function AssistantView({
       ]);
     } finally {
       setLoading(false);
-      setTimeout(() => scrollRef.current?.scrollTo({ top: 9e9, behavior: "smooth" }), 50);
+      scrollDown();
+    }
+  }
+
+  async function runAction(key: string, a: AssistantAction) {
+    setActionState((s) => ({ ...s, [key]: "working" }));
+    try {
+      const okResult = await execute(store, a);
+      setActionState((s) => ({ ...s, [key]: okResult ? "done" : "error" }));
+    } catch {
+      setActionState((s) => ({ ...s, [key]: "error" }));
     }
   }
 
@@ -102,13 +152,11 @@ export function AssistantView({
     <>
       <PageHeader
         title="AI Assistant"
-        description="Ask about your LifeOS data — priorities, deadlines, study plans. It answers from your tasks, goals and courses, not the open web."
+        description="Ask about your tasks, deadlines and goals — or tell it to add and remove things for you. It works from your LifeOS data, not the open web."
         action={
           <div className="flex items-center gap-2">
             {remaining !== null && (
-              <Badge tone={remaining === 0 ? "warning" : "muted"}>
-                {remaining} left today
-              </Badge>
+              <Badge tone={remaining === 0 ? "warning" : "muted"}>{remaining} left today</Badge>
             )}
             <Badge tone="muted">{engineLabel}</Badge>
           </div>
@@ -170,6 +218,24 @@ export function AssistantView({
                           })}
                         </div>
                       )}
+                      {turn.actions && turn.actions.length > 0 && (
+                        <div className="mt-3 space-y-2">
+                          {turn.actions.map((a, j) => {
+                            const key = `${i}:${j}`;
+                            return (
+                              <ActionCard
+                                key={key}
+                                action={a}
+                                status={actionState[key] ?? "idle"}
+                                onRun={() => runAction(key, a)}
+                                onDismiss={() =>
+                                  setActionState((s) => ({ ...s, [key]: "dismissed" }))
+                                }
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
                     </>
                   ) : (
                     <p className="text-sm">{turn.content}</p>
@@ -214,7 +280,7 @@ export function AssistantView({
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about your tasks, deadlines or goals…"
+              placeholder="Ask, or tell it to add / remove something…"
               disabled={loading}
             />
             <Button type="submit" size="icon" disabled={loading || !input.trim()}>
@@ -225,4 +291,106 @@ export function AssistantView({
       </Card>
     </>
   );
+}
+
+function ActionCard({
+  action,
+  status,
+  onRun,
+  onDismiss,
+}: {
+  action: AssistantAction;
+  status: ActionStatus;
+  onRun: () => void;
+  onDismiss: () => void;
+}) {
+  const destructive = isDelete(action);
+  const Icon = useMemo(() => (destructive ? Trash2 : action.kind === "complete_task" ? CircleCheck : Plus), [
+    destructive,
+    action.kind,
+  ]);
+
+  if (status === "dismissed") return null;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2 rounded-xl border p-2.5 text-sm",
+        destructive ? "border-destructive/30 bg-destructive/5" : "border-border bg-background/40",
+      )}
+    >
+      <Icon
+        className={cn("h-4 w-4 shrink-0", destructive ? "text-destructive" : "text-primary")}
+      />
+      <span className="min-w-0 flex-1">{action.label}</span>
+
+      {status === "done" ? (
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+          <Check className="h-3.5 w-3.5" />
+          {destructive ? "Removed" : action.kind === "complete_task" ? "Marked done" : "Added"}
+        </span>
+      ) : status === "error" ? (
+        <span className="text-xs font-medium text-destructive">Didn&apos;t work — try the page</span>
+      ) : (
+        <span className="flex gap-1.5">
+          <Button
+            size="sm"
+            variant={destructive ? "destructive" : "primary"}
+            loading={status === "working"}
+            onClick={onRun}
+          >
+            {destructive ? "Delete" : action.kind === "complete_task" ? "Do it" : "Add"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={onDismiss} disabled={status === "working"}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Run one confirmed action through the app store. Returns false on a soft failure. */
+async function execute(
+  store: ReturnType<typeof useAppData>,
+  a: AssistantAction,
+): Promise<boolean> {
+  switch (a.kind) {
+    case "add_task":
+      return Boolean(
+        await store.addTask({
+          title: a.title,
+          dueAt: a.dueAt,
+          priority: a.priority,
+          notes: a.notes,
+          courseId: a.courseId,
+          source: "assistant",
+        }),
+      );
+    case "add_course":
+      return Boolean(
+        await store.addCourse({ name: a.name, code: a.code, instructor: a.instructor }),
+      );
+    case "add_assignment":
+      return Boolean(
+        await store.addAssignment({
+          courseId: a.courseId,
+          title: a.title,
+          dueAt: a.dueAt,
+          pointsPossible: a.pointsPossible,
+        }),
+      );
+    case "complete_task":
+      await store.toggleTask(a.id);
+      return true;
+    case "delete_task":
+      await store.deleteTask(a.id);
+      return true;
+    case "delete_course":
+      await store.deleteCourse(a.id);
+      return true;
+    case "delete_assignment":
+      await store.deleteAssignment(a.id);
+      return true;
+  }
 }

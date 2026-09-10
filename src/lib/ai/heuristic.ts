@@ -1,5 +1,6 @@
 import type {
   AIProvider,
+  AssistantMessage,
   AssistantResult,
   AssistantReference,
   BrainDumpItem,
@@ -131,8 +132,24 @@ export class HeuristicProvider implements AIProvider {
     return { engine: "heuristic", intro, picks };
   }
 
-  async assist(question: string, ctx: LifeOSContext): Promise<AssistantResult> {
+  async assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult> {
+    // The offline engine can't act on data — it only answers. The last thing the
+    // student typed is the question; any "add / delete X" ask just gets a nudge
+    // to use the page directly, with no `actions`.
+    const question =
+      [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
     const q = question.toLowerCase();
+
+    if (/\b(add|create|make|delete|remove|rename)\b/.test(q) && !/\bplan\b/.test(q)) {
+      return {
+        engine: "heuristic",
+        answer:
+          "I can point you to the right place, but the offline assistant can't change your data. " +
+          "Add or remove tasks on **Tasks**, courses and assignments on **School**, goals on **Goals**.",
+        references: [],
+        actions: [],
+      };
+    }
     const refs: AssistantReference[] = [];
     const scored = scoreTasks(ctx);
     const now = ctx.now;
@@ -183,7 +200,7 @@ export class HeuristicProvider implements AIProvider {
           `\n**Suggested recovery:** tackle the oldest overdue item first tonight, then the assignment closest to its deadline. Want me to draft study sessions for these?`,
         );
       }
-      return { engine: "heuristic", answer: lines.join("\n"), references: refs };
+      return { engine: "heuristic", answer: lines.join("\n"), references: refs, actions: [] };
     }
 
     // Intent: study plan / plan my week
@@ -210,7 +227,7 @@ export class HeuristicProvider implements AIProvider {
         }
         lines.push("", "These slots come from your onboarding schedule. Adjust any block and re-ask to rebalance.");
       }
-      return { engine: "heuristic", answer: lines.join("\n"), references: refs };
+      return { engine: "heuristic", answer: lines.join("\n"), references: refs, actions: [] };
     }
 
     // Intent: when should I study for X
@@ -251,7 +268,7 @@ export class HeuristicProvider implements AIProvider {
         );
         if (slots[0]) lines.push("", `Your next free study window is **${fmtSlot(slots[0])}**.`);
       }
-      return { engine: "heuristic", answer: lines.join("\n"), references: refs };
+      return { engine: "heuristic", answer: lines.join("\n"), references: refs, actions: [] };
     }
 
     // Intent: what should I work on (tonight / today / now)
@@ -288,7 +305,7 @@ export class HeuristicProvider implements AIProvider {
           );
         }
       }
-      return { engine: "heuristic", answer: lines.join("\n"), references: refs };
+      return { engine: "heuristic", answer: lines.join("\n"), references: refs, actions: [] };
     }
 
     // Intent: goal progress
@@ -304,7 +321,7 @@ export class HeuristicProvider implements AIProvider {
           lines.push(`- **${g.title}** — ${g.progress}% complete${g.dueAt ? ` · ${relativeDue(g.dueAt, now)}` : ""}`);
         }
       });
-      return { engine: "heuristic", answer: lines.join("\n"), references: refs };
+      return { engine: "heuristic", answer: lines.join("\n"), references: refs, actions: [] };
     }
 
     // Fallback: today overview
@@ -324,7 +341,12 @@ export class HeuristicProvider implements AIProvider {
       "",
       "_Ask me things like “what should I work on tonight?”, “when should I study for my physics test?”, or “make me a study plan for this week.”_",
     ];
-    return { engine: "heuristic", answer: lines.filter((l) => l !== undefined).join("\n"), references: refs };
+    return {
+      engine: "heuristic",
+      answer: lines.filter((l) => l !== undefined).join("\n"),
+      references: refs,
+      actions: [],
+    };
   }
 }
 

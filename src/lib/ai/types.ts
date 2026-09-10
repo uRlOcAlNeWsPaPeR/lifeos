@@ -100,10 +100,55 @@ export interface AssistantReference {
   title: string;
 }
 
+/** One turn of the assistant conversation, as sent to the model. */
+export interface AssistantMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+/**
+ * A change the assistant proposes to the student's LifeOS data. The assistant
+ * NEVER writes anything itself — each action is shown in the chat as a one-tap
+ * confirm and then run through the normal app store, undo bar included. Every
+ * id / courseId is validated against the real data server-side before it reaches
+ * the client (see `sanitizeActions`).
+ */
+export type AssistantAction =
+  | {
+      kind: "add_task";
+      label: string;
+      title: string;
+      dueAt: string | null;
+      priority: Priority;
+      notes: string | null;
+      courseId: string | null;
+    }
+  | {
+      kind: "add_course";
+      label: string;
+      name: string;
+      code: string | null;
+      instructor: string | null;
+    }
+  | {
+      kind: "add_assignment";
+      label: string;
+      courseId: string;
+      title: string;
+      dueAt: string | null;
+      pointsPossible: number | null;
+    }
+  | { kind: "complete_task"; label: string; id: string }
+  | { kind: "delete_task"; label: string; id: string }
+  | { kind: "delete_course"; label: string; id: string }
+  | { kind: "delete_assignment"; label: string; id: string };
+
 export interface AssistantResult {
   engine: AIEngine;
   answer: string; // markdown
   references: AssistantReference[];
+  /** Proposed data changes awaiting the student's confirm. Often empty. */
+  actions: AssistantAction[];
 }
 
 /** One Practice card the model pulled out of a student's notes. */
@@ -121,7 +166,7 @@ export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
   prioritize(ctx: LifeOSContext): Promise<PrioritizeResult>;
-  assist(question: string, ctx: LifeOSContext): Promise<AssistantResult>;
+  assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult>;
   /** Turn a block of the student's own notes into study cards. */
   generateCards(notes: string, title: string | null): Promise<GenerateCardsResult>;
 }

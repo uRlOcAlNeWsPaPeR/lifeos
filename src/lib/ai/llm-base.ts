@@ -1,6 +1,7 @@
 import type {
   AIEngine,
   AIProvider,
+  AssistantMessage,
   AssistantResult,
   BrainDumpItem,
   BrainDumpResult,
@@ -10,6 +11,7 @@ import type {
 } from "./types";
 import { dedupeCards } from "@/lib/practice/parse";
 import { HeuristicProvider } from "./heuristic";
+import { sanitizeActions } from "./actions";
 import { guessDueDate, tightenTitle } from "./nlp";
 import { scoreTasks } from "./score";
 
@@ -211,29 +213,71 @@ export abstract class LLMProvider implements AIProvider {
     }
   }
 
-  async assist(question: string, ctx: LifeOSContext): Promise<AssistantResult> {
+  async assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult> {
     try {
-      const system =
-        "You are the LifeOS assistant. Answer ONLY using the student's LifeOS data provided. " +
-        "Be specific: cite real task / assignment titles and dates. Never give generic advice, never invent items or deadlines. " +
-        "If the data doesn't contain the answer, say what the student should add and where. " +
-        "Keep the answer to short markdown. " +
-        'Respond ONLY with minified JSON: {"answer":string,"references":[{"type":string,"id":string,"title":string}]} where type is one of task|goal|assignment|course|event and id is a real id from the data.';
-      const parsed = await this.json<AssistantResult>(
-        system,
-        `LifeOS data:\n${this.snapshot(ctx)}\n\nStudent question: "${question}"`,
+      const transcript = messages
+        .slice(-12)
+        .map((m) => `${m.role === "user" ? "Student" : "You"}: ${m.content}`)
+        .join("\n");
+      const parsed = await this.json<{
+        answer?: unknown;
+        references?: unknown;
+        actions?: unknown;
+      }>(
+        ASSIST_SYSTEM,
+        `LifeOS data (ids are real — use them verbatim):\n${this.snapshot(ctx)}\n\n` +
+          `Conversation so far:\n${transcript}`,
       );
+
+      const actions = sanitizeActions(parsed.actions, ctx);
+      const answer =
+        typeof parsed.answer === "string" && parsed.answer.trim()
+          ? parsed.answer.trim()
+          : actions.length
+            ? "Here's what I can do — confirm below."
+            : "";
+      if (!answer && !actions.length) throw new Error("empty assistant response");
+
       return {
         engine: this.name,
-        answer: parsed.answer,
+        answer,
         references: Array.isArray(parsed.references) ? parsed.references : [],
+        actions,
       };
     } catch (e) {
       console.error(`[ai:${this.name}] assistant fell back to heuristic:`, (e as Error).message);
-      return this.fallback.assist(question, ctx);
+      return this.fallback.assist(messages, ctx);
     }
   }
 }
+
+const ASSIST_SYSTEM = [
+  "You are the LifeOS assistant for a student. You work ONLY from the student's own LifeOS data (tasks, goals, courses, assignments, events) provided with each message — never the open web, never generic advice.",
+  "",
+  "ANSWERING: be specific and cite real titles and dates from the data. Keep `answer` to short markdown. If the data can't answer something, say what to add and where. Populate `references` with the real ids you mention (type ∈ task|goal|assignment|course|event).",
+  "",
+  "DOING THINGS — the student can also ask you to add or remove items. You never change data yourself; you PROPOSE changes in `actions` and the student taps to confirm. Only ever propose an action the student clearly asked for in this conversation.",
+  "",
+  "Action kinds:",
+  '- {"kind":"add_task","title":string,"dueAt":ISO date or null,"priority":"low|medium|high|urgent","notes":string or null,"courseId":a real course id or null}',
+  '- {"kind":"add_course","name":string,"code":string or null,"instructor":string or null}',
+  '- {"kind":"add_assignment","courseId":a real course id,"title":string,"dueAt":ISO date or null,"pointsPossible":number or null}',
+  '- {"kind":"complete_task","id":a real OPEN task id}',
+  '- {"kind":"delete_task","id":a real task id}',
+  '- {"kind":"delete_course","id":a real course id}   (also removes its assignments)',
+  '- {"kind":"delete_assignment","id":a real assignment id}',
+  "",
+  "ASK BEFORE YOU ACT — do NOT emit an action until you have what you need. Ask ONE short follow-up question in `answer` (and send an empty `actions` array) when anything below is missing or ambiguous:",
+  "- add a course → you need the course name; ask for the teacher too (it's folded into the name) and, if the student mentions class times, capture them in the answer but note LifeOS tracks meeting times on the calendar, not the course.",
+  "- add an assignment → you need which course (match it to a course in the data and use that courseId — if you can't tell which, ask) and ideally a due date; ask for the due date and points if not given.",
+  "- add a task → a due date and which class it's for make it far more useful; ask if the student didn't say.",
+  "- delete anything → if more than one item matches what they described, list the matches and ask which; never guess.",
+  "Once the student answers, emit the action(s). Confirmations like \"yes do it\" refer to what you just proposed.",
+  "",
+  "Never invent an id. Never propose a deletion the student didn't ask for. Dates must be real calendar dates (resolve \"Friday\"/\"tomorrow\" against the dateReference map).",
+  "",
+  'Respond ONLY with minified JSON: {"answer":string,"references":[{"type":string,"id":string,"title":string}],"actions":[...]}. `actions` is usually [].',
+].join("\n");
 
 /* ------------------------------ practice ------------------------------ */
 
