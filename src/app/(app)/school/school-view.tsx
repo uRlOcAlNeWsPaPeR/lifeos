@@ -27,7 +27,7 @@ import {
   CALENDAR_INTEGRATIONS,
   type IntegrationCardInfo,
 } from "@/lib/integrations/descriptors";
-import { relativeDue, fmtDate, timeAgo, isStaleOverdue, courseNameWithTeacher, lastName } from "@/lib/format";
+import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName } from "@/lib/format";
 import { assignmentGradeLabel, courseGrade, fmtPct } from "@/lib/grades";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/lib/canvas/use-canvas";
@@ -153,13 +153,19 @@ function CourseCard({
   onOpenAssignment: (a: AssignmentDTO) => void;
   onAddAssignment: () => void;
 }) {
-  // Hide assignments that have been open and overdue for weeks — abandoned clutter.
-  // Turned-in / graded work stays (it's the grade record).
-  const assignments = course.assignments.filter(
-    (a) => !(a.status === "open" && isStaleOverdue(a.dueAt)),
-  );
-  const [open, setOpen] = useState(assignments.length > 0);
-  const openCount = assignments.filter((a) => a.status === "open").length;
+  // Default view shows only what's still actionable: upcoming work plus anything
+  // turned in or graded (the grade record). Open assignments whose due date has
+  // passed are tucked away behind "Show all" — still there, still deletable, just
+  // not cluttering the day-to-day list.
+  const isPastDue = (a: AssignmentDTO) =>
+    a.status === "open" && Boolean(relativeDue(a.dueAt)?.past);
+  const upcoming = course.assignments.filter((a) => !isPastDue(a));
+  const hiddenCount = course.assignments.length - upcoming.length;
+
+  const [open, setOpen] = useState(upcoming.length > 0);
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? course.assignments : upcoming;
+  const openCount = visible.filter((a) => a.status === "open").length;
   const g = courseGrade(course);
 
   return (
@@ -199,23 +205,34 @@ function CourseCard({
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <button
           onClick={() => setOpen((o) => !o)}
           className="flex items-center gap-1 text-xs font-medium text-primary"
         >
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />
-          {assignments.length} assignment{assignments.length === 1 ? "" : "s"}
+          {visible.length} assignment{visible.length === 1 ? "" : "s"}
           {openCount > 0 && ` · ${openCount} open`}
         </button>
+        {hiddenCount > 0 && (
+          <button
+            onClick={() => {
+              setShowAll((s) => !s);
+              setOpen(true);
+            }}
+            className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {showAll ? "Upcoming only" : `All assignments · ${hiddenCount} overdue`}
+          </button>
+        )}
         <Button size="sm" variant="ghost" onClick={onAddAssignment}>
           <Plus className="h-3.5 w-3.5" /> Assignment
         </Button>
       </div>
 
-      {open && assignments.length > 0 && (
+      {open && visible.length > 0 && (
         <ul className="mt-3 divide-y divide-white/[0.06] border-t border-white/[0.06] animate-slide-up">
-          {assignments.map((a) => {
+          {visible.map((a) => {
             const due = relativeDue(a.dueAt);
             const past = a.status === "open" && Boolean(due?.past);
             const upcoming = a.status === "open" && !!due && !due.past;
