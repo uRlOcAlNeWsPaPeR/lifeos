@@ -3,11 +3,11 @@
 **Your entire student life. Organized.**
 
 LifeOS is an AI-powered personal command center for students — schoolwork, assignments,
-deadlines, goals, tasks, calendar events and personal projects in one clean dashboard.
+deadlines, goals, tasks, calendar events and study practice in one clean dashboard.
 Open it every morning and it tells you what matters.
 
-This repo is a working full-stack MVP: real auth, a real database, a real API, and AI
-features that actually run (with **no API key required**).
+This repo is a working full-stack MVP: real auth, a real database, a real Canvas
+integration, and AI features that run with or without an API key.
 
 ---
 
@@ -15,10 +15,11 @@ features that actually run (with **no API key required**).
 
 | Layer | Choice | Why |
 |---|---|---|
-| Framework | **Next.js 15** (App Router) + TypeScript | One codebase for UI + API. Server Components read the DB directly for fast pages; Route Handlers give a clean REST API for mutations. |
-| Database | **Prisma** ORM + **SQLite** (dev) | Zero-config locally. Standard SQL — point `DATABASE_URL` at Postgres for production, no code changes. |
-| Auth | Hand-rolled: **bcrypt** + signed **JWT** (`jose`) in an httpOnly cookie | Secure, no third-party lock-in, secret from env. `middleware.ts` gates the app. |
-| AI | Pluggable `AIProvider` — **Heuristic** engine (default) or **Anthropic/Claude** (`ANTHROPIC_API_KEY`) | Every AI feature works offline via deterministic parsing + scoring. Adding the key upgrades quality. AI only ever sees a snapshot of the user's own LifeOS data. |
+| Framework | **Next.js 15** (App Router) + TypeScript | One codebase for UI + API. Route Handlers give a clean REST API for the AI endpoints. |
+| Database | **Cloud Firestore** | Real-time by default — every open tab updates the moment data changes, with no polling or refetching. |
+| Auth | **Firebase Auth** (email + password) | The client SDK holds the session; API routes verify the ID token with the Admin SDK. |
+| AI | Pluggable `AIProvider` — **Gemini**, **Claude**, or an offline **heuristic** engine | Every AI feature works with no API key via deterministic parsing. Adding a key upgrades quality. AI only ever sees a snapshot of the user's own LifeOS data. |
+| School data | **Canvas LMS** via OAuth 2 | Courses, assignments, due dates and grades sync in. Per-institution developer key. |
 | Styling | Tailwind + a small hand-built component system | Consistent design tokens, dark/light mode, no bloat. |
 | Charts | Inline SVG components | No heavy chart dependency. |
 
@@ -28,22 +29,30 @@ features that actually run (with **no API key required**).
 
 ```bash
 npm install
-cp .env.example .env          # then edit AUTH_SECRET
-npm run setup                 # prisma db push + seed a demo account
+cp .env.example .env          # then fill in your Firebase config
 npm run dev                   # http://localhost:3000
 ```
 
-**Demo login:** `demo@lifeos.app` / `demolifeos`
+The marketing site runs with no configuration at all. Everything behind login needs
+the Firebase keys — without them `/login` shows a "Firebase isn't configured yet"
+screen instead of failing at runtime.
+
+See [FIREBASE_SETUP.md](FIREBASE_SETUP.md) for creating the project, and
+[SETUP-MAC.md](SETUP-MAC.md) for running it on a second machine.
 
 ### Environment variables
 
+Every key is documented inline in [.env.example](.env.example). The short version:
+
 | Var | Required | Notes |
 |---|---|---|
-| `DATABASE_URL` | ✅ | `file:./dev.db` for SQLite, or a Postgres URL. |
-| `AUTH_SECRET` | ✅ | Long random string. `openssl rand -base64 48`. |
-| `ANTHROPIC_API_KEY` | — | If set, Brain Dump / prioritization / assistant use Claude. If not, the heuristic engine runs. |
-| `ANTHROPIC_MODEL` | — | Defaults to `claude-sonnet-5`. |
-| `CANVAS_ENABLED`, `INFINITE_CAMPUS_ENABLED` | — | Stay `false` until real API credentials exist. |
+| `NEXT_PUBLIC_FIREBASE_*` | ✅ | Web config from the Firebase console. Safe to expose. |
+| `FIREBASE_SERVICE_ACCOUNT` | ✅ | Service-account JSON on one line. **Secret** — server only. |
+| `GEMINI_API_KEY` | — | Turns on Gemini for Brain Dump, prioritization, the assistant and card generation. |
+| `ANTHROPIC_API_KEY` | — | Same, using Claude. `AI_PROVIDER=auto` prefers Anthropic > Gemini > offline. |
+| `CANVAS_*` | — | Canvas OAuth. Leave empty to hide the integration; set `CANVAS_MOCK=1` to develop against fixtures. |
+
+`.env` is gitignored and never leaves your machine.
 
 ---
 
@@ -53,77 +62,99 @@ npm run dev                   # http://localhost:3000
 src/
   app/
     (marketing)/        Landing page + pricing
-    (auth)/             Sign up, log in, forgot / reset password
-    onboarding/         5-step wizard → generates the initial dashboard
+    (auth)/             Sign up, log in, forgot password
+    onboarding/         Wizard → seeds the initial dashboard
     (app)/              Authenticated shell (sidebar) — dashboard, tasks,
-                        brain-dump, calendar, goals, school, analytics,
-                        assistant, settings
-    api/                Route handlers (REST-ish, JSON, zod-validated)
+                        brain-dump, calendar, goals, school, grades,
+                        practice, analytics, assistant, settings
+    api/                Route handlers (JSON, zod-validated, ID-token guarded)
   components/
     ui/                 Design system (button, card, input, modal, badge, …)
     app/                Feature components (task item/editor, charts, panels)
-    marketing/          Pricing table
+    dashboard/          The full-bleed dashboard experience
+    canvas/             Connect / sync / course-picker UI
+    marketing/          Landing page scenes and pricing
   lib/
-    ai/                 AIProvider interface, heuristic + anthropic engines,
-                        NLP helpers, priority scoring, scheduling, context builder
-    auth/               password hashing, session (JWT), route guards
-    integrations/
-      school/           SchoolIntegration base + Canvas / Infinite Campus
-                        subclasses (disabled — "coming soon")
-    analytics.ts        Productivity metrics
+    ai/                 AIProvider interface, heuristic + Gemini + Claude
+                        engines, NLP helpers, priority scoring, context builder
+    practice/           Spaced repetition, answer grading, deck parsing
+    canvas/             OAuth, token crypto, API client, sync
+    firebase/           Client SDK, Admin SDK, Firestore schema, auth context
+    store/app-data.tsx  One real-time subscription per collection; every
+                        mutation in the app goes through here
     validation.ts       zod schemas shared by every endpoint
-prisma/
-  schema.prisma         Full data model
-  seed.ts               Demo account with realistic data
 ```
+
+### Data model
+
+Everything lives under the signed-in user, so the security rule is a one-liner:
+
+```
+users/{uid}                  profile, prefs, plan, AI usage counters
+users/{uid}/tasks/{id}
+users/{uid}/goals/{id}       milestones embedded
+users/{uid}/courses/{id}
+users/{uid}/assignments/{id}
+users/{uid}/events/{id}
+users/{uid}/alarms/{id}
+users/{uid}/decks/{id}       Practice study sets, cards embedded
+users/{uid}/focusSessions/{id}
+```
+
+Canvas OAuth tokens live outside that subtree in `canvasConnections/{uid}`, which the
+client cannot read at all — only the server, via the Admin SDK.
 
 ### AI layer (`src/lib/ai`)
 
-`getAI()` returns an `AIProvider`:
+`getAI()` returns an `AIProvider`. `LLMProvider` holds the prompts, the strict-JSON
+contract and the safety nets; `GeminiProvider` and `AnthropicProvider` only implement
+the raw completion call, so both behave identically.
 
-- **`HeuristicProvider`** — deterministic. Splits a brain dump into fragments, normalizes
-  each into an action-oriented task, detects an *explicit* date (never invents one),
-  estimates duration by task type, scores priority, and suggests a free slot pulled from
-  the student's onboarding schedule. `prioritize()` and `assist()` use a transparent
-  scoring model (`lib/ai/score.ts`) over deadlines, goals, course load and quick wins.
-- **`AnthropicProvider`** — used only when `ANTHROPIC_API_KEY` is present. Sends the
-  student's LifeOS data snapshot + instructions, parses strict JSON, and **falls back to
-  the heuristic engine on any error**. A post-processing guard strips any date the model
-  invented that the source text doesn't support.
+- **`HeuristicProvider`** — deterministic, no network. Splits a brain dump into tasks,
+  detects an *explicit* date (never invents one), estimates duration, scores priority,
+  and suggests a free slot from the student's schedule. For Practice it lifts cards
+  from sentences already shaped like a definition.
+- **Hosted providers** — sent the student's LifeOS snapshot and instructions, parse
+  strict JSON, and **fall back to the heuristic engine on any error**. A guard strips
+  any date the model invented that the source text doesn't support.
 
-The AI is never a general chatbot — `buildContext()` assembles the *only* data it sees.
+The AI is never a general chatbot — `buildContext()` assembles the only data it sees.
+Brain Dump and card generation share one metered quota so no user can run up the bill.
 
-### School integrations (`src/lib/integrations/school`)
+### Practice (`src/lib/practice`)
 
+Decks of cards, drilled through four games — Flashcards, Quiz, Match and Recall Rush —
+all feeding one spaced-repetition scheduler (`srs.ts`). A card carries an ease factor
+and a streak; answering right pushes its next review out, missing brings it back within
+the session. `answer.ts` grades typed answers leniently (typos, accents, articles and
+keyword recall) without accepting a wrong one. `parse.ts` turns pasted lists or raw
+notes into cards.
+
+The pure logic is covered by tests:
+
+```bash
+npm test
 ```
-SchoolIntegration (abstract)
-├── CanvasIntegration          descriptor + isConfigured() → status "coming_soon"
-└── InfiniteCampusIntegration  beginAuth()/sync() throw NotYetAvailableError
-```
 
-- No fake "connected" state. No collection of school usernames/passwords.
-- The `Connection` table and `provider` / `externalId` columns on `Course`,
-  `Assignment` and `CalendarEvent` already exist, so wiring real OAuth later is
-  purely additive.
-- Calendar sync (Google / Microsoft) is declared the same way and marked *coming soon*.
+### Canvas integration (`src/lib/canvas`)
 
-### Auth flow
-
-`POST /api/auth/signup|login` → bcrypt verify → `createSession()` signs a JWT →
-httpOnly `SameSite=Lax` cookie. `middleware.ts` verifies it on every protected route
-(edge-safe via `jose`). Password reset issues a hashed, expiring token; with no mail
-provider configured the link is returned in dev so the flow is testable.
+Canvas OAuth is per-institution — each school issues its own developer key. Register
+LifeOS as a Developer Key on the target instance with redirect URI
+`<NEXT_PUBLIC_APP_URL>/api/canvas/callback`, then set `CANVAS_CLIENT_ID` /
+`CANVAS_CLIENT_SECRET`. Access tokens are encrypted at rest and the OAuth state is
+signed. Students pick which courses sync; imported assignments are de-duplicated
+against what's already there.
 
 ---
 
 ## Pricing
 
-Two tiers (Free / Student+ $12.99) with real feature gating
-(`lib/plan-limits.ts` — e.g. Free = 5 Brain Dumps/week, no analytics history).
-Every AI feature is capped on both plans so no user can run up the API bill.
+Two tiers (Free / Student+ $12.99) with real feature gating in
+[`lib/plan-limits.ts`](src/lib/plan-limits.ts) — Brain Dumps per week, assistant
+questions per day, active goals, courses, decks, analytics history.
 
-**Payments are not implemented.** `POST /api/plan` flips the user's plan instantly in
-demo mode with no charge. Swap it for a billing-provider checkout session when ready.
+**Payments are not implemented.** Upgrading flips the user's plan instantly in demo
+mode with no charge. Swap it for a billing provider's checkout session when ready.
 
 ---
 
@@ -132,15 +163,18 @@ demo mode with no charge. Swap it for a billing-provider checkout session when r
 | Script | Does |
 |---|---|
 | `npm run dev` | Dev server |
-| `npm run build` | `prisma generate` + production build |
-| `npm run setup` | `prisma db push` + seed |
-| `npm run db:seed` | Re-seed the demo account |
-| `npm run db:studio` | Prisma Studio |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npm test` | Practice logic tests |
+| `npm run firebase:rules` | Deploy `firestore.rules` |
+| `npm run firebase:indexes` | Deploy `firestore.indexes.json` |
 
 ## Moving to production
 
-1. Set `DATABASE_URL` to Postgres, change `provider` in `schema.prisma` to `postgresql`, run `prisma migrate deploy`.
-2. Set a strong `AUTH_SECRET`.
-3. Add a mail provider for password resets (`lib/auth/forgot-password` route).
-4. Add a billing provider and replace `/api/plan`.
-5. Implement `beginAuth()` / `completeAuth()` / `sync()` on a `SchoolIntegration` subclass once you have official API access.
+1. Deploy the Firestore rules (`npm run firebase:rules`) — they are not applied automatically.
+2. Set `NEXT_PUBLIC_APP_URL` to the real origin, and update the Canvas developer key's
+   redirect URI to match.
+3. Put `FIREBASE_SERVICE_ACCOUNT` and the Canvas secrets in the host's secret store,
+   never in the repo.
+4. Add a billing provider and replace the demo plan switch.
