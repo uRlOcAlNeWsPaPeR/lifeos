@@ -13,8 +13,6 @@ export default function AssistantPage() {
       name={data.profile.name.split(" ")[0]}
       engineLabel={data.ai.label}
       dataHint={`${openTasks} open tasks · ${openAssignments} assignments`}
-      perDay={data.limits.assistantPerDay}
-      usedToday={data.limits.assistantUsedToday}
     />
   );
 }

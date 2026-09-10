@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { AppDataProvider, useAppData } from "@/lib/store/app-data";
+import { AssistantChatProvider } from "@/lib/assistant-chat";
 import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
 import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
@@ -24,7 +25,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <AppDataProvider uid={user.uid} email={user.email}>
-      <OnboardedShell>{children}</OnboardedShell>
+      <AssistantChatProvider>
+        <OnboardedShell>{children}</OnboardedShell>
+      </AssistantChatProvider>
     </AppDataProvider>
   );
 }

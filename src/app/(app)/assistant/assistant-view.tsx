@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import {
   Sparkles,
@@ -14,6 +14,8 @@ import {
   Check,
   X,
   CircleCheck,
+  Loader2,
+  RotateCcw,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -21,25 +23,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MiniMarkdown } from "@/components/app/mini-markdown";
-import { authedApi } from "@/lib/client";
 import { useAppData } from "@/lib/store/app-data";
+import {
+  useAssistantChat,
+  type AssistantReference,
+  type ActionStatus,
+} from "@/lib/assistant-chat";
 import { cn } from "@/lib/utils";
 import type { AssistantAction } from "@/lib/ai/types";
-
-interface Reference {
-  type: "task" | "goal" | "assignment" | "course" | "event";
-  id: string;
-  title: string;
-}
-interface Turn {
-  role: "user" | "assistant";
-  content: string;
-  references?: Reference[];
-  actions?: AssistantAction[];
-  engine?: string;
-}
-
-type ActionStatus = "idle" | "working" | "done" | "error" | "dismissed";
 
 const SUGGESTIONS = [
   "What should I work on tonight?",
@@ -49,7 +40,7 @@ const SUGGESTIONS = [
   "Delete the task called laundry",
 ];
 
-const REF_HREF: Record<Reference["type"], string> = {
+const REF_HREF: Record<AssistantReference["type"], string> = {
   task: "/tasks",
   goal: "/goals",
   assignment: "/school",
@@ -70,81 +61,54 @@ export function AssistantView({
   name,
   engineLabel,
   dataHint,
-  perDay,
-  usedToday,
 }: {
   name: string;
   engineLabel: string;
   dataHint: string;
-  perDay: number | null;
-  usedToday: number;
 }) {
   const store = useAppData();
-  const [turns, setTurns] = useState<Turn[]>([]);
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [used, setUsed] = useState(usedToday);
-  // keyed "<turnIndex>:<actionIndex>"
-  const [actionState, setActionState] = useState<Record<string, ActionStatus>>({});
+  const chat = useAssistantChat();
+  const {
+    turns,
+    input,
+    setInput,
+    loading,
+    used,
+    perDay,
+    actionStatus,
+    setActionStatus,
+    ask,
+    clear,
+    pruneIfStale,
+  } = chat;
+
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const remaining = perDay === null ? null : Math.max(0, perDay - used);
   const atLimit = remaining === 0;
 
-  const scrollDown = () =>
-    setTimeout(() => scrollRef.current?.scrollTo({ top: 9e9, behavior: "smooth" }), 50);
+  // Coming back to the page: drop the conversation if it's gone stale.
+  useEffect(() => {
+    pruneIfStale();
+  }, [pruneIfStale]);
 
-  async function ask(question: string) {
+  // Keep the view pinned to the latest message.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 9e9, behavior: turns.length > 1 ? "smooth" : "auto" });
+  }, [turns, loading]);
+
+  function submit(question: string) {
     if (!question.trim() || loading || atLimit) return;
-    const history = [...turns, { role: "user" as const, content: question }];
-    setTurns(history);
-    setInput("");
-    setLoading(true);
-    scrollDown();
-    try {
-      const res = await authedApi<{
-        answer: string;
-        references: Reference[];
-        actions: AssistantAction[];
-        engine: string;
-      }>("/api/assistant", {
-        method: "POST",
-        body: {
-          messages: history.slice(-24).map((t) => ({ role: t.role, content: t.content })),
-        },
-      });
-      setUsed((n) => n + 1);
-      setTurns((t) => [
-        ...t,
-        {
-          role: "assistant",
-          content: res.answer,
-          references: res.references,
-          actions: res.actions,
-          engine: res.engine,
-        },
-      ]);
-    } catch (e) {
-      setTurns((t) => [
-        ...t,
-        {
-          role: "assistant",
-          content: e instanceof Error ? e.message : "Something went wrong. Try again.",
-        },
-      ]);
-    } finally {
-      setLoading(false);
-      scrollDown();
-    }
+    void ask(question);
   }
 
   async function runAction(key: string, a: AssistantAction) {
-    setActionState((s) => ({ ...s, [key]: "working" }));
+    setActionStatus(key, "working");
     try {
-      const okResult = await execute(store, a);
-      setActionState((s) => ({ ...s, [key]: okResult ? "done" : "error" }));
+      const ok = await execute(store, a);
+      setActionStatus(key, ok ? "done" : "error");
     } catch {
-      setActionState((s) => ({ ...s, [key]: "error" }));
+      setActionStatus(key, "error");
     }
   }
 
@@ -155,6 +119,11 @@ export function AssistantView({
         description="Ask about your tasks, deadlines and goals — or tell it to add and remove things for you. It works from your LifeOS data, not the open web."
         action={
           <div className="flex items-center gap-2">
+            {turns.length > 0 && (
+              <Button size="sm" variant="ghost" onClick={clear} disabled={loading}>
+                <RotateCcw className="h-3.5 w-3.5" /> New chat
+              </Button>
+            )}
             {remaining !== null && (
               <Badge tone={remaining === 0 ? "warning" : "muted"}>{remaining} left today</Badge>
             )}
@@ -165,7 +134,7 @@ export function AssistantView({
 
       <Card glow className="flex h-[calc(100svh-230px)] min-h-[420px] flex-col overflow-hidden">
         <div ref={scrollRef} className="scrollbar-thin flex-1 space-y-4 overflow-y-auto p-5">
-          {turns.length === 0 ? (
+          {turns.length === 0 && !loading ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
                 <Sparkles className="h-6 w-6" />
@@ -176,7 +145,7 @@ export function AssistantView({
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
-                    onClick={() => ask(s)}
+                    onClick={() => submit(s)}
                     className="rounded-full border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary hover:text-foreground"
                   >
                     {s}
@@ -226,11 +195,9 @@ export function AssistantView({
                               <ActionCard
                                 key={key}
                                 action={a}
-                                status={actionState[key] ?? "idle"}
+                                status={actionStatus[key] ?? "idle"}
                                 onRun={() => runAction(key, a)}
-                                onDismiss={() =>
-                                  setActionState((s) => ({ ...s, [key]: "dismissed" }))
-                                }
+                                onDismiss={() => setActionStatus(key, "dismissed")}
                               />
                             );
                           })}
@@ -246,16 +213,9 @@ export function AssistantView({
           )}
           {loading && (
             <div className="flex justify-start">
-              <div className="rounded-2xl border border-border bg-card px-4 py-3">
-                <span className="flex gap-1">
-                  {[0, 1, 2].map((i) => (
-                    <span
-                      key={i}
-                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-muted-foreground"
-                      style={{ animationDelay: `${i * 150}ms` }}
-                    />
-                  ))}
-                </span>
+              <div className="flex items-center gap-2 rounded-2xl border border-border bg-card px-4 py-2.5 text-sm text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                Thinking…
               </div>
             </div>
           )}
@@ -273,7 +233,7 @@ export function AssistantView({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              ask(input);
+              submit(input);
             }}
             className="flex gap-2 border-t border-border p-3"
           >
@@ -281,10 +241,9 @@ export function AssistantView({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask, or tell it to add / remove something…"
-              disabled={loading}
             />
             <Button type="submit" size="icon" disabled={loading || !input.trim()}>
-              <Send className="h-4 w-4" />
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </form>
         )}
@@ -305,10 +264,10 @@ function ActionCard({
   onDismiss: () => void;
 }) {
   const destructive = isDelete(action);
-  const Icon = useMemo(() => (destructive ? Trash2 : action.kind === "complete_task" ? CircleCheck : Plus), [
-    destructive,
-    action.kind,
-  ]);
+  const Icon = useMemo(
+    () => (destructive ? Trash2 : action.kind === "complete_task" ? CircleCheck : Plus),
+    [destructive, action.kind],
+  );
 
   if (status === "dismissed") return null;
 
@@ -319,9 +278,7 @@ function ActionCard({
         destructive ? "border-destructive/30 bg-destructive/5" : "border-border bg-background/40",
       )}
     >
-      <Icon
-        className={cn("h-4 w-4 shrink-0", destructive ? "text-destructive" : "text-primary")}
-      />
+      <Icon className={cn("h-4 w-4 shrink-0", destructive ? "text-destructive" : "text-primary")} />
       <span className="min-w-0 flex-1">{action.label}</span>
 
       {status === "done" ? (
