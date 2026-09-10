@@ -43,7 +43,7 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: t
   {
     label: "School",
     items: [
-      { href: "/school", label: "Courses", icon: GraduationCap },
+      { href: "/school", label: "School", icon: GraduationCap },
       { href: "/grades", label: "Grades", icon: Percent },
       { href: "/practice", label: "Practice", icon: Gamepad2 },
     ],

@@ -59,8 +59,8 @@ test("pages are findable by what they do, not just their name", () => {
   assert.deepEqual(titles("gpa"), ["Grades"]);
   assert.deepEqual(titles("flashcard"), ["Practice"]);
   assert.deepEqual(titles("bedtime"), ["Settings"]);
-  // "School" is the old name of the Courses page — it must still find it.
-  assert.ok(titles("school").includes("Courses"));
+  // The page is named "School"; typing "courses" must still find it.
+  assert.ok(titles("courses").includes("School"));
 });
 
 test("a deck is findable by the cards inside it", () => {

@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -343,6 +344,7 @@ function GradeEntry({
 }
 
 function CanvasIntegrationCard() {
+  const router = useRouter();
   const canvas = useCanvas();
   const { status, loading, syncing, busy, connect, connectWithToken, sync } = canvas;
   const connected = status?.connected;
@@ -402,7 +404,7 @@ function CanvasIntegrationCard() {
               >
                 Choose courses
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => (window.location.href = "/settings?tab=school")}>
+              <Button variant="ghost" size="sm" onClick={() => router.push("/settings?tab=school")}>
                 Manage in Settings
               </Button>
             </div>
