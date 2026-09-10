@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/misc";
 import { Modal } from "@/components/ui/modal";
+import { confirm } from "@/components/ui/confirm";
 import { Field, Input, Select } from "@/components/ui/input";
 import { useAppData } from "@/lib/store/app-data";
 import {
@@ -153,19 +154,29 @@ function CourseCard({
   onOpenAssignment: (a: AssignmentDTO) => void;
   onAddAssignment: () => void;
 }) {
-  // Default view shows only what's still actionable: upcoming work plus anything
-  // turned in or graded (the grade record). Open assignments whose due date has
-  // passed are tucked away behind "Show all" — still there, still deletable, just
-  // not cluttering the day-to-day list.
+  // Default view is just what's still actionable: upcoming work and anything
+  // turned in but not yet graded. Two things get tucked away — still there,
+  // still deletable, just out of the everyday list:
+  //   • open assignments already past their due date  → "N overdue"
+  //   • graded assignments (the grade record)         → "N graded"
   const isPastDue = (a: AssignmentDTO) =>
     a.status === "open" && Boolean(relativeDue(a.dueAt)?.past);
-  const upcoming = course.assignments.filter((a) => !isPastDue(a));
-  const hiddenCount = course.assignments.length - upcoming.length;
+  const isGraded = (a: AssignmentDTO) => a.status === "graded";
 
-  const [open, setOpen] = useState(upcoming.length > 0);
-  const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? course.assignments : upcoming;
+  const [showOverdue, setShowOverdue] = useState(false);
+  const [showGraded, setShowGraded] = useState(false);
+
+  const visible = course.assignments.filter((a) => {
+    if (isGraded(a)) return showGraded;
+    if (isPastDue(a)) return showOverdue;
+    return true;
+  });
+  const overdueCount = course.assignments.filter(isPastDue).length;
+  const gradedCount = course.assignments.filter(isGraded).length;
+  const defaultCount = course.assignments.length - overdueCount - gradedCount;
   const openCount = visible.filter((a) => a.status === "open").length;
+
+  const [open, setOpen] = useState(defaultCount > 0);
   const g = courseGrade(course);
 
   return (
@@ -196,7 +207,15 @@ function CourseCard({
             </div>
           )}
           <button
-            onClick={() => confirm(`Delete ${course.name}?`) && deleteCourse(course.id)}
+            onClick={async () => {
+              const yes = await confirm({
+                title: `Delete ${course.name}?`,
+                body: "Its assignments go too. You can undo right after from the bar at the bottom.",
+                confirmLabel: "Delete course",
+                destructive: true,
+              });
+              if (yes) deleteCourse(course.id);
+            }}
             className="mt-0.5 text-muted-foreground transition-colors hover:text-destructive"
             aria-label="Delete course"
           >
@@ -214,15 +233,26 @@ function CourseCard({
           {visible.length} assignment{visible.length === 1 ? "" : "s"}
           {openCount > 0 && ` · ${openCount} open`}
         </button>
-        {hiddenCount > 0 && (
+        {overdueCount > 0 && (
           <button
             onClick={() => {
-              setShowAll((s) => !s);
+              setShowOverdue((s) => !s);
               setOpen(true);
             }}
             className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
-            {showAll ? "Upcoming only" : `All assignments · ${hiddenCount} overdue`}
+            {showOverdue ? "Hide overdue" : `${overdueCount} overdue`}
+          </button>
+        )}
+        {gradedCount > 0 && (
+          <button
+            onClick={() => {
+              setShowGraded((s) => !s);
+              setOpen(true);
+            }}
+            className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {showGraded ? "Hide graded" : `${gradedCount} graded`}
           </button>
         )}
         <Button size="sm" variant="ghost" onClick={onAddAssignment}>
