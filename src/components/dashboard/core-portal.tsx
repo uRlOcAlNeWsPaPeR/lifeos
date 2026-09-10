@@ -11,9 +11,13 @@ import {
   Sparkles,
   Settings as SettingsIcon,
   CircleDot,
+  Lock,
+  Pause,
+  Play,
 } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList } from "@/components/app/deadline-list";
@@ -28,6 +32,8 @@ import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
 import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
 import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
+import { useStudyLock } from "@/lib/study-lock";
+import type { EventDTO } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -82,6 +88,45 @@ export function CorePortal() {
   const [boomApp, setBoomApp] = useState<LifeApp | null>(null);
   const now = useMemo(() => new Date(), []);
 
+  // "Lock in" — a study session that's live right now. While locked, the Core
+  // refuses to detonate: clicking it flashes red and shows the time left.
+  const lock = useStudyLock(data.events);
+  const [lockPrompt, setLockPrompt] = useState(false);
+  const [redBump, setRedBump] = useState(false);
+  const redBumpTimer = useRef<number | undefined>(undefined);
+
+  const triggerRedBump = () => {
+    setRedBump(true);
+    if (redBumpTimer.current) window.clearTimeout(redBumpTimer.current);
+    redBumpTimer.current = window.setTimeout(() => setRedBump(false), 10_000);
+  };
+  useEffect(
+    () => () => {
+      if (redBumpTimer.current) window.clearTimeout(redBumpTimer.current);
+    },
+    [],
+  );
+
+  // Offer to lock in when the dashboard opens on a live session the user hasn't
+  // locked or ended yet. `promptedRef` keeps it to once per dashboard open, so
+  // pausing doesn't instantly re-ask — but reopening the page (fresh mount) does.
+  const promptedRef = useRef(false);
+  useEffect(() => {
+    if (lock.shouldPrompt && !promptedRef.current) {
+      promptedRef.current = true;
+      setLockPrompt(true);
+    } else if (!lock.shouldPrompt) {
+      promptedRef.current = false;
+      setLockPrompt(false);
+    }
+  }, [lock.shouldPrompt]);
+
+  const orbitApps = useMemo(
+    () =>
+      redBump ? LIFE_APPS.map((a) => (a.id === "study" ? { ...a, hue: 0 } : a)) : LIFE_APPS,
+    [redBump],
+  );
+
   useEffect(() => {
     // warm the routed apps so navigation lands the instant the burst clears
     LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
@@ -96,6 +141,11 @@ export function CorePortal() {
 
   const detonate = () => {
     if (phaseRef.current !== "home") return;
+    if (lock.status === "locked") {
+      // No exit while locked in — flash the Core red and surface the countdown.
+      triggerRedBump();
+      return;
+    }
     if (!cinematic) {
       setPhase("console");
       requestAnimationFrame(() =>
@@ -230,13 +280,53 @@ export function CorePortal() {
     </Modal>
   );
 
-  const welcome = (
-    <>
-      <LiveClock name={firstName} />
-      <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-muted-foreground/70">
-        {ambientLine}
+  const welcome =
+    redBump && lock.session ? (
+      <>
+        <LockCountdown session={lock.session} />
+        <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-destructive/70">
+          You&apos;re locked in — no exit until you pause or end the session.
+        </p>
+      </>
+    ) : (
+      <>
+        <LiveClock name={firstName} />
+        <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-muted-foreground/70">
+          {ambientLine}
+        </p>
+      </>
+    );
+
+  const lockPromptModal = (
+    <Modal
+      open={lockPrompt && phase === "home"}
+      onClose={() => setLockPrompt(false)}
+      title={lock.resuming ? "Back to your study session?" : "Study session in progress"}
+      description={
+        lock.session
+          ? `${lock.session.title || "Study session"} · ${fmtLeft(lock.msLeft)} left`
+          : undefined
+      }
+      className="max-w-sm"
+    >
+      <p className="mt-1 text-sm text-muted-foreground">
+        Lock in to focus. The Core stops opening and shows your time left instead — you can
+        pause or end the session whenever you need to step away.
       </p>
-    </>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button variant="ghost" onClick={() => setLockPrompt(false)}>
+          Not now
+        </Button>
+        <Button
+          onClick={() => {
+            lock.lockIn();
+            setLockPrompt(false);
+          }}
+        >
+          <Lock className="h-4 w-4" /> Lock in
+        </Button>
+      </div>
+    </Modal>
   );
 
   /* ---------------- fallback: normal scrolling page ---------------- */
@@ -249,7 +339,7 @@ export function CorePortal() {
             {welcome}
             <div className="mt-16 w-full">
               <AppOrbit
-                apps={LIFE_APPS}
+                apps={orbitApps}
                 activeIndex={appIndex}
                 onActiveChange={setAppIndex}
                 onEnter={enterApp}
@@ -263,6 +353,7 @@ export function CorePortal() {
         </div>
         {onConsole && <QuickAdd />}
         {menuPopup}
+        {lockPromptModal}
       </>
     );
   }
@@ -306,10 +397,23 @@ export function CorePortal() {
         {phase === "home" && (
           <div className="absolute inset-x-0 top-[27%] bottom-4 z-10 flex items-start justify-center px-4 sm:top-[34%] sm:bottom-6">
             <AppOrbit
-              apps={LIFE_APPS}
+              apps={orbitApps}
               activeIndex={appIndex}
               onActiveChange={setAppIndex}
               onEnter={enterApp}
+            />
+          </div>
+        )}
+
+        {/* lock-in control bar (home) */}
+        {phase === "home" && !redBump && (lock.status === "locked" || lock.status === "paused") && (
+          <div className="absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-6">
+            <LockBar
+              status={lock.status}
+              msLeft={lock.msLeft}
+              onPause={lock.pause}
+              onResume={lock.lockIn}
+              onEnd={lock.endSession}
             />
           </div>
         )}
@@ -359,7 +463,94 @@ export function CorePortal() {
 
       {onConsole && <QuickAdd />}
       {menuPopup}
+      {lockPromptModal}
     </>
+  );
+}
+
+/* ------------------------------- study lock ------------------------------- */
+
+function fmtLeft(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 60000));
+  if (total >= 60) {
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    return m ? `${h}h ${m}m` : `${h}h`;
+  }
+  return `${total || 1}m`;
+}
+
+function LockCountdown({ session }: { session: EventDTO }) {
+  const end = +new Date(session.endAt);
+  const [left, setLeft] = useState(() => Math.max(0, end - Date.now()));
+  useEffect(() => {
+    const id = setInterval(() => setLeft(Math.max(0, end - Date.now())), 1000);
+    return () => clearInterval(id);
+  }, [end]);
+
+  const total = Math.floor(left / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const clock =
+    h > 0
+      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+      : `${m}:${String(s).padStart(2, "0")}`;
+
+  return (
+    <>
+      <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-destructive">
+        Locked in — stay focused
+      </p>
+      <p className="mt-4 text-[2.75rem] font-semibold leading-none tracking-tight tabular-nums text-destructive sm:text-6xl">
+        {clock}
+      </p>
+      <p className="mt-3 text-sm text-destructive/70">
+        left in {session.title || "this study session"}
+      </p>
+    </>
+  );
+}
+
+function LockBar({
+  status,
+  msLeft,
+  onPause,
+  onResume,
+  onEnd,
+}: {
+  status: "locked" | "paused";
+  msLeft: number;
+  onPause: () => void;
+  onResume: () => void;
+  onEnd: () => void;
+}) {
+  const paused = status === "paused";
+  return (
+    <div className="flex items-center gap-2.5 rounded-full border border-white/10 bg-black/50 px-3.5 py-2 text-xs backdrop-blur-md">
+      <span
+        className={cn(
+          "flex items-center gap-1.5 font-medium",
+          paused ? "text-muted-foreground" : "text-primary",
+        )}
+      >
+        <Lock className="h-3.5 w-3.5" />
+        {paused ? "Session paused" : `Locked in · ${fmtLeft(msLeft)} left`}
+      </span>
+      <button
+        onClick={paused ? onResume : onPause}
+        className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 font-medium text-foreground/90 transition-colors hover:border-primary/40 hover:text-primary"
+      >
+        {paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}
+        {paused ? "Resume" : "Pause"}
+      </button>
+      <button
+        onClick={onEnd}
+        className="rounded-full px-2 py-1 font-medium text-muted-foreground transition-colors hover:text-destructive"
+      >
+        End
+      </button>
+    </div>
   );
 }
 
@@ -497,6 +688,14 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
                   {t.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                <span
+                  className={cn(
+                    "shrink-0 text-[10px] font-medium uppercase tracking-wide",
+                    t.active ? "text-primary" : "text-muted-foreground/60",
+                  )}
+                >
+                  {t.active ? "Now · Study" : TODAY_LABEL[t.kind]}
+                </span>
               </li>
             ))}
           </ul>
@@ -636,6 +835,17 @@ function Header({
 
 /* -------------------------------- model -------------------------------- */
 
+type TodayKind = "study" | "class" | "event" | "deadline" | "planned" | "due";
+
+const TODAY_LABEL: Record<TodayKind, string> = {
+  study: "Study session",
+  class: "Class",
+  event: "Event",
+  deadline: "Deadline",
+  planned: "Planned",
+  due: "Due",
+};
+
 interface Model {
   state: CoreState;
   radarTotal: number;
@@ -644,7 +854,7 @@ interface Model {
   overdue: number;
   deadlineCount: number;
   study: number;
-  today: { key: string; at: Date; title: string }[];
+  today: { key: string; at: Date; title: string; kind: TodayKind; active?: boolean }[];
   deadlineItems: {
     id: string;
     title: string;
@@ -691,18 +901,36 @@ function buildModel(
   });
   const study = eventsToday.filter((e) => e.kind === "study_session").length;
 
-  const today = [
-    ...eventsToday.map((e) => ({ key: `e-${e.id}`, at: new Date(e.startAt), title: e.title })),
+  const eventKind = (k: string): TodayKind =>
+    k === "study_session" ? "study" : k === "class" ? "class" : k === "deadline" ? "deadline" : "event";
+
+  const today: Model["today"] = [
+    ...eventsToday.map((e) => ({
+      key: `e-${e.id}`,
+      at: new Date(e.startAt),
+      title: e.title,
+      kind: eventKind(e.kind),
+      active:
+        e.kind === "study_session" &&
+        new Date(e.startAt) <= now &&
+        now < new Date(e.endAt),
+    })),
     ...scheduledToday.map((t) => ({
       key: `s-${t.id}`,
       at: new Date(t.scheduledAt!),
       title: t.title,
+      kind: "planned" as const,
     })),
     ...dueToday
       .filter((t) => !scheduledToday.some((x) => x.id === t.id))
       .map((t) => {
         const d = parseDate(t.dueAt!);
-        return { key: `d-${t.id}`, at: d.getHours() === 0 ? end : d, title: `${t.title} — due` };
+        return {
+          key: `d-${t.id}`,
+          at: d.getHours() === 0 ? end : d,
+          title: t.title,
+          kind: "due" as const,
+        };
       }),
   ].sort((a, b) => a.at.getTime() - b.at.getTime());
 
