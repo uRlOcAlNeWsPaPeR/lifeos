@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { ConfirmHost } from "@/components/ui/confirm";
 import { BackgroundFX } from "@/components/background-fx";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <BackgroundFX />
           {children}
           <Toaster />
+          <ConfirmHost />
         </AuthProvider>
       </body>
     </html>

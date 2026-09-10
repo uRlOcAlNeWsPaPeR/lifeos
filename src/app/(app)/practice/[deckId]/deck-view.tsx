@@ -15,6 +15,7 @@ import { useAppData } from "@/lib/store/app-data";
 import { deckMastery, dueCount, mastery } from "@/lib/practice/srs";
 import { timeAgo } from "@/lib/format";
 import { toast } from "@/components/ui/toaster";
+import { confirm } from "@/components/ui/confirm";
 import { cn } from "@/lib/utils";
 import type { CardDTO, GameMode, Mastery } from "@/lib/types";
 import { Flashcards } from "../games/flashcards";
@@ -122,7 +123,13 @@ export function DeckView({ deckId }: { deckId: string }) {
           </Button>
           <button
             onClick={async () => {
-              if (!confirm(`Delete “${deck.title}” and all its cards?`)) return;
+              const yes = await confirm({
+                title: `Delete “${deck.title}”?`,
+                body: "This removes the deck and all its cards. It can't be undone.",
+                confirmLabel: "Delete deck",
+                destructive: true,
+              });
+              if (!yes) return;
               await deleteDeck(deck.id);
               router.push("/practice");
             }}
