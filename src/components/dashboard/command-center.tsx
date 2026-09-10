@@ -8,6 +8,7 @@ import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
 import { NavDeck, NAV_ICONS, type NavItem } from "./nav-deck";
 import { QuickAdd } from "./quick-add";
+import { SearchTrigger } from "@/components/app/command-palette";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList } from "@/components/app/deadline-list";
 import { Progress } from "@/components/ui/progress";
@@ -46,8 +47,10 @@ export function CommandCenter() {
     { href: "/brain-dump", label: "Brain Dump", icon: NAV_ICONS.brain, sub: "Clear your head" },
     { href: "/goals", label: "Goals", icon: NAV_ICONS.goals, sub: model.nav.goals },
     { href: "/school", label: "School", icon: NAV_ICONS.school, sub: model.nav.school },
+    { href: "/grades", label: "Grades", icon: NAV_ICONS.grades, sub: model.nav.grades },
     { href: "/practice", label: "Practice", icon: NAV_ICONS.practice, sub: model.nav.practice },
     { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics, sub: model.nav.analytics },
+    { href: "/assistant", label: "AI Assistant", icon: NAV_ICONS.assistant, sub: "Ask about your work" },
   ];
 
   return (
@@ -121,9 +124,12 @@ export function CommandCenter() {
 
       {/* NAVIGATE */}
       <div className="mt-8">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
-          Navigate
-        </p>
+        <div className="mb-3 flex items-center justify-between gap-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">
+            Navigate
+          </p>
+          <SearchTrigger className="max-w-[240px]" />
+        </div>
         <NavDeck items={navItems} />
       </div>
 
@@ -330,6 +336,7 @@ interface Model {
     calendar: string;
     goals: string;
     school: string;
+    grades: string;
     practice: string;
     analytics: string;
   };
@@ -345,6 +352,7 @@ function buildModel(
   const prefs = data.profile.prefs;
   const open = data.tasks.filter((t) => t.status === "todo");
   const cardsDue = data.decks.reduce((n, d) => n + dueCount(d.cards), 0);
+  const gradedCourses = data.courses.filter((c) => c.currentGrade || c.currentScore != null).length;
 
   const overdue = open.filter((t) => t.dueAt && parseDate(t.dueAt) < startToday);
   const dueToday = open.filter(
@@ -485,6 +493,7 @@ function buildModel(
       calendar: eventsToday ? `${eventsToday} today` : "Nothing today",
       goals: goals.length ? `${analytics.avgGoalProgress}% avg` : "Set a goal",
       school: openAssign ? `${openAssign} assignment${openAssign === 1 ? "" : "s"}` : "Courses & grades",
+      grades: gradedCourses ? `${gradedCourses} class${gradedCourses === 1 ? "" : "es"} tracked` : "GPA & calculators",
       practice: cardsDue ? `${cardsDue} card${cardsDue === 1 ? "" : "s"} to review` : "Drill with games",
       analytics: `${analytics.completionRate}% completion`,
     },

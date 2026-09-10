@@ -23,6 +23,7 @@ import { Logo } from "@/components/brand";
 import { Badge } from "@/components/ui/badge";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/firebase/auth-context";
+import { SearchTrigger } from "@/components/app/command-palette";
 
 /**
  * Nav grouped by what the student is actually doing, rather than one flat list
@@ -114,6 +115,10 @@ export function Sidebar({
         <button className="lg:hidden" onClick={() => setOpen(false)}>
           <X className="h-5 w-5" />
         </button>
+      </div>
+
+      <div className="px-3 pb-3">
+        <SearchTrigger />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 scrollbar-thin">

@@ -9,6 +9,7 @@ import { DailyBrief } from "@/components/app/daily-brief";
 import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
 import { UndoBar } from "@/components/ui/undo-bar";
+import { CommandPalette } from "@/components/app/command-palette";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, initializing, configured } = useAuth();
@@ -46,12 +47,9 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
     return (
       <>
         <main className="min-h-screen">{children}</main>
-        {pathname === "/dashboard" && (
-          <>
-            <DailyBrief />
-            <CanvasAutoSync />
-          </>
-        )}
+        <DailyBrief />
+        <CanvasAutoSync />
+        <CommandPalette />
         <UndoBar />
       </>
     );
@@ -70,6 +68,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
       </main>
       <DailyBrief />
       <CanvasAutoSync />
+      <CommandPalette />
       <UndoBar className="lg:left-[calc(16rem+1rem)]" />
     </div>
   );

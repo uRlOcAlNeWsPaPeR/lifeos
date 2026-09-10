@@ -7,22 +7,11 @@
  * `npm test` wires it up.
  */
 import assert from "node:assert/strict";
+import { test, report } from "@/lib/test-harness";
 import { checkAnswer, normalize } from "./answer";
 import { parsePaste, cardsFromNotes, dedupeCards } from "./parse";
 import { buildQueue, deckMastery, hydrateCard, intervalDays, mastery, newCard, review } from "./srs";
 import type { CardDTO } from "@/lib/types";
-
-let passed = 0;
-const failures: string[] = [];
-
-function test(name: string, fn: () => void) {
-  try {
-    fn();
-    passed++;
-  } catch (e) {
-    failures.push(`${name}\n    ${(e as Error).message.split("\n")[0]}`);
-  }
-}
 
 const card = (over: Partial<CardDTO> = {}): CardDTO =>
   hydrateCard({ id: "c1", ...newCard("front", "back"), ...over });
@@ -208,11 +197,4 @@ test("hydrate repairs a card missing every optional field", () => {
   assert.equal(c.dueAt, null);
 });
 
-/* -------------------------------- report ------------------------------- */
-
-if (failures.length) {
-  console.error(`\n✗ ${failures.length} failed, ${passed} passed\n`);
-  for (const f of failures) console.error(`  ✗ ${f}\n`);
-  process.exit(1);
-}
-console.log(`✓ ${passed} practice tests passed`);
+report("practice");
