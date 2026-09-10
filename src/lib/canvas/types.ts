@@ -21,6 +21,10 @@ export interface CanvasConnectionDoc {
    * An array = sync exactly those, nothing else (a new Canvas class is not
    * auto-added). `null` / absent = not chosen yet: the first sync imports all,
    * then only the already-imported set keeps syncing until the picker is used.
+   *
+   * A plain re-sync only ever refreshes the courses already mirrored in LifeOS,
+   * so deleting a course here keeps it gone; deleting it also drops its id from
+   * this list (see `forgetCourseFromSelection`) so the picker stays truthful.
    */
   selectedCanvasCourseIds?: string[] | null;
   status: CanvasConnectionStatus;

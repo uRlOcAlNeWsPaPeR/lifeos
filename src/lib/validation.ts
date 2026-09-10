@@ -170,6 +170,14 @@ export const canvasCoursesSelectSchema = z.object({
   selectedIds: z.array(z.string().min(1).max(64)).max(200).nullable(),
 });
 
+// Drop / re-add a single Canvas course from the pick list. "forget" runs when the
+// student deletes the course inside LifeOS so a later sync won't resurrect it;
+// "restore" is the undo.
+export const canvasCourseSelectionPatchSchema = z.object({
+  canvasCourseId: z.string().min(1).max(64),
+  op: z.enum(["forget", "restore"]),
+});
+
 // DEV ONLY — pasted Canvas personal access token.
 export const canvasTokenConnectSchema = z.object({
   instanceUrl: z.string().min(3).max(255),

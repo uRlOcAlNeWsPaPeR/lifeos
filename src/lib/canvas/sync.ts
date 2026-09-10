@@ -43,7 +43,14 @@ export function liveCanvasCourses(raw: CanvasCourse[]): CanvasCourse[] {
   });
 }
 
-export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
+export async function syncCanvas(
+  uid: string,
+  opts: { additive?: boolean } = {},
+): Promise<CanvasSyncCounts> {
+  // `additive` (the course picker) may pull in a Canvas class that isn't in
+  // LifeOS yet. A plain re-sync ("Sync now", auto-sync) never does — it only
+  // refreshes what's already here, so a deleted course stays deleted.
+  const additive = opts.additive ?? false;
   const conn = await requireConnection(uid);
   const client = CanvasClient.from(conn);
   const base = adminDb().collection("users").doc(uid);
@@ -76,24 +83,38 @@ export async function syncCanvas(uid: string): Promise<CanvasSyncCounts> {
     const rawCanvasCourses = await client.listActiveCourses();
     const liveCourses = liveCanvasCourses(rawCanvasCourses);
 
-    // The student picks which courses land in LifeOS (Settings → School, or the
-    // prompt right after connecting). A course they didn't pick is treated like a
-    // dropped course below — its mirrored assignments are removed and open tasks
-    // pruned — and a brand-new Canvas class is NOT auto-added.
+    // Which Canvas courses does this sync touch?
     //
-    // `selectedCanvasCourseIds` semantics:
-    //   • an array  → sync exactly those ids, nothing else.
-    //   • null/absent → not chosen yet. On the first sync (no Canvas courses here
-    //     yet) import everything so the picker has something to show; once some
-    //     exist, keep syncing just those and wait for an explicit opt-in.
+    // `selectedCanvasCourseIds` on the connection is the student's explicit pick
+    // list (Settings → School, or the prompt after connecting):
+    //   • an array   → exactly those ids.
+    //   • null/absent → never chosen.
+    //
+    // A plain re-sync only REFRESHES the Canvas courses already mirrored in
+    // LifeOS — it never pulls in a new class, and a course the student deleted
+    // here stays gone. Only the course picker (`additive`) can add a course
+    // that isn't here yet. The first sync right after connecting (nothing
+    // mirrored, nothing picked) imports everything so the picker has a full list.
     const explicitSelection = conn.selectedCanvasCourseIds ?? null;
     const knownCanvasIds = existingCourses
       .filter((c) => c.provider === "canvas" && c.canvasCourseId)
       .map((c) => String(c.canvasCourseId));
-    const selection =
-      explicitSelection ?? (knownCanvasIds.length ? knownCanvasIds : null);
+
+    let selection: string[] | null;
+    if (additive) {
+      selection = explicitSelection ?? (knownCanvasIds.length ? knownCanvasIds : null);
+    } else if (explicitSelection) {
+      // an explicit pick list exists — refresh only the picked courses still
+      // mirrored here; if the student has deleted them all, sync nothing.
+      selection = knownCanvasIds.filter((id) => explicitSelection.includes(id));
+    } else if (knownCanvasIds.length) {
+      selection = knownCanvasIds; // never used the picker — refresh what's here
+    } else {
+      selection = null; // never picked, nothing here yet — first sync imports all
+    }
+
     const canvasCourses = selection
-      ? liveCourses.filter((c) => selection.includes(String(c.id)))
+      ? liveCourses.filter((c) => selection!.includes(String(c.id)))
       : liveCourses;
     const activeCourseIds = new Set(canvasCourses.map((c) => String(c.id)));
 

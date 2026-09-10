@@ -25,7 +25,7 @@ import {
 } from "@/lib/firebase/schema";
 import { deriveAnalytics, goalProgress, type AnalyticsSummary } from "@/lib/analytics-derive";
 import { limitsFor, effectivePlan } from "@/lib/plan-limits";
-import { api } from "@/lib/client";
+import { api, authedApi } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
 import { pushUndo } from "@/components/ui/undo-bar";
 import { deckMastery, hydrateCard, newCard } from "@/lib/practice/srs";
@@ -973,6 +973,21 @@ export function AppDataProvider({
           batch.delete(entityDoc(uid, "courses", id));
           children.forEach((a) => batch.delete(entityDoc(uid, "assignments", a.id)));
           await batch.commit();
+
+          // A deleted Canvas course must stay gone across re-syncs: drop it from
+          // the Canvas pick list too (best-effort — a plain sync already only
+          // refreshes courses still present, this just keeps the picker honest).
+          const canvasCourseId =
+            courseSnap && courseSnap.provider === "canvas" && courseSnap.canvasCourseId
+              ? String(courseSnap.canvasCourseId)
+              : null;
+          const patchSelection = (op: "forget" | "restore") =>
+            void authedApi("/api/canvas/courses", {
+              method: "PATCH",
+              body: { canvasCourseId, op },
+            }).catch(() => {});
+          if (canvasCourseId) patchSelection("forget");
+
           if (courseSnap) {
             const courseRestore = stripId(courseSnap);
             const childRestore = children.map((a) => ({ id: a.id, data: stripId(a) }));
@@ -983,6 +998,7 @@ export function AppDataProvider({
                 b.set(entityDoc(uid, "courses", id), courseRestore);
                 childRestore.forEach((c) => b.set(entityDoc(uid, "assignments", c.id), c.data));
                 await b.commit();
+                if (canvasCourseId) patchSelection("restore");
               },
             });
           }

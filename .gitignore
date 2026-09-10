@@ -26,3 +26,5 @@ cj2.txt
 *.cookies
 cookies.txt
 .env*
+
+.claude/settings.local.json

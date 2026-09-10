@@ -132,6 +132,43 @@ export async function setCourseSelection(
   );
 }
 
+/**
+ * Drop one Canvas course from the student's pick list — called when they delete
+ * the course inside LifeOS so a later sync (or reopening the picker) doesn't
+ * bring it back. No-op when they never used the picker: a plain re-sync already
+ * only refreshes the courses still present.
+ */
+export async function forgetCourseFromSelection(
+  uid: string,
+  canvasCourseId: string,
+): Promise<void> {
+  const conn = await getConnection(uid);
+  if (!conn || !Array.isArray(conn.selectedCanvasCourseIds)) return;
+  const next = conn.selectedCanvasCourseIds.filter((id) => id !== canvasCourseId);
+  if (next.length === conn.selectedCanvasCourseIds.length) return;
+  await ref(uid).set(
+    { selectedCanvasCourseIds: next, updatedAt: new Date().toISOString() },
+    { merge: true },
+  );
+}
+
+/** Undo of {@link forgetCourseFromSelection} — puts the course id back. */
+export async function restoreCourseToSelection(
+  uid: string,
+  canvasCourseId: string,
+): Promise<void> {
+  const conn = await getConnection(uid);
+  if (!conn || !Array.isArray(conn.selectedCanvasCourseIds)) return;
+  if (conn.selectedCanvasCourseIds.includes(canvasCourseId)) return;
+  await ref(uid).set(
+    {
+      selectedCanvasCourseIds: [...conn.selectedCanvasCourseIds, canvasCourseId],
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
 export async function markConnection(
   uid: string,
   patch: Partial<
