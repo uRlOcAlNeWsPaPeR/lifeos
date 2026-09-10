@@ -368,4 +368,50 @@ html.lenis body {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+
+  /* Exception: the LifeOS Core detonation is the product's signature beat — a
+     brief, centred flash with no travel or parallax. Let it play, just fast,
+     so reduced-motion / Low Power Mode users still see the ball explode
+     instead of getting nothing. */
+  [style*="core-charge"],
+  [style*="core-burst"],
+  [style*="core-shock"],
+  [style*="core-shard"],
+  [style*="core-flash"],
+  [style*="core-reveal"],
+  [style*="core-implode"],
+  [style*="core-reform"] {
+    animation-duration: 460ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Mobile ergonomics — deliberately outside @layer so these win over
+ * Tailwind utility classes without !important gymnastics.
+ * ------------------------------------------------------------------ */
+
+/* iOS Safari zooms the viewport when a focused control is < 16px.
+   Keep the app's compact 14px type everywhere ≥ sm, 16px on phones. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  textarea,
+  select {
+    /* important: beats the .text-sm utility class on these controls */
+    font-size: 16px !important;
+  }
+}
+
+/* Row actions that reveal on hover are unreachable on touch — show them. */
+@media (hover: none) {
+  .hover-reveal {
+    opacity: 1 !important;
+  }
+}
+
+/* Respect the iOS home indicator for anything pinned to the bottom edge. */
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+.bottom-safe {
+  bottom: max(1rem, env(safe-area-inset-bottom));
 }

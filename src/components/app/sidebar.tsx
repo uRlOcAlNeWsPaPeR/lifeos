@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   ListChecks,
@@ -47,6 +47,18 @@ export function Sidebar({
   const { logout: signOutUser } = useAuth();
   const [open, setOpen] = useState(false);
 
+  // Lock the page behind the drawer + close it on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open]);
+
   async function logout() {
     await signOutUser();
     router.replace("/login");
@@ -89,7 +101,7 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="space-y-2 p-3">
+      <div className="pb-safe space-y-2 p-3">
         <Link
           href="/settings"
           onClick={() => setOpen(false)}
@@ -127,7 +139,7 @@ export function Sidebar({
   return (
     <>
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-background/70 px-4 py-3 backdrop-blur-xl lg:hidden">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-background/70 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
         <Logo />
         <button onClick={() => setOpen(true)}>
           <Menu className="h-5 w-5" />

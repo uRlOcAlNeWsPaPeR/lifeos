@@ -102,12 +102,12 @@ export function TaskItem({
         </Badge>
       )}
 
-      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+      <div className="hover-reveal flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
         {task.canvasUrl && <OpenInCanvas url={task.canvasUrl} compact className="p-1.5" />}
         {onEdit && (
           <button
             onClick={() => onEdit(task)}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            className="rounded-md p-2.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground sm:p-1.5"
             aria-label="Edit task"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -116,7 +116,7 @@ export function TaskItem({
         {onDelete && (
           <button
             onClick={() => onDelete(task)}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            className="rounded-md p-2.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:p-1.5"
             aria-label="Delete task"
           >
             <Trash2 className="h-3.5 w-3.5" />

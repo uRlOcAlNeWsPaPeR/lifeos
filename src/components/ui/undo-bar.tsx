@@ -54,7 +54,7 @@ export function UndoBar({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed bottom-4 left-4 z-[100] flex w-full max-w-xs flex-col gap-2",
+        "pointer-events-none bottom-safe fixed left-4 z-[100] flex w-[calc(100%-2rem)] max-w-xs flex-col gap-2",
         className,
       )}
     >

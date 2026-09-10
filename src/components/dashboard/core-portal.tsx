@@ -66,7 +66,12 @@ export function CorePortal() {
   const { logout } = useAuth();
 
   const studyIndex = STUDY_APP_INDEX < 0 ? 0 : STUDY_APP_INDEX;
-  const [cinematic, setCinematic] = useState(false);
+  // The immersive Core layout is the default on every screen. It's never gated
+  // on the motion preference — reduced-motion users get the same flow, only the
+  // keyframes collapse to instant (global rule). `reduced()` shortens the
+  // phase timeouts to match. The plain scrolling branch below is the last-resort
+  // fallback and is effectively unreachable now (kept for no-JS / SSR safety).
+  const [cinematic] = useState(true);
   const [phase, setPhase] = useState<Phase>("home");
   const phaseRef = useRef<Phase>("home");
   phaseRef.current = phase;
@@ -78,16 +83,6 @@ export function CorePortal() {
   const now = useMemo(() => new Date(), []);
 
   useEffect(() => {
-    // The detonation runs on every screen now — phones included (tap the
-    // sphere). Reduced-motion users still get it, just instant (the keyframes
-    // self-neutralise via the global reduced-motion rule).
-    let reduce = false;
-    try {
-      reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    } catch {
-      /* matchMedia unavailable — assume full motion */
-    }
-    setCinematic(!reduce);
     // warm the routed apps so navigation lands the instant the burst clears
     LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
   }, [router]);
@@ -109,7 +104,8 @@ export function CorePortal() {
       return;
     }
     setPhase("boom");
-    window.setTimeout(() => setPhase("console"), reduced() ? 300 : TO_CONSOLE);
+    // reduced-motion still gets the (shortened) burst — hold long enough to see it
+    window.setTimeout(() => setPhase("console"), reduced() ? 640 : TO_CONSOLE);
   };
 
   // Entry point from the app orbit: Study runs the existing detonation; any
@@ -130,7 +126,7 @@ export function CorePortal() {
       }
       setBoomApp(app);
       setPhase("boom");
-      window.setTimeout(() => router.push(to), reduced() ? 300 : TO_ROUTE);
+      window.setTimeout(() => router.push(to), reduced() ? 560 : TO_ROUTE);
       return;
     }
     if (app.href) window.open(app.href, "_blank", "noopener,noreferrer");
@@ -142,7 +138,7 @@ export function CorePortal() {
     setAppIndex(studyIndex);
     setBoomApp(null);
     setPhase("closing");
-    window.setTimeout(() => setPhase("home"), reduced() ? 260 : TO_HOME);
+    window.setTimeout(() => setPhase("home"), reduced() ? 460 : TO_HOME);
   };
 
   const returnCore = () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,6 +15,7 @@ import {
   Clock,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
+import { LifeosCore } from "@/components/dashboard/lifeos-core";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ export function CalendarView() {
   });
   const [view, setView] = useState<View>("month");
   const [selected, setSelected] = useState<string | null>(null);
+  const isMobile = useIsMobile();
 
   // Build a date-keyed index once per data change — cheap and avoids per-cell scans.
   const index = useMemo(() => {
@@ -146,14 +148,14 @@ export function CalendarView() {
                     view === v ? "bg-primary/20 text-primary" : "text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  {v}
+                  {isMobile && v === "month" ? "Agenda" : v}
                 </button>
               ))}
             </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => shift(-1)}
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground sm:p-1.5"
                 aria-label="Previous"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -171,7 +173,7 @@ export function CalendarView() {
               </Button>
               <button
                 onClick={() => shift(1)}
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                className="rounded-lg p-2.5 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground sm:p-1.5"
                 aria-label="Next"
               >
                 <ChevronRight className="h-4 w-4" />
@@ -180,6 +182,16 @@ export function CalendarView() {
           </div>
         </div>
 
+        {isMobile ? (
+          <CalendarAgenda
+            cursor={cursor}
+            view={view}
+            index={index}
+            today={today}
+            onSelect={setSelected}
+          />
+        ) : (
+        <>
         {/* weekday header */}
         <div className="grid grid-cols-7 border-b border-white/[0.06] text-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
@@ -300,6 +312,8 @@ export function CalendarView() {
             );
           })}
         </div>
+        </>
+        )}
       </Card>
 
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
@@ -436,7 +450,7 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
           </Button>
         </div>
 
-        <div className="flex-1 space-y-5 overflow-y-auto scrollbar-thin p-4">
+        <div className="pb-safe flex-1 space-y-5 overflow-y-auto scrollbar-thin p-4">
           {totalItems === 0 && (
             <p className="py-10 text-center text-sm text-muted-foreground">
               Nothing scheduled. Add a task or event above.
@@ -460,7 +474,7 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
                   </div>
                   <button
                     onClick={() => deleteEvent(e.id)}
-                    className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+                    className="hover-reveal -m-1 rounded p-2 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 sm:p-1"
                     aria-label="Delete event"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -550,17 +564,17 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
                         {t.estimatedMinutes ? <span>~{t.estimatedMinutes}m</span> : null}
                       </div>
                     </div>
-                    <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="hover-reveal flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         onClick={() => setTaskModal(t)}
-                        className="rounded p-1 text-muted-foreground hover:text-foreground"
+                        className="rounded p-2 text-muted-foreground hover:text-foreground sm:p-1"
                         aria-label="Edit task"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => deleteTask(t.id)}
-                        className="rounded p-1 text-muted-foreground hover:text-destructive"
+                        className="rounded p-2 text-muted-foreground hover:text-destructive sm:p-1"
                         aria-label="Delete task"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -603,6 +617,255 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
       <div className="space-y-2">{children}</div>
     </div>
+  );
+}
+
+/* ------------------------------ mobile agenda ------------------------------ */
+
+function useIsMobile(query = "(max-width: 639px)") {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMobile(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return mobile;
+}
+
+type DayIndex = Map<
+  string,
+  { tasks: TaskDTO[]; events: EventDTO[]; assignments: AssignmentDTO[] }
+>;
+
+/**
+ * The month grid can't fit seven columns on a phone, so small screens get a
+ * vertical agenda instead: every day in the range that has something on it,
+ * newest work in bold, tap a day to open the same drawer the grid uses.
+ */
+function CalendarAgenda({
+  cursor,
+  view,
+  index,
+  today,
+  onSelect,
+}: {
+  cursor: Date;
+  view: View;
+  index: DayIndex;
+  today: Date;
+  onSelect: (k: string) => void;
+}) {
+  const days = useMemo(() => {
+    if (view === "week") {
+      const start = startOfWeek(cursor);
+      return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+    }
+    const first = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const last = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0);
+    const out: Date[] = [];
+    for (let d = new Date(first); d <= last; d = addDays(d, 1)) out.push(new Date(d));
+    return out;
+  }, [cursor, view]);
+
+  const todayKey = KEY(today);
+
+  const rows = days
+    .map((day) => {
+      const k = KEY(day);
+      const b = index.get(k);
+      const items = [
+        ...(b?.events ?? []).map((e) => ({
+          type: "event" as const,
+          id: e.id,
+          title: e.title,
+          kind: e.kind,
+          canvas: e.provider === "canvas",
+          done: false,
+        })),
+        ...(b?.assignments ?? []).map((a) => ({
+          type: "assignment" as const,
+          id: a.id,
+          title: a.title,
+          kind: "",
+          canvas: a.provider === "canvas",
+          done: false,
+        })),
+        ...(b?.tasks ?? []).map((t) => ({
+          type: "task" as const,
+          id: t.id,
+          title: t.title,
+          kind: t.status,
+          canvas: t.source === "canvas",
+          done: t.status === "done",
+        })),
+      ];
+      return { day, k, items };
+    })
+    .filter((r) => r.items.length > 0);
+
+  if (rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-4 px-6 py-14 text-center">
+        <ExplodingCore />
+        <div>
+          <p className="text-sm font-medium">
+            {view === "week" ? "Nothing this week" : "Nothing this month"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Tasks, deadlines and study sessions will show up here.
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={() => onSelect(todayKey)}>
+          <Plus className="h-4 w-4" /> Add for today
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-white/[0.06]">
+      {rows.map(({ day, k, items }) => {
+        const isToday = k === todayKey;
+        const past = k < todayKey;
+        return (
+          <button
+            key={k}
+            onClick={() => onSelect(k)}
+            className="flex w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.03] active:bg-white/[0.05]"
+          >
+            <div className="w-14 shrink-0 pt-0.5">
+              <p
+                className={cn(
+                  "text-[11px] font-medium uppercase tracking-wide",
+                  isToday ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                {day.toLocaleDateString([], { weekday: "short" })}
+              </p>
+              <p
+                className={cn(
+                  "text-lg font-semibold leading-tight",
+                  isToday && "text-primary",
+                  past && "text-muted-foreground",
+                )}
+              >
+                {day.getDate()}
+              </p>
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              {items.map((it) => {
+                const cls = it.done
+                  ? "bg-primary/10 text-muted-foreground line-through"
+                  : it.type === "event"
+                    ? "bg-white/[0.06]"
+                    : it.type === "assignment"
+                      ? "bg-warning/15 text-warning"
+                      : "bg-primary/15 text-primary";
+                return (
+                  <span
+                    key={`${it.type}-${it.id}`}
+                    className={cn(
+                      "flex items-center gap-1.5 truncate rounded-lg px-2.5 py-1.5 text-xs",
+                      cls,
+                      past && !it.done && "opacity-50",
+                      it.canvas && "ring-1 ring-inset ring-primary/40",
+                    )}
+                  >
+                    {it.type === "event" && (
+                      <span
+                        className={cn("h-1.5 w-1.5 shrink-0 rounded-full", EVENT_DOT[it.kind])}
+                      />
+                    )}
+                    {it.type === "assignment" && (
+                      <GraduationCap className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className="truncate">{it.title}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The LifeOS Core, shrunk to an empty-state ornament — tap it and it detonates
+ * and reforms, the same beat as the dashboard. Pure CSS keyframes (see
+ * globals.css); reduced-motion collapses it to an instant flicker.
+ */
+function ExplodingCore() {
+  const [boom, setBoom] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  function detonate() {
+    if (boom) return;
+    setBoom(true);
+    timer.current = setTimeout(() => setBoom(false), 1100);
+  }
+
+  const shards = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, i) => {
+        const ang = (i / 12) * Math.PI * 2;
+        const dist = 60 + Math.random() * 46;
+        return {
+          dx: `${Math.round(Math.cos(ang) * dist)}px`,
+          dy: `${Math.round(Math.sin(ang) * dist)}px`,
+          size: 3 + Math.round(Math.random() * 4),
+        };
+      }),
+    [],
+  );
+
+  return (
+    <button
+      type="button"
+      onClick={detonate}
+      aria-label="LifeOS Core"
+      className="relative grid h-28 w-28 place-items-center outline-none"
+    >
+      {boom && (
+        <span aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
+          <span
+            className="absolute h-16 w-16 rounded-full"
+            style={{
+              border: "2px solid hsl(152 92% 68%)",
+              animation: "core-shock 820ms cubic-bezier(0.15,0.7,0.3,1) 220ms forwards",
+            }}
+          />
+          {shards.map((s, i) => (
+            <span
+              key={i}
+              className="absolute rounded-full bg-[hsl(152_90%_66%)]"
+              style={{
+                width: s.size,
+                height: s.size,
+                ["--dx" as string]: s.dx,
+                ["--dy" as string]: s.dy,
+                animation: `core-shard 880ms cubic-bezier(0.16,1,0.3,1) 220ms forwards`,
+              }}
+            />
+          ))}
+        </span>
+      )}
+      <span
+        className="block h-full w-full"
+        style={{
+          animation: boom
+            ? "core-charge 220ms ease-in forwards, core-burst 720ms cubic-bezier(0.16,1,0.3,1) 220ms forwards, core-reform 780ms cubic-bezier(0.22,1,0.36,1) 940ms both"
+            : undefined,
+        }}
+      >
+        <LifeosCore variant="orbit" active />
+      </span>
+    </button>
   );
 }
 

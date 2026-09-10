@@ -211,7 +211,7 @@ export function DailyBrief() {
         </div>
 
         {/* footer */}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] px-7 py-4">
+        <div className="pb-safe flex shrink-0 items-center justify-between gap-3 border-t border-white/[0.06] px-7 py-4">
           <Link
             href={brief.cta.href}
             onClick={close}

@@ -113,8 +113,8 @@ function GoalCard({
           <div className="flex items-start justify-between gap-2">
             <p className="font-medium leading-tight">{goal.title}</p>
             <button
-              onClick={() => confirm("Delete this goal?") && deleteGoal(goal.id)}
-              className="text-muted-foreground transition-colors hover:text-destructive"
+              onClick={() => deleteGoal(goal.id)}
+              className="-m-2 p-2 text-muted-foreground transition-colors hover:text-destructive"
               aria-label="Delete goal"
             >
               <Trash2 className="h-3.5 w-3.5" />
