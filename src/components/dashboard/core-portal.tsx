@@ -579,7 +579,7 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
     <div
       className={cn(
         "grid items-start gap-3 sm:gap-4 lg:grid-cols-3",
-        constrained && "min-h-0 flex-1 overflow-y-auto scrollbar-thin pb-1",
+        constrained && "min-h-0 flex-1 overflow-hidden pb-1",
       )}
     >
       {/* TODAY */}
