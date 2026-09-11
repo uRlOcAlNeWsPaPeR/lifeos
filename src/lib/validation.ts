@@ -194,6 +194,14 @@ export const canvasCourseSelectionPatchSchema = z.object({
   op: z.enum(["forget", "restore"]),
 });
 
+// Drop / re-add a single Canvas assignment from the deny-list. "forget" runs
+// when the student deletes the assignment inside LifeOS so a later sync won't
+// resurrect it; "restore" is the undo.
+export const canvasAssignmentSelectionPatchSchema = z.object({
+  canvasAssignmentId: z.string().min(1).max(64),
+  op: z.enum(["forget", "restore"]),
+});
+
 // DEV ONLY — pasted Canvas personal access token.
 export const canvasTokenConnectSchema = z.object({
   instanceUrl: z.string().min(3).max(255),

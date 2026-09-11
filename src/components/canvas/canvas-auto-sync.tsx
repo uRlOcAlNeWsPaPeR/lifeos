@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 
-const POLL_MS = 8 * 60 * 1000; // background check cadence while the app is open
-const MIN_GAP_MS = 2 * 60 * 1000; // floor between checks (e.g. on tab focus)
+const POLL_MS = 3 * 60 * 1000; // background check cadence while the app is open
+const MIN_GAP_MS = 60 * 1000; // floor between checks (e.g. on tab focus)
 
 /**
  * Headless. While Canvas is connected, quietly polls for new activity — a

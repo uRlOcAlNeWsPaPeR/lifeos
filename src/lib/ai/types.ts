@@ -5,7 +5,7 @@
 export type Priority = "low" | "medium" | "high" | "urgent";
 
 /** Which engine produced a result. */
-export type AIEngine = "heuristic" | "anthropic" | "gemini";
+export type AIEngine = "heuristic" | "anthropic" | "gemini" | "openrouter";
 
 export interface LifeOSContext {
   now: Date;

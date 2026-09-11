@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, X, Calculator } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Plus, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Select } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   GPA_LETTERS,
+  LETTER_SCALE,
   courseGrade,
   fmtPct,
   gpaFromLetter,
@@ -18,36 +18,37 @@ import {
   num,
   pointsPct,
   weightedPct,
+  type LetterScaleEntry,
 } from "@/lib/grades";
 import type { CourseDTO } from "@/lib/types";
 
-type Tab = "weighted" | "points" | "final" | "gpa";
+type Tab = "predict" | "weighted" | "points" | "final" | "gpa";
 
 const TABS: { id: Tab; label: string }[] = [
+  { id: "predict", label: "Predict" },
   { id: "weighted", label: "Weighted categories" },
   { id: "points", label: "Points" },
   { id: "final", label: "Final exam" },
   { id: "gpa", label: "GPA" },
 ];
 
-export function GradeCalculators({ courses }: { courses: CourseDTO[] }) {
-  const [tab, setTab] = useState<Tab>("weighted");
+export function GradeCalculators({
+  courses,
+  scale = LETTER_SCALE,
+}: {
+  courses: CourseDTO[];
+  /** The student's chosen percent→letter cutoffs (Settings → School). */
+  scale?: LetterScaleEntry[];
+}) {
+  const [tab, setTab] = useState<Tab>("predict");
 
   return (
-    <Card className="p-6">
-      <div className="flex items-center gap-2">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
-          <Calculator className="h-4 w-4" />
-        </span>
-        <div>
-          <h2 className="font-semibold tracking-tight">Grade calculators</h2>
-          <p className="text-xs text-muted-foreground">
-            Work out where you stand and what you need — nothing here is saved.
-          </p>
-        </div>
-      </div>
+    <div>
+      <p className="text-xs text-muted-foreground">
+        Work out where you stand and what you need — nothing here is saved.
+      </p>
 
-      <div className="mt-5 flex flex-wrap gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1">
+      <div className="mt-4 flex flex-wrap gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -65,12 +66,13 @@ export function GradeCalculators({ courses }: { courses: CourseDTO[] }) {
       </div>
 
       <div className="mt-5">
-        {tab === "weighted" && <WeightedCalc />}
-        {tab === "points" && <PointsCalc courses={courses} />}
-        {tab === "final" && <FinalCalc courses={courses} />}
+        {tab === "predict" && <PredictCalc courses={courses} scale={scale} />}
+        {tab === "weighted" && <WeightedCalc scale={scale} />}
+        {tab === "points" && <PointsCalc courses={courses} scale={scale} />}
+        {tab === "final" && <FinalCalc courses={courses} scale={scale} />}
         {tab === "gpa" && <GpaCalc courses={courses} />}
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -80,12 +82,14 @@ function Result({
   pct,
   caption,
   tone = "primary",
+  scale = LETTER_SCALE,
 }: {
   pct: number | null;
   caption?: string;
   tone?: "primary" | "warning" | "success";
+  scale?: LetterScaleEntry[];
 }) {
-  const letter = letterFromPct(pct);
+  const letter = letterFromPct(pct, scale);
   return (
     <div
       className={cn(
@@ -154,6 +158,133 @@ const n = (v: string) => {
   return Number.isFinite(x) ? x : 0;
 };
 
+/* --------------------------------- predict -------------------------------- */
+
+interface PredictRow {
+  id: string;
+  title: string;
+  possible: number;
+  /** "" = no guess entered yet — excluded from the predicted grade, same as
+   *  an assignment that isn't graded in real life. */
+  predicted: string;
+  /** What `predicted` started as (the real earned score, or "" if ungraded) —
+   *  what the per-row reset button puts back. */
+  original: string;
+  wasGraded: boolean;
+}
+
+function PredictCalc({ courses, scale }: { courses: CourseDTO[]; scale: LetterScaleEntry[] }) {
+  const [course, setCourse] = useState<CourseDTO | null>(null);
+  const [rows, setRows] = useState<PredictRow[]>([]);
+
+  const real = course ? courseGrade(course, scale) : null;
+
+  const loadCourse = (c: CourseDTO) => {
+    setCourse(c);
+    const withPoints = c.assignments.filter(
+      (a) => a.pointsPossible != null && a.pointsPossible > 0,
+    );
+    setRows(
+      withPoints.map((a) => {
+        const original =
+          a.status === "graded" && a.pointsEarned != null ? String(a.pointsEarned) : "";
+        return {
+          id: a.id,
+          title: a.title,
+          possible: a.pointsPossible!,
+          predicted: original,
+          original,
+          wasGraded: a.status === "graded",
+        };
+      }),
+    );
+  };
+
+  const setPredicted = (id: string, predicted: string) =>
+    setRows((r) => r.map((row) => (row.id === id ? { ...row, predicted } : row)));
+
+  const resetRow = (id: string) =>
+    setRows((r) => r.map((row) => (row.id === id ? { ...row, predicted: row.original } : row)));
+
+  const guessed = rows.filter((r) => r.predicted.trim() !== "");
+  const pct = pointsPct(guessed.map((r) => ({ earned: n(r.predicted), possible: r.possible })));
+  const pending = rows.length - guessed.length;
+  const delta = pct != null && real?.pct != null ? Math.round((pct - real.pct) * 10) / 10 : null;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          Pick a class, then change any score — nothing here touches your real grades
+        </p>
+        <CoursePicker courses={courses} onPick={loadCourse} label="Predict a course" />
+      </div>
+
+      {!course ? (
+        <p className="text-sm text-muted-foreground">Pick a course above to start predicting.</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {course.name} doesn&apos;t have any assignments with points yet.
+        </p>
+      ) : (
+        <>
+          <ul className="divide-y divide-white/[0.06] border-y border-white/[0.06]">
+            {rows.map((row) => (
+              <li key={row.id} className="flex items-center gap-2.5 py-2.5">
+                <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+                {!row.wasGraded && (
+                  <Badge tone="muted" className="shrink-0">
+                    not graded yet
+                  </Badge>
+                )}
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Input
+                    className="h-8 w-16 text-center"
+                    inputMode="decimal"
+                    placeholder="?"
+                    value={row.predicted}
+                    onChange={(e) => setPredicted(row.id, e.target.value)}
+                  />
+                  <span className="text-xs text-muted-foreground">/ {num(row.possible)}</span>
+                </div>
+                <button
+                  onClick={() => resetRow(row.id)}
+                  disabled={row.predicted === row.original}
+                  className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground disabled:opacity-30"
+                  aria-label={`Reset ${row.title} to its real grade`}
+                  title="Reset to real grade"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </button>
+              </li>
+            ))}
+          </ul>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Result pct={real?.pct ?? null} caption="Current (real)" scale={scale} />
+            <Result
+              pct={pct}
+              scale={scale}
+              tone={
+                pct == null || delta == null ? "primary" : delta >= 0 ? "success" : "warning"
+              }
+              caption={
+                pending > 0
+                  ? `Predicted · ${pending} more not guessed yet`
+                  : delta == null
+                    ? "Predicted"
+                    : delta === 0
+                      ? "Predicted · no change"
+                      : `Predicted · ${delta > 0 ? "+" : ""}${num(delta)} vs. now`
+              }
+            />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------------------------- weighted categories ------------------------- */
 
 interface WRow {
@@ -165,7 +296,7 @@ interface WRow {
 
 const rid = () => Math.random().toString(36).slice(2);
 
-function WeightedCalc() {
+function WeightedCalc({ scale }: { scale: LetterScaleEntry[] }) {
   const [rows, setRows] = useState<WRow[]>([
     { id: rid(), name: "Tests", weight: "50", score: "" },
     { id: rid(), name: "Homework", weight: "30", score: "" },
@@ -225,6 +356,7 @@ function WeightedCalc() {
 
       <Result
         pct={pct}
+        scale={scale}
         tone={weightOff ? "warning" : "primary"}
         caption={
           totalWeight === 0
@@ -247,7 +379,7 @@ interface PRow {
   possible: string;
 }
 
-function PointsCalc({ courses }: { courses: CourseDTO[] }) {
+function PointsCalc({ courses, scale }: { courses: CourseDTO[]; scale: LetterScaleEntry[] }) {
   const [rows, setRows] = useState<PRow[]>([{ id: rid(), name: "", earned: "", possible: "" }]);
 
   const set = (id: string, patch: Partial<PRow>) =>
@@ -320,6 +452,7 @@ function PointsCalc({ courses }: { courses: CourseDTO[] }) {
 
       <Result
         pct={pct}
+        scale={scale}
         caption={totalPossible > 0 ? `${num(totalEarned)} / ${num(totalPossible)} points` : "Enter some points"}
       />
     </div>
@@ -328,13 +461,13 @@ function PointsCalc({ courses }: { courses: CourseDTO[] }) {
 
 /* ------------------------------ final exam ------------------------------ */
 
-function FinalCalc({ courses }: { courses: CourseDTO[] }) {
+function FinalCalc({ courses, scale }: { courses: CourseDTO[]; scale: LetterScaleEntry[] }) {
   const [current, setCurrent] = useState("");
   const [weight, setWeight] = useState("20");
   const [target, setTarget] = useState("90");
 
   const loadCourse = (c: CourseDTO) => {
-    const g = courseGrade(c);
+    const g = courseGrade(c, scale);
     if (g.pct != null) setCurrent(String(g.pct));
   };
 

@@ -41,7 +41,6 @@ export const NAV_GROUPS: {
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/brain-dump", label: "Brain Dump", icon: Brain },
       { href: "/tasks", label: "Tasks", icon: ListChecks },
-      { href: "/study", label: "Study", icon: Timer },
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
     ],
   },
@@ -49,6 +48,7 @@ export const NAV_GROUPS: {
     label: "School",
     items: [
       { href: "/school", label: "School", icon: GraduationCap },
+      { href: "/study", label: "Study", icon: Timer },
       { href: "/grades", label: "Grades", icon: Percent },
       { href: "/practice", label: "Practice", icon: Gamepad2 },
     ],

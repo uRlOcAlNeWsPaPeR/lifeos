@@ -75,6 +75,7 @@ export async function syncCanvas(
       tasks: 0,
       events: 0,
       duplicatesRemoved: 0,
+      assignmentsRemoved: 0,
     };
     const now = new Date().toISOString();
     const nowMs = Date.now();
@@ -205,20 +206,43 @@ export async function syncCanvas(
     }
 
     /* ---------------------------- assignments + tasks --------------------- */
-    for (const cc of canvasCourses) {
+    // Fetch every course's assignments concurrently — this is the dominant cost
+    // of a sync (one Canvas round trip, often several with pagination, per
+    // course) and courses don't depend on each other, so there's no reason to
+    // serialize them.
+    const assignmentsByCourse = await Promise.all(
+      canvasCourses.map(async (cc) => ({ cc, assignments: await client.listAssignments(cc.id) })),
+    );
+
+    // Every Canvas assignment id this sync actually saw, across all synced
+    // courses — anything mirrored here under an actively-synced course that
+    // ISN'T in this set was deleted on Canvas and gets pruned below.
+    const seenCanvasAssignmentIds = new Set<string>();
+    // Assignments the student deleted inside LifeOS. A resync only ever
+    // refreshes what's already mirrored here — it must not treat "still open
+    // on Canvas" as a reason to bring a deleted one back.
+    const deletedIds = new Set(conn.deletedCanvasAssignmentIds ?? []);
+    for (const { cc, assignments: canvasAssignments } of assignmentsByCourse) {
       const canvasCourseId = String(cc.id);
       const lifeosCourseId = courseIdByCanvas.get(canvasCourseId)!;
-      const canvasAssignments = await client.listAssignments(cc.id);
 
       for (const ca of canvasAssignments) {
-        if (ca.published === false) continue;
         const canvasAssignmentId = String(ca.id);
-        const derivedStatus = deriveStatus(ca.submission ?? null);
-        const submittedAt = ca.submission?.submitted_at ?? ca.submission?.graded_at ?? null;
+        // Unpublished is a draft state, not a deletion — keep whatever's here
+        // untouched rather than pruning it out from under the student.
+        seenCanvasAssignmentIds.add(canvasAssignmentId);
+        if (ca.published === false) continue;
 
         const existingA = existingAssignments.find(
           (a) => a.canvasAssignmentId === canvasAssignmentId,
         );
+        // Deleted here and Canvas hasn't moved on it — stay gone. (If it
+        // somehow already has a row, e.g. a stale deny-list entry, fall
+        // through and treat it normally rather than silently ignoring it.)
+        if (!existingA && deletedIds.has(canvasAssignmentId)) continue;
+
+        const derivedStatus = deriveStatus(ca.submission ?? null);
+        const submittedAt = ca.submission?.submitted_at ?? ca.submission?.graded_at ?? null;
 
         // Never downgrade a locally-advanced assignment when Canvas gives us no
         // submission signal.
@@ -241,6 +265,17 @@ export async function syncCanvas(
           canvasUrl: ca.html_url ?? null,
           source: "canvas",
         };
+        // The real "when was this created" answer, when Canvas gives us one —
+        // patched onto an existing row too, so an assignment synced before this
+        // was tracked self-corrects on its next sync instead of staying stuck
+        // on its LifeOS import time.
+        if (ca.created_at) desiredA.createdAt = ca.created_at;
+        // Canvas itself now reports this submitted/graded — that's the real
+        // answer, so a "mark as done" override the user set while it was still
+        // open has served its purpose. Clear it (only writes if it was set).
+        if (derivedStatus !== "open" && existingA?.localDone) {
+          desiredA.localDone = false;
+        }
         if (status === "graded" && ca.submission?.score != null) {
           desiredA.pointsEarned = ca.submission.score;
           desiredA.gradeValue = ca.submission.grade ?? String(ca.submission.score);
@@ -263,7 +298,13 @@ export async function syncCanvas(
         } else {
           const doc = base.collection("assignments").doc();
           lifeosAssignmentId = doc.id;
-          batch.set(doc, { ...desiredA, createdAt: now, updatedAt: now });
+          // Prefer Canvas's real creation date; fall back to "now" (this sync)
+          // only when Canvas doesn't supply one.
+          batch.set(doc, {
+            ...desiredA,
+            createdAt: (desiredA.createdAt as string | undefined) ?? now,
+            updatedAt: now,
+          });
           writes++;
           counts.assignments++;
           existingAssignments.push({ id: doc.id, ...desiredA } as Row);
@@ -313,6 +354,40 @@ export async function syncCanvas(
           }
         }
       }
+    }
+
+    /* ------------------------- prune deleted assignments ------------------ *
+     * An assignment Canvas no longer returns for an actively-synced course was
+     * deleted there — mirror that here. A finished task keeps its history but
+     * loses the dangling Canvas link; an open one (nothing to keep) is removed
+     * outright, same as when its whole course disappears. */
+    const deletedOnCanvas = existingAssignments.filter((a) => {
+      if (a.provider !== "canvas" || !a.canvasCourseId) return false;
+      if (!activeCourseIds.has(a.canvasCourseId as string)) return false; // course not touched this run
+      const cid = a.canvasAssignmentId ? String(a.canvasAssignmentId) : null;
+      return !(cid && seenCanvasAssignmentIds.has(cid));
+    });
+    for (const a of deletedOnCanvas) {
+      batch.delete(base.collection("assignments").doc(a.id));
+      writes++;
+      counts.assignmentsRemoved++;
+      for (const t of existingTasks) {
+        if (t.assignmentId !== a.id && t.canvasAssignmentId !== a.canvasAssignmentId) continue;
+        if (t.status === "done") {
+          batch.set(
+            base.collection("tasks").doc(t.id),
+            stamped({ assignmentId: null, canvasAssignmentId: null }, now),
+            { merge: true },
+          );
+        } else {
+          batch.delete(base.collection("tasks").doc(t.id));
+        }
+        writes++;
+      }
+    }
+    if (deletedOnCanvas.length) {
+      const removedIds = new Set(deletedOnCanvas.map((a) => a.id));
+      existingAssignments = existingAssignments.filter((a) => !removedIds.has(a.id));
     }
 
     /* --------------------------- de-dup assignments ----------------------- *

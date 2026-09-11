@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Lock, Maximize } from "lucide-react";
+import { Lock, Maximize, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
+import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toaster";
 import { useAppData } from "@/lib/store/app-data";
 import {
@@ -23,9 +24,23 @@ const SNOOZES = [1, 5, 10]; // minutes
 const NAG_INTERVAL_MS = 90_000;
 
 export function StudyLockPrompt() {
-  const { data } = useAppData();
+  const { data, deleteEvent } = useAppData();
   const lock = useStudyLock(data.events);
   const pathname = usePathname();
+
+  // "End session" just stops the lock-in nag for this session — the calendar
+  // event stays. "Delete session" is the separate, actually-destructive action:
+  // it removes the event itself (undoable, like any other delete in LifeOS).
+  const deleteSession = async () => {
+    if (!lock.session) return;
+    const yes = await confirm({
+      title: "Delete this study session?",
+      body: "It comes off your calendar entirely — not just off the lock-in screen. You can undo right after from the bar at the bottom.",
+      confirmLabel: "Delete session",
+      destructive: true,
+    });
+    if (yes) await deleteEvent(lock.session.id);
+  };
 
   const [open, setOpen] = useState(false);
   const [manual, setManual] = useState(false);
@@ -128,24 +143,36 @@ export function StudyLockPrompt() {
           You just exited fullscreen. Get back to it, or end the session for good — those
           are the only options.
         </p>
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex items-center justify-between gap-2">
           <Button
-            variant="destructive"
-            onClick={() => {
-              lock.endSession();
-              setEscapePrompt(false);
-            }}
-          >
-            End session
-          </Button>
-          <Button
+            variant="ghost"
+            className="text-muted-foreground hover:text-destructive"
             onClick={() => {
               setEscapePrompt(false);
-              enterFocusFullscreen();
+              void deleteSession();
             }}
           >
-            <Maximize className="h-4 w-4" /> Stay locked in
+            <Trash2 className="h-4 w-4" /> Delete session
           </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              onClick={() => {
+                lock.endSession();
+                setEscapePrompt(false);
+              }}
+            >
+              End session
+            </Button>
+            <Button
+              onClick={() => {
+                setEscapePrompt(false);
+                enterFocusFullscreen();
+              }}
+            >
+              <Maximize className="h-4 w-4" /> Stay locked in
+            </Button>
+          </div>
         </div>
       </Modal>
     );
@@ -202,15 +229,26 @@ export function StudyLockPrompt() {
           >
             Don&apos;t show again
           </button>
-          <button
-            onClick={() => {
-              lock.endSession();
-              close();
-            }}
-            className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
-          >
-            End session
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                lock.endSession();
+                close();
+              }}
+              className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+            >
+              End session
+            </button>
+            <button
+              onClick={() => {
+                close();
+                void deleteSession();
+              }}
+              className="text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+            >
+              Delete session
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

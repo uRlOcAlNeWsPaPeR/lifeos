@@ -169,6 +169,43 @@ export async function restoreCourseToSelection(
   );
 }
 
+/**
+ * Add one Canvas assignment id to the "don't re-import this" deny-list —
+ * called when the student deletes that assignment inside LifeOS so a later
+ * sync (which still sees it open on Canvas) doesn't bring it straight back.
+ */
+export async function forgetAssignmentFromSelection(
+  uid: string,
+  canvasAssignmentId: string,
+): Promise<void> {
+  const conn = await getConnection(uid);
+  if (!conn) return;
+  const cur = conn.deletedCanvasAssignmentIds ?? [];
+  if (cur.includes(canvasAssignmentId)) return;
+  await ref(uid).set(
+    {
+      deletedCanvasAssignmentIds: [...cur, canvasAssignmentId],
+      updatedAt: new Date().toISOString(),
+    },
+    { merge: true },
+  );
+}
+
+/** Undo of {@link forgetAssignmentFromSelection} — drops the id back off the deny-list. */
+export async function restoreAssignmentToSelection(
+  uid: string,
+  canvasAssignmentId: string,
+): Promise<void> {
+  const conn = await getConnection(uid);
+  if (!conn || !Array.isArray(conn.deletedCanvasAssignmentIds)) return;
+  const next = conn.deletedCanvasAssignmentIds.filter((id) => id !== canvasAssignmentId);
+  if (next.length === conn.deletedCanvasAssignmentIds.length) return;
+  await ref(uid).set(
+    { deletedCanvasAssignmentIds: next, updatedAt: new Date().toISOString() },
+    { merge: true },
+  );
+}
+
 export async function markConnection(
   uid: string,
   patch: Partial<

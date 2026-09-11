@@ -6,6 +6,7 @@ import { Moon, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { HelpButton } from "@/components/ui/help-button";
+import { GradeScalePicker } from "@/components/app/grade-scale-picker";
 import { useAppData } from "@/lib/store/app-data";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { fmt12 } from "@/lib/scheduling/sleep";
@@ -276,6 +277,42 @@ export function NotificationSettings() {
             onClick={async () => {
               await updatePrefs(p);
               toast("Notification settings saved", "success");
+            }}
+          >
+            Save
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------ grading scale ------------------------------ */
+
+export function GradeScaleSettings() {
+  const { data, updatePrefs } = useAppData();
+  const [p, setP] = useState<Prefs>(data.profile.prefs);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => setP(data.profile.prefs), [data.profile.prefs]);
+  const dirty = JSON.stringify(p.gradeScale) !== JSON.stringify(data.profile.prefs.gradeScale);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        How LifeOS turns a percent into a letter — courses that don&apos;t give you a
+        percent (or already give you their own letter/grade from Canvas) aren&apos;t
+        affected.
+      </p>
+      <GradeScalePicker value={p.gradeScale} onChange={(gradeScale) => setP({ ...p, gradeScale })} />
+      {dirty && (
+        <div className="flex justify-end">
+          <Button
+            loading={saving}
+            onClick={async () => {
+              setSaving(true);
+              await updatePrefs({ gradeScale: p.gradeScale });
+              setSaving(false);
+              toast("Grading scale saved", "success");
             }}
           >
             Save

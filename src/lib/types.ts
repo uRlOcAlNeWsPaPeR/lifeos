@@ -95,6 +95,9 @@ export interface AssignmentDTO {
   courseId: string | null;
   dueAt: string | null;
   status: "open" | "submitted" | "graded";
+  /** When it was created — the real Canvas date for a Canvas-sourced assignment when
+   *  Canvas provides one, otherwise when it was added here. Not always available. */
+  createdAt?: string | null;
   gradeValue: string | null;
   pointsEarned: number | null;
   pointsPossible: number | null;
@@ -105,6 +108,14 @@ export interface AssignmentDTO {
   tasks?: { id: string; status: string }[];
   /** The user's planning task for this assignment, if they've added one. */
   linkedTask?: LinkedTaskDTO | null;
+  /**
+   * User-declared "I've done this", independent of what Canvas reports. Shows
+   * as done in LifeOS while `status` is still "open" (Canvas has no submission
+   * on record) and survives Canvas resyncs — a resync only clears it once
+   * Canvas itself reports the assignment submitted or graded, at which point
+   * `status` carries the real answer and this flag stops mattering.
+   */
+  localDone?: boolean;
 }
 
 export interface EventDTO {

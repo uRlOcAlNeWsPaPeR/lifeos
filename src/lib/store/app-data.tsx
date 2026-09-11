@@ -563,12 +563,14 @@ export function AppDataProvider({
         courseId: (a.courseId as string) ?? null,
         dueAt: (a.dueAt as string) ?? null,
         status: (a.status as AssignmentDTO["status"]) ?? "open",
+        createdAt: (a.createdAt as string) ?? null,
         gradeValue: (a.gradeValue as string) ?? null,
         pointsEarned: (a.pointsEarned as number) ?? null,
         pointsPossible: (a.pointsPossible as number) ?? null,
         provider: (a.provider as string) ?? null,
         canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
         canvasUrl: (a.canvasUrl as string) ?? null,
+        localDone: Boolean(a.localDone),
         course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
         tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
         linkedTask: null as AssignmentDTO["linkedTask"],
@@ -1059,11 +1061,30 @@ export function AppDataProvider({
         guard(async () => {
           const snap = assignmentsRaw.find((a) => a.id === id);
           await deleteDoc(entityDoc(uid, "assignments", id));
+
+          // A deleted Canvas assignment must stay gone across re-syncs: put its
+          // id on the deny-list so a later sync (which still sees it open on
+          // Canvas) doesn't bring it straight back. Best-effort — a failure here
+          // just means the next sync may re-import it, nothing worse.
+          const canvasAssignmentId =
+            snap && snap.provider === "canvas" && snap.canvasAssignmentId
+              ? String(snap.canvasAssignmentId)
+              : null;
+          const patchDenyList = (op: "forget" | "restore") =>
+            void authedApi("/api/canvas/assignments", {
+              method: "PATCH",
+              body: { canvasAssignmentId, op },
+            }).catch(() => {});
+          if (canvasAssignmentId) patchDenyList("forget");
+
           if (snap) {
             const restore = stripId(snap);
             pushUndo({
               label: `Deleted “${String(snap.title || "assignment")}”`,
-              onUndo: () => setDoc(entityDoc(uid, "assignments", id), restore),
+              onUndo: async () => {
+                await setDoc(entityDoc(uid, "assignments", id), restore);
+                if (canvasAssignmentId) patchDenyList("restore");
+              },
             });
           }
         }, "Couldn't delete assignment").then(() => undefined),
@@ -1155,6 +1176,8 @@ export function AppDataProvider({
       updatePrefs: (patch: Partial<Prefs>) => {
         const next = { ...withPrefs(profile?.prefs), ...patch };
         if (patch.reminders) next.reminders = { ...withPrefs(profile?.prefs).reminders, ...patch.reminders };
+        // gradeScale is a whole-object choice (a preset id, or "custom" + its own
+        // table) — a patch replaces it outright rather than merging field-by-field.
         return updateDoc(userDoc(uid), { prefs: next }).catch((e) => {
           console.error("updatePrefs failed", e);
           toast("Couldn't save that setting", "error");

@@ -92,12 +92,12 @@ export function useCanvas(): UseCanvas {
         await refresh();
         if (!silent) {
           const dupes = res.counts?.duplicatesRemoved ?? 0;
-          toast(
-            dupes > 0
-              ? `Canvas synced · cleaned up ${dupes} duplicate assignment${dupes === 1 ? "" : "s"}`
-              : "Canvas synced",
-            "success",
-          );
+          const gone = res.counts?.assignmentsRemoved ?? 0;
+          const notes = [
+            dupes > 0 && `cleaned up ${dupes} duplicate assignment${dupes === 1 ? "" : "s"}`,
+            gone > 0 && `${gone} assignment${gone === 1 ? "" : "s"} deleted on Canvas removed`,
+          ].filter(Boolean);
+          toast(notes.length ? `Canvas synced · ${notes.join(" · ")}` : "Canvas synced", "success");
         }
         return res.counts;
       } catch (e) {

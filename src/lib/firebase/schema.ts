@@ -5,6 +5,7 @@ import {
   type DocumentReference,
 } from "firebase/firestore";
 import { db } from "./client";
+import type { GradeScalePref } from "@/lib/grades";
 
 /**
  * Firestore layout — everything scoped under the signed-in user so the
@@ -69,6 +70,8 @@ export interface Prefs {
     calendarReminders: boolean;
     studyReminders: boolean;
   };
+  /** Which percent→letter cutoffs to grade against. `presetId: null` = not chosen yet. */
+  gradeScale: GradeScalePref;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -90,6 +93,7 @@ export const DEFAULT_PREFS: Prefs = {
     calendarReminders: true,
     studyReminders: true,
   },
+  gradeScale: { presetId: null },
 };
 
 /** Merge a stored (possibly partial / legacy) prefs blob with the defaults. */
@@ -98,6 +102,7 @@ export function withPrefs(raw: Partial<Prefs> | undefined | null): Prefs {
     ...DEFAULT_PREFS,
     ...(raw ?? {}),
     reminders: { ...DEFAULT_PREFS.reminders, ...(raw?.reminders ?? {}) },
+    gradeScale: raw?.gradeScale ?? DEFAULT_PREFS.gradeScale,
   };
 }
 

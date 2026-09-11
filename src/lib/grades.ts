@@ -3,26 +3,132 @@ import type { AssignmentDTO, CourseDTO } from "@/lib/types";
 
 /* ----------------------------- letter <-> number ----------------------------- */
 
-/** Standard +/- scale. Each entry is the *minimum* percent for that letter. */
-export const LETTER_SCALE: { min: number; letter: string }[] = [
-  { min: 97, letter: "A+" },
-  { min: 93, letter: "A" },
-  { min: 90, letter: "A-" },
-  { min: 87, letter: "B+" },
-  { min: 83, letter: "B" },
-  { min: 80, letter: "B-" },
-  { min: 77, letter: "C+" },
-  { min: 73, letter: "C" },
-  { min: 70, letter: "C-" },
-  { min: 67, letter: "D+" },
-  { min: 63, letter: "D" },
-  { min: 60, letter: "D-" },
-  { min: 0, letter: "F" },
+export interface LetterScaleEntry {
+  /** minimum percent for this letter */
+  min: number;
+  letter: string;
+}
+
+/**
+ * Different schools (and different countries) draw the letter/percent lines in
+ * different places — "an A is 90+" somewhere else is "an A is 85+", and a UK
+ * university doesn't use A-F at all. The student picks one (Grades, first
+ * visit, or any time after in Settings → School); everything below just takes
+ * whichever scale it's handed and falls back to the U.S. +/- scale by default.
+ */
+export const GRADE_SCALE_PRESETS: {
+  id: string;
+  label: string;
+  /** Short "cutoffs at a glance" line for the picker. */
+  example: string;
+  scale: LetterScaleEntry[];
+}[] = [
+  {
+    id: "us-plus-minus",
+    label: "U.S. standard (+/-)",
+    example: "A 93+ · A- 90+ · B+ 87+ · B 83+ · …",
+    scale: [
+      { min: 97, letter: "A+" },
+      { min: 93, letter: "A" },
+      { min: 90, letter: "A-" },
+      { min: 87, letter: "B+" },
+      { min: 83, letter: "B" },
+      { min: 80, letter: "B-" },
+      { min: 77, letter: "C+" },
+      { min: 73, letter: "C" },
+      { min: 70, letter: "C-" },
+      { min: 67, letter: "D+" },
+      { min: 63, letter: "D" },
+      { min: 60, letter: "D-" },
+      { min: 0, letter: "F" },
+    ],
+  },
+  {
+    id: "us-standard",
+    label: "U.S. standard (no +/-)",
+    example: "A 90+ · B 80+ · C 70+ · D 60+",
+    scale: [
+      { min: 90, letter: "A" },
+      { min: 80, letter: "B" },
+      { min: 70, letter: "C" },
+      { min: 60, letter: "D" },
+      { min: 0, letter: "F" },
+    ],
+  },
+  {
+    id: "scale-85",
+    label: "85 scale",
+    example: "A 85+ · B 75+ · C 65+ · D 55+",
+    scale: [
+      { min: 85, letter: "A" },
+      { min: 75, letter: "B" },
+      { min: 65, letter: "C" },
+      { min: 55, letter: "D" },
+      { min: 0, letter: "F" },
+    ],
+  },
+  {
+    id: "scale-80",
+    label: "80 scale",
+    example: "A 80+ · B 70+ · C 60+ · D 50+",
+    scale: [
+      { min: 80, letter: "A" },
+      { min: 70, letter: "B" },
+      { min: 60, letter: "C" },
+      { min: 50, letter: "D" },
+      { min: 0, letter: "F" },
+    ],
+  },
+  {
+    id: "uk-honours",
+    label: "UK honours classification",
+    example: "1st 70+ · 2:1 60+ · 2:2 50+ · 3rd 40+",
+    scale: [
+      { min: 70, letter: "1st" },
+      { min: 60, letter: "2:1" },
+      { min: 50, letter: "2:2" },
+      { min: 40, letter: "3rd" },
+      { min: 0, letter: "Fail" },
+    ],
+  },
 ];
 
-export function letterFromPct(pct: number | null | undefined): string | null {
+export const DEFAULT_GRADE_SCALE_ID = GRADE_SCALE_PRESETS[0].id;
+
+/** Backward-compat alias — the default (U.S. +/-) scale on its own. */
+export const LETTER_SCALE: LetterScaleEntry[] = GRADE_SCALE_PRESETS[0].scale;
+
+/** What's stored in a student's prefs. `presetId: null` = never chosen yet. */
+export interface GradeScalePref {
+  presetId: string | null;
+  /** Only meaningful when `presetId === "custom"`. */
+  custom?: LetterScaleEntry[];
+}
+
+export const DEFAULT_GRADE_SCALE_PREF: GradeScalePref = { presetId: null };
+
+/** Turn a stored preference into the actual scale to grade against. */
+export function resolveGradeScale(pref: GradeScalePref | null | undefined): LetterScaleEntry[] {
+  if (pref?.presetId === "custom" && pref.custom?.length) {
+    const rows = pref.custom
+      .filter((r) => Number.isFinite(r.min) && r.letter.trim())
+      .map((r) => ({ min: r.min, letter: r.letter.trim() }))
+      .sort((a, b) => b.min - a.min);
+    if (rows.length) {
+      // Always have a floor so every percent resolves to something.
+      if (rows[rows.length - 1].min > 0) rows.push({ min: 0, letter: "F" });
+      return rows;
+    }
+  }
+  return GRADE_SCALE_PRESETS.find((p) => p.id === pref?.presetId)?.scale ?? LETTER_SCALE;
+}
+
+export function letterFromPct(
+  pct: number | null | undefined,
+  scale: LetterScaleEntry[] = LETTER_SCALE,
+): string | null {
   if (pct == null || Number.isNaN(pct)) return null;
-  return LETTER_SCALE.find((s) => pct >= s.min)?.letter ?? "F";
+  return scale.find((s) => pct >= s.min)?.letter ?? scale[scale.length - 1]?.letter ?? "F";
 }
 
 /** Unweighted 4.0 GPA points for a letter grade. */
@@ -42,7 +148,10 @@ export function gpaFromLetter(letter: string | null | undefined): number | null 
 }
 
 /** Pull a letter out of a free-text grade string like "A- / 91%" or "92%". */
-export function parseGradeString(raw: string | null | undefined): {
+export function parseGradeString(
+  raw: string | null | undefined,
+  scale: LetterScaleEntry[] = LETTER_SCALE,
+): {
   pct: number | null;
   letter: string | null;
 } {
@@ -56,7 +165,7 @@ export function parseGradeString(raw: string | null | undefined): {
   // in "A-" (a plain \b would drop it, since "-" isn't a word char).
   const letterMatch = s.match(/\b([A-DF][+-]?)(?![A-Za-z0-9])/i);
   const letter = letterMatch ? letterMatch[1].toUpperCase() : null;
-  return { pct, letter: letter ?? letterFromPct(pct) };
+  return { pct, letter: letter ?? letterFromPct(pct, scale) };
 }
 
 /* ------------------------------- formatting -------------------------------- */
@@ -177,9 +286,11 @@ export function gradedWithPoints(course: CourseDTO): AssignmentDTO[] {
 /**
  * The single grade to show for a course. Canvas's own computed score wins (it
  * knows the real weighting); otherwise we compute from graded assignments;
- * otherwise fall back to whatever the student typed in.
+ * otherwise fall back to whatever the student typed in. `scale` is whichever
+ * percent→letter cutoffs the student picked (Settings → School); defaults to
+ * the U.S. +/- scale when they haven't chosen one.
  */
-export function courseGrade(course: CourseDTO): CourseGrade {
+export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTER_SCALE): CourseGrade {
   const graded = gradedWithPoints(course);
   const earned = graded.reduce((n, a) => n + (a.pointsEarned ?? 0), 0);
   const possible = graded.reduce((n, a) => n + (a.pointsPossible ?? 0), 0);
@@ -188,7 +299,7 @@ export function courseGrade(course: CourseDTO): CourseGrade {
     return {
       source: "canvas",
       pct: course.currentScore,
-      letter: parseGradeString(course.currentGrade).letter ?? letterFromPct(course.currentScore),
+      letter: parseGradeString(course.currentGrade, scale).letter ?? letterFromPct(course.currentScore, scale),
       earned: graded.length ? earned : null,
       possible: graded.length ? possible : null,
       gradedCount: graded.length,
@@ -197,10 +308,10 @@ export function courseGrade(course: CourseDTO): CourseGrade {
 
   if (graded.length && possible > 0) {
     const pct = Math.round((earned / possible) * 1000) / 10;
-    return { source: "computed", pct, letter: letterFromPct(pct), earned, possible, gradedCount: graded.length };
+    return { source: "computed", pct, letter: letterFromPct(pct, scale), earned, possible, gradedCount: graded.length };
   }
 
-  const parsed = parseGradeString(course.currentGrade);
+  const parsed = parseGradeString(course.currentGrade, scale);
   if (parsed.pct != null || parsed.letter) {
     return {
       source: "manual",
@@ -216,10 +327,13 @@ export function courseGrade(course: CourseDTO): CourseGrade {
 }
 
 /** Mean GPA across courses that have a resolvable letter grade. */
-export function estimateGpa(courses: CourseDTO[]): { gpa: number | null; counted: number } {
+export function estimateGpa(
+  courses: CourseDTO[],
+  scale: LetterScaleEntry[] = LETTER_SCALE,
+): { gpa: number | null; counted: number } {
   const points: number[] = [];
   for (const c of courses) {
-    const g = courseGrade(c);
+    const g = courseGrade(c, scale);
     const p = gpaFromLetter(g.letter);
     if (p != null) points.push(p);
   }

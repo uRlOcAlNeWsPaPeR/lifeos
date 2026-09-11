@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Clock, CalendarClock, Pencil, Trash2, Plus, ListChecks } from "lucide-react";
+import { Check, Clock, CalendarClock, CalendarPlus, Pencil, Trash2, Plus, ListChecks } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Badge, priorityTone } from "@/components/ui/badge";
@@ -30,7 +30,7 @@ export function AssignmentDetail({
   assignment: AssignmentDTO | null;
   onClose: () => void;
 }) {
-  const { data, addTask, updateTask, toggleTask, deleteTask } = useAppData();
+  const { data, addTask, updateTask, toggleTask, deleteTask, updateAssignment } = useAppData();
   const [editorOpen, setEditorOpen] = useState(false);
 
   const goals = useMemo(
@@ -97,8 +97,12 @@ export function AssignmentDetail({
                 </span>
               )}
               {assignment.provider === "canvas" && <CanvasBadge />}
-              <Badge tone={assignment.status === "open" ? "muted" : "success"}>
-                {STATUS_LABEL[assignment.status]}
+              <Badge tone={assignment.status !== "open" ? "success" : assignment.localDone ? "primary" : "muted"}>
+                {assignment.status !== "open"
+                  ? STATUS_LABEL[assignment.status]
+                  : assignment.localDone
+                    ? "Done"
+                    : STATUS_LABEL.open}
               </Badge>
               {assignment.status === "graded" && assignment.gradeValue && (
                 <Badge tone="primary">{assignment.gradeValue}</Badge>
@@ -116,8 +120,37 @@ export function AssignmentDetail({
                     }`
                   : "No due date"}
               </span>
-              {due && assignment.status === "open" && <Badge tone={due.tone}>{due.label}</Badge>}
+              {due && assignment.status === "open" && !assignment.localDone && (
+                <Badge tone={due.tone}>{due.label}</Badge>
+              )}
             </div>
+
+            {assignment.createdAt && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground/70">
+                <CalendarPlus className="h-3.5 w-3.5" />
+                Created {fmtDate(assignment.createdAt, { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+
+            {assignment.status === "open" && (
+              <div>
+                <Button
+                  size="sm"
+                  variant={assignment.localDone ? "outline" : "primary"}
+                  onClick={() => updateAssignment(assignment.id, { localDone: !assignment.localDone })}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {assignment.localDone ? "Marked done — undo" : "Mark as done"}
+                </Button>
+                {assignment.localDone && (
+                  <p className="mt-1.5 text-[11px] text-muted-foreground/70">
+                    Shows as done in LifeOS. It stays that way through Canvas syncs — this
+                    updates automatically to &quot;Turned in&quot; once Canvas shows you actually
+                    submitted it.
+                  </p>
+                )}
+              </div>
+            )}
 
             {assignment.description && (
               <p className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-white/[0.06] bg-white/[0.02] p-3 text-sm text-muted-foreground scrollbar-thin">

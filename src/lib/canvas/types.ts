@@ -27,6 +27,14 @@ export interface CanvasConnectionDoc {
    * this list (see `forgetCourseFromSelection`) so the picker stays truthful.
    */
   selectedCanvasCourseIds?: string[] | null;
+  /**
+   * Canvas assignment ids (as strings) the student deleted inside LifeOS. A
+   * plain re-sync would otherwise re-import any of these the moment it sees
+   * them still open on Canvas — this is the deny-list that stops that. Dropped
+   * again on undo (see `forgetAssignmentFromSelection`) or once the assignment
+   * itself disappears from Canvas.
+   */
+  deletedCanvasAssignmentIds?: string[];
   status: CanvasConnectionStatus;
   /** Technical detail for server logs / debugging. NEVER sent to the browser. */
   lastError: string | null;
@@ -68,6 +76,8 @@ export interface CanvasSyncCounts {
   events: number;
   /** Duplicate assignments folded into their canonical row this sync. */
   duplicatesRemoved: number;
+  /** Assignments deleted on Canvas and removed here to match. */
+  assignmentsRemoved: number;
 }
 
 /** One selectable Canvas course, for the "choose which courses sync" picker. */
@@ -132,6 +142,8 @@ export interface CanvasAssignment {
   points_possible?: number | null;
   submission?: CanvasSubmission | null;
   published?: boolean;
+  /** When the teacher created it on Canvas — not always present. */
+  created_at?: string | null;
 }
 
 export interface CanvasActivityItem {

@@ -6,13 +6,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LogOut,
   Menu as MenuIcon,
-  CircleDot,
+  ArrowLeft,
   Lock,
   Pause,
   Play,
 } from "lucide-react";
-import { Logo } from "@/components/brand";
 import { Modal } from "@/components/ui/modal";
+import { confirm } from "@/components/ui/confirm";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList } from "@/components/app/deadline-list";
 import { useAuth } from "@/lib/firebase/auth-context";
@@ -57,7 +57,7 @@ const TO_HOME = 1180;
  * console. Touch / reduced-motion get a quick cross-fade instead.
  */
 export function CorePortal() {
-  const { data, analytics } = useAppData();
+  const { data, analytics, deleteEvent } = useAppData();
   const stage = useStagePointer<HTMLDivElement>();
   const router = useRouter();
   const { logout } = useAuth();
@@ -97,6 +97,16 @@ export function CorePortal() {
           enterFocusFullscreen();
         }}
         onEnd={lock.endSession}
+        onDelete={async () => {
+          if (!lock.session) return;
+          const yes = await confirm({
+            title: "Delete this study session?",
+            body: "It comes off your calendar entirely — not just this lock-in bar. You can undo right after from the bar at the bottom.",
+            confirmLabel: "Delete session",
+            destructive: true,
+          });
+          if (yes) await deleteEvent(lock.session.id);
+        }}
       />
     ) : undefined;
 
@@ -177,33 +187,36 @@ export function CorePortal() {
 
   const topBar = (
     <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-8">
-      <Link
-        href="/"
-        aria-label="LifeOS home"
-        className="opacity-90 transition-opacity hover:opacity-100"
-      >
-        <Logo />
-      </Link>
-      {onConsole && cinematic && (
-        <button
-          onClick={exitToCore}
-          className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-foreground/90 transition-colors hover:border-primary/40 hover:text-primary"
+      <div className="flex items-center gap-2.5">
+        {onConsole && (
+          <button
+            onClick={() => setMenu(true)}
+            aria-label="Menu"
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-foreground/90 transition-colors hover:border-primary/40 hover:text-primary"
+          >
+            <MenuIcon className="h-4 w-4" />
+          </button>
+        )}
+        <Link
+          href="/"
+          aria-label="LifeOS home"
+          className="text-[15px] font-semibold tracking-tight opacity-90 transition-opacity hover:opacity-100"
         >
-          <CircleDot className="h-4 w-4" />
-          <span className="hidden sm:inline">Home</span>
-        </button>
-      )}
+          LifeOS
+        </Link>
+      </div>
+      <TopBarClock />
     </div>
   );
 
-  const bottomMenuButton = onConsole && (
+  const backButton = onConsole && cinematic && (
     <button
-      onClick={() => setMenu(true)}
-      aria-label="Menu"
+      onClick={exitToCore}
+      aria-label="Back"
       className="fixed bottom-6 left-5 z-40 flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/50 px-4 text-xs font-medium text-foreground/90 backdrop-blur-md transition-colors hover:border-primary/40 hover:text-primary sm:bottom-8 sm:left-8"
     >
-      <MenuIcon className="h-4 w-4" />
-      Menu
+      <ArrowLeft className="h-4 w-4" />
+      Back
     </button>
   );
 
@@ -276,7 +289,7 @@ export function CorePortal() {
           </div>
         </div>
         {onConsole && <QuickAdd />}
-        {bottomMenuButton}
+        {backButton}
         {menuPopup}
       </>
     );
@@ -374,7 +387,7 @@ export function CorePortal() {
       </div>
 
       {onConsole && <QuickAdd />}
-      {bottomMenuButton}
+      {backButton}
       {menuPopup}
     </>
   );
@@ -388,12 +401,16 @@ function LockBar({
   onPause,
   onResume,
   onEnd,
+  onDelete,
 }: {
   status: "locked" | "paused";
   msLeft: number;
   onPause: () => void;
   onResume: () => void;
+  /** Stops the lock-in nag for this session — the calendar event stays. */
   onEnd: () => void;
+  /** Actually removes the session from the calendar (undoable, confirmed first). */
+  onDelete: () => void;
 }) {
   const paused = status === "paused";
   return (
@@ -419,6 +436,12 @@ function LockBar({
         className="rounded-full px-2 py-1 font-medium text-muted-foreground transition-colors hover:text-destructive"
       >
         End
+      </button>
+      <button
+        onClick={onDelete}
+        className="rounded-full px-2 py-1 font-medium text-muted-foreground transition-colors hover:text-destructive"
+      >
+        Delete
       </button>
     </div>
   );
@@ -513,6 +536,20 @@ function CloseFx() {
 }
 
 /* -------------------------------- clock -------------------------------- */
+
+/** Compact live clock for the top bar's right corner — replaces the old "Home" button. */
+function TopBarClock() {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <span className="flex h-9 items-center rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-medium tabular-nums text-foreground/90">
+      {now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+    </span>
+  );
+}
 
 function LiveClock({ name }: { name: string }) {
   const [now, setNow] = useState(() => new Date());
@@ -823,7 +860,7 @@ function buildModel(
       context: t.course?.name ?? t.category ?? undefined,
     }));
   const upAssign = data.assignments
-    .filter((a) => a.status === "open" && a.dueAt && parseDate(a.dueAt) >= start)
+    .filter((a) => a.status === "open" && !a.localDone && a.dueAt && parseDate(a.dueAt) >= start)
     .map((a) => ({
       id: a.id,
       title: a.title,

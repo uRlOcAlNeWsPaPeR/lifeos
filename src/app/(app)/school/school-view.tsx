@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Plus,
   GraduationCap,
@@ -27,7 +27,7 @@ import { useAppData } from "@/lib/store/app-data";
 import { SCHOOL_INTEGRATIONS } from "@/lib/integrations/descriptors";
 import { IntegrationCard } from "@/components/app/integration-card";
 import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName } from "@/lib/format";
-import { assignmentGradeLabel, courseGrade, fmtPct } from "@/lib/grades";
+import { assignmentGradeLabel, courseGrade, fmtPct, resolveGradeScale, type LetterScaleEntry } from "@/lib/grades";
 import { cn } from "@/lib/utils";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 import { ConnectCanvas } from "@/components/canvas/connect-canvas";
@@ -59,6 +59,10 @@ export function SchoolView() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const courses = data.courses;
+  const scale = useMemo(
+    () => resolveGradeScale(data.profile.prefs.gradeScale),
+    [data.profile.prefs.gradeScale],
+  );
   const openCourse = openId ? courses.find((c) => c.id === openId) ?? null : null;
   // keep the open detail modal in sync with live store updates
   const detailAssignment = detailFor
@@ -98,6 +102,7 @@ export function SchoolView() {
           </button>
           <CourseCard
             course={openCourse}
+            scale={scale}
             deleteCourse={async (id) => {
               await deleteCourse(id);
               setOpenId(null);
@@ -111,7 +116,7 @@ export function SchoolView() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {courses.map((c) => (
-            <CourseFolder key={c.id} course={c} onOpen={() => setOpenId(c.id)} />
+            <CourseFolder key={c.id} course={c} scale={scale} onOpen={() => setOpenId(c.id)} />
           ))}
         </div>
       )}
@@ -147,8 +152,16 @@ export function SchoolView() {
 }
 
 /** A closed folder in the School grid. Click it to open the course. */
-function CourseFolder({ course, onOpen }: { course: CourseDTO; onOpen: () => void }) {
-  const g = courseGrade(course);
+function CourseFolder({
+  course,
+  scale,
+  onOpen,
+}: {
+  course: CourseDTO;
+  scale: LetterScaleEntry[];
+  onOpen: () => void;
+}) {
+  const g = courseGrade(course, scale);
   const openCount = course.assignments.filter((a) => a.status === "open").length;
   const grade = g.letter ?? (g.pct != null ? fmtPct(g.pct) : null);
 
@@ -186,6 +199,7 @@ function CourseFolder({ course, onOpen }: { course: CourseDTO; onOpen: () => voi
 
 function CourseCard({
   course,
+  scale,
   deleteCourse,
   updateAssignment,
   deleteAssignment,
@@ -193,6 +207,7 @@ function CourseCard({
   onAddAssignment,
 }: {
   course: CourseDTO;
+  scale: LetterScaleEntry[];
   deleteCourse: (id: string) => Promise<void>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
@@ -221,7 +236,7 @@ function CourseCard({
   const openCount = visible.filter((a) => a.status === "open").length;
 
   const [open, setOpen] = useState(true);
-  const g = courseGrade(course);
+  const g = courseGrade(course, scale);
 
   return (
     <Card className="p-6">
@@ -327,6 +342,9 @@ function CourseCard({
                     >
                       <span className="truncate">{a.title}</span>
                       {a.provider === "canvas" && <CanvasBadge className="shrink-0" />}
+                      {a.status === "open" && a.localDone && (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Marked done" />
+                      )}
                       {a.linkedTask && (
                         <ListPlus
                           className={cn(
@@ -348,7 +366,11 @@ function CourseCard({
                     </p>
                   </div>
                 </button>
-                {due && a.status !== "graded" && <Badge tone={due.tone}>{due.label}</Badge>}
+                {a.status === "open" && a.localDone ? (
+                  <Badge tone="success">Done</Badge>
+                ) : (
+                  due && a.status !== "graded" && <Badge tone={due.tone}>{due.label}</Badge>
+                )}
                 <Select
                   className="h-8 w-28 text-xs"
                   value={a.status}

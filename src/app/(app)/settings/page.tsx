@@ -13,6 +13,7 @@ import {
   ScheduleSettings,
   StudySettings,
   NotificationSettings,
+  GradeScaleSettings,
 } from "./settings-client";
 import { CanvasSettings } from "./canvas-settings";
 import { useAppData } from "@/lib/store/app-data";
@@ -104,12 +105,20 @@ function SettingsPanel() {
           )}
 
           {tab === "school" && (
-            <Section
-              title="Canvas"
-              desc="Canvas is the source of your school data. LifeOS turns it into tasks, deadlines and a workload view — it never replaces your own planning."
-            >
-              <CanvasSettings />
-            </Section>
+            <>
+              <Section
+                title="Canvas"
+                desc="Canvas is the source of your school data. LifeOS turns it into tasks, deadlines and a workload view — it never replaces your own planning."
+              >
+                <CanvasSettings />
+              </Section>
+              <Section
+                title="Grading scale"
+                desc="Pick the cutoffs your school actually uses — plenty vary from the U.S. default."
+              >
+                <GradeScaleSettings />
+              </Section>
+            </>
           )}
 
           {tab === "notifications" && (

@@ -233,7 +233,7 @@ export function CalendarView() {
                 type: "assignment" as const,
                 id: a.id,
                 title: a.title,
-                kind: "",
+                kind: a.localDone ? "done" : "",
                 canvas: a.provider === "canvas",
               })),
               ...(b?.tasks ?? []).map((t) => ({
@@ -409,7 +409,7 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
   const taskBucket = (t: TaskDTO): Bucket =>
     t.status === "done" ? "done" : t.scheduledAt ? "planned" : "todo";
   const assignmentBucket = (a: AssignmentDTO): Bucket =>
-    a.status !== "open" || a.linkedTask?.status === "done"
+    a.status !== "open" || a.localDone || a.linkedTask?.status === "done"
       ? "done"
       : a.linkedTask
         ? "planned"
@@ -555,11 +555,12 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
                         {a.course?.name ?? "No course"}
                         {a.status === "submitted" && " · turned in"}
                         {a.status === "graded" && ` · ${a.gradeValue ?? "graded"}`}
-                        {a.status === "open" && a.linkedTask && " · has a plan"}
+                        {a.status === "open" && a.localDone && " · marked done"}
+                        {a.status === "open" && !a.localDone && a.linkedTask && " · has a plan"}
                       </p>
                     </div>
                     <span className="shrink-0 rounded-md border border-white/10 px-2 py-1 text-xs text-muted-foreground">
-                      {a.linkedTask || a.status !== "open" ? "Open" : "+ Task"}
+                      {a.linkedTask || a.localDone || a.status !== "open" ? "Open" : "+ Task"}
                     </span>
                   </button>
                 ))}
@@ -732,7 +733,7 @@ function CalendarAgenda({
           title: a.title,
           kind: "",
           canvas: a.provider === "canvas",
-          done: false,
+          done: Boolean(a.localDone),
         })),
         ...(b?.tasks ?? []).map((t) => ({
           type: "task" as const,

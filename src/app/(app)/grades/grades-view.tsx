@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Percent, GraduationCap, ChevronDown, BookOpen } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Percent, GraduationCap, ChevronDown, BookOpen, Calculator } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -9,9 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/misc";
 import { CanvasBadge } from "@/components/canvas/canvas-badge";
 import { GradeCalculators } from "@/components/app/grade-calculators";
+import { GradeScalePicker } from "@/components/app/grade-scale-picker";
 import { useAppData } from "@/lib/store/app-data";
 import { fmtDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -21,7 +23,10 @@ import {
   estimateGpa,
   fmtPct,
   gradedWithPoints,
+  resolveGradeScale,
   type GradeSource,
+  type GradeScalePref,
+  type LetterScaleEntry,
 } from "@/lib/grades";
 import type { CourseDTO } from "@/lib/types";
 
@@ -32,14 +37,27 @@ const SOURCE_LABEL: Record<GradeSource, string> = {
 };
 
 export function GradesView() {
-  const { data, updateCourse } = useAppData();
+  const { data, updateCourse, updatePrefs } = useAppData();
   const courses = data.courses;
+  const scale = useMemo(
+    () => resolveGradeScale(data.profile.prefs.gradeScale),
+    [data.profile.prefs.gradeScale],
+  );
+
+  // First time this student opens Grades (or any time they haven't chosen a
+  // scale yet), nudge them to pick one — different schools draw the letter
+  // cutoffs in different places. Re-derived fresh on every mount, so it keeps
+  // asking (gently, dismissibly) until they actually pick something.
+  const [scalePromptOpen, setScalePromptOpen] = useState(
+    () => data.profile.prefs.gradeScale.presetId === null,
+  );
+  const [calcOpen, setCalcOpen] = useState(false);
 
   const graded = courses
-    .map((c) => ({ course: c, grade: courseGrade(c) }))
+    .map((c) => ({ course: c, grade: courseGrade(c, scale) }))
     .filter((x) => x.grade.pct != null || x.grade.letter);
 
-  const { gpa, counted } = estimateGpa(courses);
+  const { gpa, counted } = estimateGpa(courses, scale);
   const pcts = graded.map((g) => g.grade.pct).filter((p): p is number => p != null);
   const avg = pcts.length
     ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 10) / 10
@@ -50,6 +68,11 @@ export function GradesView() {
       <PageHeader
         title="Grades"
         description="Every class in one place. Canvas grades sync in automatically; anything else you can calculate or enter yourself."
+        action={
+          <Button size="sm" onClick={() => setCalcOpen(true)}>
+            <Calculator className="h-3.5 w-3.5" /> Calculators
+          </Button>
+        }
       />
 
       {courses.length === 0 ? (
@@ -76,18 +99,69 @@ export function GradesView() {
               <CourseGradeCard
                 key={c.id}
                 course={c}
+                scale={scale}
                 onSetGrade={(v) => updateCourse(c.id, { currentGrade: v })}
               />
             ))}
           </div>
-
-          <div>
-            <div className="divider-gradient mb-6" />
-            <GradeCalculators courses={courses} />
-          </div>
         </div>
       )}
+
+      <Modal
+        open={calcOpen}
+        onClose={() => setCalcOpen(false)}
+        title="Grade calculators"
+        className="max-w-2xl"
+      >
+        <GradeCalculators courses={courses} scale={scale} />
+      </Modal>
+
+      <GradeScalePromptModal
+        open={scalePromptOpen}
+        onClose={() => setScalePromptOpen(false)}
+        value={data.profile.prefs.gradeScale}
+        onSave={(gradeScale) => updatePrefs({ gradeScale })}
+      />
     </>
+  );
+}
+
+function GradeScalePromptModal({
+  open,
+  onClose,
+  value,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  value: GradeScalePref;
+  onSave: (v: GradeScalePref) => void;
+}) {
+  const [draft, setDraft] = useState<GradeScalePref>(value);
+  useEffect(() => {
+    if (open) setDraft(value);
+  }, [open, value]);
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Choose your grading scale"
+      description="Schools (and countries) draw the letter-grade cutoffs in different places — pick whichever matches yours. Change it anytime in Settings → School."
+    >
+      <GradeScalePicker value={draft} onChange={setDraft} />
+      <div className="mt-4 flex justify-end">
+        <Button
+          disabled={draft.presetId === null}
+          onClick={() => {
+            onSave(draft);
+            onClose();
+          }}
+        >
+          Confirm
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -108,12 +182,14 @@ function Stat({ label, value, sub }: { label: string; value: React.ReactNode; su
 
 function CourseGradeCard({
   course,
+  scale,
   onSetGrade,
 }: {
   course: CourseDTO;
+  scale: LetterScaleEntry[];
   onSetGrade: (grade: string | null) => void;
 }) {
-  const g = courseGrade(course);
+  const g = courseGrade(course, scale);
   const graded = gradedWithPoints(course);
   const [open, setOpen] = useState(false);
   const hasGrade = g.pct != null || g.letter;
