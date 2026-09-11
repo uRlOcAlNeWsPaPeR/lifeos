@@ -4,10 +4,11 @@ import { useState } from "react";
 import {
   Plus,
   GraduationCap,
-  Plug,
   Trash2,
   BookOpen,
   ChevronDown,
+  ChevronLeft,
+  Folder,
   ListPlus,
   RefreshCw,
   CheckCircle2,
@@ -23,11 +24,8 @@ import { Modal } from "@/components/ui/modal";
 import { confirm } from "@/components/ui/confirm";
 import { Field, Input, Select } from "@/components/ui/input";
 import { useAppData } from "@/lib/store/app-data";
-import {
-  SCHOOL_INTEGRATIONS,
-  CALENDAR_INTEGRATIONS,
-  type IntegrationCardInfo,
-} from "@/lib/integrations/descriptors";
+import { SCHOOL_INTEGRATIONS } from "@/lib/integrations/descriptors";
+import { IntegrationCard } from "@/components/app/integration-card";
 import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName } from "@/lib/format";
 import { assignmentGradeLabel, courseGrade, fmtPct } from "@/lib/grades";
 import { cn } from "@/lib/utils";
@@ -58,8 +56,10 @@ export function SchoolView() {
   const [courseModal, setCourseModal] = useState(false);
   const [assignFor, setAssignFor] = useState<CourseDTO | null>(null);
   const [detailFor, setDetailFor] = useState<AssignmentDTO | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const courses = data.courses;
+  const openCourse = openId ? courses.find((c) => c.id === openId) ?? null : null;
   // keep the open detail modal in sync with live store updates
   const detailAssignment = detailFor
     ? data.assignments.find((a) => a.id === detailFor.id) ?? null
@@ -88,54 +88,99 @@ export function SchoolView() {
             </Button>
           }
         />
+      ) : openCourse ? (
+        <div className="animate-fade-in">
+          <button
+            onClick={() => setOpenId(null)}
+            className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-primary transition-colors hover:text-foreground"
+          >
+            <ChevronLeft className="h-4 w-4" /> All courses
+          </button>
+          <CourseCard
+            course={openCourse}
+            deleteCourse={async (id) => {
+              await deleteCourse(id);
+              setOpenId(null);
+            }}
+            updateAssignment={updateAssignment}
+            deleteAssignment={deleteAssignment}
+            onOpenAssignment={setDetailFor}
+            onAddAssignment={() => setAssignFor(openCourse)}
+          />
+        </div>
       ) : (
-        <div className="grid gap-5 xl:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {courses.map((c) => (
-            <CourseCard
-              key={c.id}
-              course={c}
-              deleteCourse={deleteCourse}
-              updateAssignment={updateAssignment}
-              deleteAssignment={deleteAssignment}
-              onOpenAssignment={setDetailFor}
-              onAddAssignment={() => setAssignFor(c)}
-            />
+            <CourseFolder key={c.id} course={c} onOpen={() => setOpenId(c.id)} />
           ))}
         </div>
       )}
 
-      <section className="mt-12">
-        <div className="divider-gradient mb-8" />
-        <h2 className="text-xl font-semibold tracking-tight">Connect your school</h2>
-        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-          Connect Canvas to import your courses and assignments automatically. We connect
-          through Canvas&apos;s official OAuth and district-approved access —{" "}
-          <span className="font-medium text-foreground">never by asking for your school password.</span>
-        </p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {SCHOOL_INTEGRATIONS.map((i) =>
-            i.id === "canvas" ? (
-              <CanvasIntegrationCard key={i.id} />
-            ) : (
-              <IntegrationCard key={i.id} integration={i} />
-            ),
-          )}
-        </div>
-
-        <h3 className="mt-10 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Calendar sync
-        </h3>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          {CALENDAR_INTEGRATIONS.map((i) => (
-            <IntegrationCard key={i.id} integration={i} />
-          ))}
-        </div>
-      </section>
+      {!openCourse && (
+        <section className="mt-12">
+          <div className="divider-gradient mb-8" />
+          <h2 className="text-xl font-semibold tracking-tight">Connect your school</h2>
+          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+            Connect Canvas to import your courses and assignments automatically. We connect
+            through Canvas&apos;s official OAuth and district-approved access —{" "}
+            <span className="font-medium text-foreground">
+              never by asking for your school password.
+            </span>
+          </p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2">
+            {SCHOOL_INTEGRATIONS.map((i) =>
+              i.id === "canvas" ? (
+                <CanvasIntegrationCard key={i.id} />
+              ) : (
+                <IntegrationCard key={i.id} integration={i} />
+              ),
+            )}
+          </div>
+        </section>
+      )}
 
       <CourseEditor open={courseModal} onClose={() => setCourseModal(false)} onCreate={addCourse} />
       <AssignmentEditor course={assignFor} onClose={() => setAssignFor(null)} onCreate={addAssignment} />
       <AssignmentDetail assignment={detailAssignment} onClose={() => setDetailFor(null)} />
     </>
+  );
+}
+
+/** A closed folder in the School grid. Click it to open the course. */
+function CourseFolder({ course, onOpen }: { course: CourseDTO; onOpen: () => void }) {
+  const g = courseGrade(course);
+  const openCount = course.assignments.filter((a) => a.status === "open").length;
+  const grade = g.letter ?? (g.pct != null ? fmtPct(g.pct) : null);
+
+  return (
+    <button onClick={onOpen} className="group relative block w-full pt-2.5 text-left">
+      {/* folder tab */}
+      <span
+        className="absolute left-5 top-0 h-3 w-16 rounded-t-lg"
+        style={{ background: course.color }}
+      />
+      <div
+        className="relative flex min-h-[7rem] flex-col rounded-2xl rounded-tl-md border p-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-glow-sm"
+        style={{
+          borderColor: `${course.color}44`,
+          background: `linear-gradient(155deg, ${course.color}18, transparent 65%)`,
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <Folder className="h-5 w-5 shrink-0" style={{ color: course.color }} />
+          <div className="flex items-center gap-1.5">
+            {course.provider === "canvas" && <CanvasBadge />}
+            {grade && <span className="text-sm font-semibold">{grade}</span>}
+          </div>
+        </div>
+        <p className="mt-2 line-clamp-2 text-sm font-medium leading-snug">{course.name}</p>
+        <p className="mt-auto pt-1 text-xs text-muted-foreground">
+          {openCount > 0
+            ? `${openCount} open assignment${openCount === 1 ? "" : "s"}`
+            : "Nothing open"}
+        </p>
+      </div>
+    </button>
   );
 }
 
@@ -173,10 +218,9 @@ function CourseCard({
   });
   const overdueCount = course.assignments.filter(isPastDue).length;
   const gradedCount = course.assignments.filter(isGraded).length;
-  const defaultCount = course.assignments.length - overdueCount - gradedCount;
   const openCount = visible.filter((a) => a.status === "open").length;
 
-  const [open, setOpen] = useState(defaultCount > 0);
+  const [open, setOpen] = useState(true);
   const g = courseGrade(course);
 
   return (
@@ -468,44 +512,6 @@ function CanvasIntegrationCard() {
         </div>
       )}
       <CanvasCoursePicker canvas={canvas} />
-    </Card>
-  );
-}
-
-function IntegrationCard({ integration }: { integration: IntegrationCardInfo }) {
-  const [msg, setMsg] = useState<string | null>(null);
-  const comingSoon = integration.status === "coming_soon";
-  const busy = false;
-
-  function connect() {
-    setMsg(
-      `${integration.name} isn't available yet — it will connect through an official API / approved integration in a future release. We'll never ask for your school password.`,
-    );
-  }
-
-  return (
-    <Card className="flex flex-col p-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
-            <Plug className="h-4 w-4" />
-          </div>
-          <span className="font-medium">{integration.name}</span>
-        </div>
-        <Badge tone={comingSoon ? "muted" : "success"}>{comingSoon ? "Coming soon" : "Available"}</Badge>
-      </div>
-      <p className="mt-3 flex-1 text-sm text-muted-foreground">{integration.blurb}</p>
-      <Button
-        variant="outline"
-        size="sm"
-        className="mt-4 self-start"
-        disabled={comingSoon}
-        loading={busy}
-        onClick={connect}
-      >
-        {comingSoon ? "Not available yet" : "Connect"}
-      </Button>
-      {msg && <p className="mt-2 text-xs text-muted-foreground">{msg}</p>}
     </Card>
   );
 }
