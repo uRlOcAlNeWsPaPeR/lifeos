@@ -238,6 +238,7 @@ interface AppDataValue {
     kind?: string;
     location?: string | null;
     description?: string | null;
+    locked?: boolean;
   }) => Promise<EventDTO | undefined>;
   updateEvent: (id: string, patch: Partial<EventDTO>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
@@ -446,6 +447,32 @@ export function AppDataProvider({
       });
   }, [ready, uid, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw]);
 
+  /* A finished study session is spent — it never becomes a grade record like an
+     assignment does, so it's just clutter on the calendar. Delete each one a
+     little after it ends. */
+  const sweeping = useRef(false);
+  useEffect(() => {
+    if (!ready || sweeping.current) return;
+    const done = eventsRaw.filter(
+      (e) =>
+        e.kind === "study_session" &&
+        typeof e.endAt === "string" &&
+        Number.isFinite(Date.parse(e.endAt as string)) &&
+        Date.parse(e.endAt as string) < Date.now(),
+    );
+    if (done.length === 0) return;
+    sweeping.current = true;
+    (async () => {
+      const batch = writeBatch(db());
+      done.forEach((e) => batch.delete(entityDoc(uid, "events", e.id)));
+      await batch.commit();
+    })()
+      .catch((e) => console.error("[store] study-session sweep failed", e))
+      .finally(() => {
+        sweeping.current = false;
+      });
+  }, [ready, uid, eventsRaw]);
+
   /* -------- derive enriched DTOs (writes stay flat, reads are rich) -------- */
   const data = useMemo<StoreData>(() => {
     // Hide every kind of duplicate (same-name goal, course, event, alarm, task,
@@ -614,6 +641,7 @@ export function AppDataProvider({
       allDay: Boolean(e.allDay),
       kind: (e.kind as EventDTO["kind"]) ?? "event",
       location: (e.location as string) ?? null,
+      locked: typeof e.locked === "boolean" ? (e.locked as boolean) : undefined,
       taskId: (e.taskId as string) ?? null,
       provider: (e.provider as string) ?? null,
       canvasUrl: (e.canvasUrl as string) ?? null,
@@ -839,6 +867,7 @@ export function AppDataProvider({
             allDay: false,
             kind: input.kind ?? "event",
             location: input.location ?? null,
+            locked: input.locked ?? null,
             taskId: null,
             createdAt: now(),
           };

@@ -117,6 +117,8 @@ export interface EventDTO {
   kind: "event" | "study_session" | "class" | "deadline";
   location: string | null;
   taskId: string | null;
+  /** study_session only — false = a plain calendar block, no lock-in nag. */
+  locked?: boolean;
   provider?: string | null;
   canvasUrl?: string | null;
   canvasEventId?: string | null;
