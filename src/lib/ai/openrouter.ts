@@ -16,8 +16,10 @@ const ATTEMPTS_PER_MODEL = 2;
 // raise that shared ceiling. This budget keeps LifeOS's own usage comfortably
 // under it (real margin for bursts + whatever else might be sharing the
 // account) so a busy day quietly overflows to the next provider instead of
-// retry-storming the account into 429s.
-const DAILY_BUDGET = 700;
+// retry-storming the account into 429s. Safe at 900 (vs. the earlier, more
+// conservative 700) now that the counter below tracks every real attempt
+// instead of only successes — see recordUsage().
+const DAILY_BUDGET = 900;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -80,6 +82,11 @@ export class OpenRouterProvider extends LLMProvider {
             signal: AbortSignal.timeout(25_000),
           });
         } catch (e) {
+          // Unknown whether this actually reached OpenRouter's servers before
+          // failing — count it anyway. Overcounting a network blip costs a
+          // negligible sliver of budget; undercounting is what let the real
+          // ceiling sneak up on the old success-only counter.
+          this.recordUsage();
           lastErr = `${model}: ${(e as Error).message}`;
           if (attempt < ATTEMPTS_PER_MODEL) {
             await sleep(500 * attempt);
@@ -87,6 +94,13 @@ export class OpenRouterProvider extends LLMProvider {
           }
           break; // this model's out — try the next one
         }
+
+        // A response of ANY kind (429, 5xx, ok) means this attempt actually
+        // spent one of the account's real requests — count it here, once,
+        // regardless of outcome. (Previously this only counted on success,
+        // which under-tracked usage right when things were getting tight —
+        // exactly the wrong time for the budget check to be optimistic.)
+        this.recordUsage();
 
         if (res.status === 429) {
           // Could be this model's own limit or the account-wide pool — either
@@ -124,7 +138,6 @@ export class OpenRouterProvider extends LLMProvider {
           break; // try the next model rather than retrying an empty response
         }
 
-        this.recordUsage(); // fire-and-forget — never block a response on this
         return text;
       }
     }

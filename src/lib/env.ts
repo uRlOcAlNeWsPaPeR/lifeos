@@ -5,12 +5,22 @@ export const env = {
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? "",
   ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? "",
-  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-flash-latest",
+  // "gemini-3.5-flash-lite" leads on purpose, not the newer/flagship models:
+  // measured live on a real key (AI Studio → Rate Limits, Sept 2026),
+  // gemini-3.6-flash and gemini-3.7-flash are each capped at just 5 RPM / 20
+  // RPD on the free tier — a couple of real user questions exhausts that
+  // instantly. gemini-3.5-flash-lite gets 15 RPM / 500 RPD on the same
+  // account — 25x the daily headroom. Published "Gemini Flash free tier"
+  // numbers online (often ~1,500/day) do NOT match what a real key actually
+  // gets per model version; trust AI Studio's own Rate Limits page over any
+  // outside source, including this comment, if Google changes it again.
+  GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-3.5-flash-lite",
   // Comma-separated Gemini models to try, in order, after GEMINI_MODEL — each
   // model has its own separate free-tier quota, so when the primary one hits
   // its limit this buys real headroom before ever reaching the offline engine.
+  // These two are the tiny-quota ones — last resort, not first.
   GEMINI_MODEL_FALLBACKS:
-    process.env.GEMINI_MODEL_FALLBACKS ?? "gemini-3.7-flash,gemini-3.5-flash-lite",
+    process.env.GEMINI_MODEL_FALLBACKS ?? "gemini-3.6-flash,gemini-3.7-flash",
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
   // No default — OpenRouter's free-model roster rotates too often to hardcode
   // a slug with any confidence, and a wrong/stale one would just silently
