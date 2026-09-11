@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea, Input } from "@/components/ui/input";
 import { BrainDumpLoader } from "@/components/app/brain-dump-loader";
+import { UpgradeAd } from "@/components/app/upgrade-ad";
 import { authedApi } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
 import { useAppData } from "@/lib/store/app-data";
@@ -335,6 +336,7 @@ export function BrainDumpView() {
   /* ---------------- INPUT ---------------- */
   return (
     <div className="animate-fade-in">
+      <UpgradeAd feature="Brain Dump" />
       <PageHeader
         title="Brain Dump"
         description="Type everything on your mind. LifeOS turns it into tasks you review one by one."

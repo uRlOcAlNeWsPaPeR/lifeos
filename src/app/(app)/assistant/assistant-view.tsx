@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { MiniMarkdown } from "@/components/app/mini-markdown";
+import { UpgradeAd } from "@/components/app/upgrade-ad";
 import { useAppData } from "@/lib/store/app-data";
 import {
   useAssistantChat,
@@ -114,6 +115,7 @@ export function AssistantView({
 
   return (
     <>
+      <UpgradeAd feature="The AI Assistant" />
       <PageHeader
         title="AI Assistant"
         description="Ask about your tasks, deadlines and goals — or tell it to add and remove things for you. It works from your LifeOS data, not the open web."

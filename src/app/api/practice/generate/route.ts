@@ -1,7 +1,7 @@
 import { route, ok, readJson } from "@/lib/api";
 import { requireUid } from "@/lib/firebase/admin";
 import { generateCardsSchema } from "@/lib/validation";
-import { getAI, assertAndCountAiUsage } from "@/lib/ai";
+import { getAIFor, assertAndCountAiUsage } from "@/lib/ai";
 
 /**
  * Notes in, study cards out. Metered against the same Brain Dump quota — both
@@ -12,9 +12,9 @@ export const POST = route(async (req) => {
   const uid = await requireUid(req);
   const { notes, title } = generateCardsSchema.parse(await readJson(req));
 
-  await assertAndCountAiUsage(uid, "brainDump");
+  const plan = await assertAndCountAiUsage(uid, "brainDump");
 
-  const result = await getAI().generateCards(notes, title ?? null);
+  const result = await getAIFor(plan).generateCards(notes, title ?? null);
 
   return ok({ cards: result.cards, engine: result.engine });
 });

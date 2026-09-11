@@ -12,8 +12,8 @@ export const PLAN_LIMITS = {
     fullAnalytics: false,
   },
   student_plus: {
-    brainDumpsPerWeek: 50,
-    assistantPerDay: 150,
+    brainDumpsPerWeek: 20,
+    assistantPerDay: 30,
     maxActiveGoals: 100,
     maxCourses: 60,
     maxDecks: 200,

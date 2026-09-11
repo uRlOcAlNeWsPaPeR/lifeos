@@ -80,3 +80,16 @@ export async function requireUid(req: Request): Promise<string> {
     throw err;
   }
 }
+
+/** Same as {@link requireUid}, but for endpoints that work signed-out too —
+ *  returns null instead of throwing when there's no (or an invalid) token. */
+export async function optionalUid(req: Request): Promise<string | null> {
+  const header = req.headers.get("authorization") || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (!token) return null;
+  try {
+    return (await adminAuth().verifyIdToken(token)).uid;
+  } catch {
+    return null;
+  }
+}

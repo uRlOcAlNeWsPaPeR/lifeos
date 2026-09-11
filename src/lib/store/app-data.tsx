@@ -25,7 +25,7 @@ import {
 } from "@/lib/firebase/schema";
 import { deriveAnalytics, goalProgress, type AnalyticsSummary } from "@/lib/analytics-derive";
 import { limitsFor, effectivePlan } from "@/lib/plan-limits";
-import { api, authedApi } from "@/lib/client";
+import { authedApi } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
 import { pushUndo } from "@/components/ui/undo-bar";
 import { deckMastery, hydrateCard, newCard } from "@/lib/practice/srs";
@@ -335,7 +335,9 @@ export function AppDataProvider({
   const [loaded, setLoaded] = useState({ profile: false, tasks: false, goals: false, courses: false, assignments: false, events: false });
 
   useEffect(() => {
-    api<{ engine: string; label: string }>("/api/session")
+    // authed so the engine label reflects this student's own plan (Free always
+    // reads as the offline engine — see /api/session)
+    authedApi<{ engine: string; label: string }>("/api/session")
       .then(setAi)
       .catch(() => {});
   }, []);
