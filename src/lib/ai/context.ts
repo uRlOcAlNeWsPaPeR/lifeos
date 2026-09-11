@@ -95,7 +95,11 @@ export async function buildContext(uid: string): Promise<LifeOSContext> {
       title: a.title as string,
       courseName: a.courseId ? courseName.get(a.courseId as string) ?? null : null,
       dueAt: d(a.dueAt),
-      status: (a.status as string) ?? "open",
+      // `localDone` is the student manually marking it done in LifeOS — Canvas
+      // itself may still report "open" (no submission on record). Fold it into
+      // the status the AI sees, or every recommendation and priority score
+      // built from this context would keep treating it as outstanding work.
+      status: a.localDone ? "done" : (a.status as string) ?? "open",
       source: (a.provider as string) === "canvas" ? "canvas" : null,
       hasLinkedTask: tasks.some((t) => t.assignmentId === a.id && t.status !== "done"),
     })),

@@ -54,11 +54,15 @@ export function getAIFor(plan: PlanId): AIProvider {
   return getAI();
 }
 
+// Student-facing labels only — deliberately generic. Which vendor/model is
+// actually handling a request (OpenRouter/Gemini/Anthropic) is an internal
+// routing detail, not something surfaced in the UI; only the real engine key
+// still distinguishes "hosted" vs "offline" for the free-tier upsell copy.
 const ENGINE_LABELS = {
-  openrouter: "OpenRouter",
-  anthropic: "Claude",
-  gemini: "Gemini",
-  heuristic: "LifeOS heuristic engine",
+  openrouter: "LifeOS AI",
+  anthropic: "LifeOS AI",
+  gemini: "LifeOS AI",
+  heuristic: "LifeOS AI (offline)",
 } as const;
 
 /**
