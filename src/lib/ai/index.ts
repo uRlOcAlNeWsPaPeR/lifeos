@@ -1,8 +1,9 @@
 import "server-only";
-import { resolveAiProvider } from "@/lib/env";
+import { resolveAiProvider, resolveAiProviderChain } from "@/lib/env";
 import { AnthropicProvider } from "./anthropic";
 import { GeminiProvider } from "./gemini";
 import { HeuristicProvider } from "./heuristic";
+import type { LLMProvider } from "./llm-base";
 import type { AIProvider } from "./types";
 import { limitsFor, effectivePlan } from "@/lib/plan-limits";
 import { adminDb, adminAuth } from "@/lib/firebase/admin";
@@ -10,18 +11,29 @@ import { periodKey } from "@/lib/firebase/schema";
 
 let provider: AIProvider | null = null;
 
+/**
+ * One hosted provider per configured API key, chained in preference order —
+ * e.g. Gemini fails or hits a rate limit → the same request retries against
+ * Anthropic before ever falling back to the offline heuristic engine. With
+ * only one key configured, or none, this collapses to the old single-provider
+ * (or heuristic-only) behaviour.
+ */
 export function getAI(): AIProvider {
   if (provider) return provider;
-  switch (resolveAiProvider()) {
-    case "anthropic":
-      provider = new AnthropicProvider();
-      break;
-    case "gemini":
-      provider = new GeminiProvider();
-      break;
-    default:
-      provider = new HeuristicProvider();
+
+  const chain = resolveAiProviderChain();
+  const heuristic = new HeuristicProvider();
+  if (chain.length === 0) {
+    provider = heuristic;
+    return provider;
   }
+
+  const instances: LLMProvider[] = chain.map((name) =>
+    name === "anthropic" ? new AnthropicProvider() : new GeminiProvider(),
+  );
+  instances.forEach((p, i) => p.setFallback(instances[i + 1] ?? heuristic));
+
+  provider = instances[0];
   return provider;
 }
 

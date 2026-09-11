@@ -28,7 +28,17 @@ import { scoreTasks } from "./score";
  */
 export abstract class LLMProvider implements AIProvider {
   abstract readonly name: AIEngine;
-  protected fallback = new HeuristicProvider();
+  protected fallback: AIProvider = new HeuristicProvider();
+
+  /**
+   * Chain another provider ahead of the offline heuristic. `getAI()` uses this
+   * to wire Gemini → Anthropic → heuristic (or vice versa) so a rate limit or
+   * outage on the primary provider tries the other hosted model before the
+   * student ever sees the offline engine.
+   */
+  setFallback(next: AIProvider): void {
+    this.fallback = next;
+  }
 
   /**
    * Raw completion. Must return the model's text output (ideally JSON).
