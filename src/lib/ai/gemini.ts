@@ -1,23 +1,31 @@
-import { env } from "@/lib/env";
+import { env, geminiModelChain } from "@/lib/env";
 import { LLMProvider } from "./llm-base";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+const RETRYABLE_SERVER = new Set([500, 502, 503, 504]);
+const ATTEMPTS_PER_MODEL = 2;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Google Gemini-backed provider. Used when GEMINI_API_KEY is present
- * (and no ANTHROPIC_API_KEY). Uses the REST API directly — no SDK dependency.
+ * Google Gemini-backed provider. Used when GEMINI_API_KEY is present. Uses the
+ * REST API directly — no SDK dependency.
  *
- * Retries transient 429/5xx responses with backoff. Any unrecoverable error
- * bubbles up to LLMProvider, which falls back to the offline heuristic engine
- * so Brain Dump / prioritization / the assistant never hard-fail.
+ * Tries a chain of Gemini models in order (GEMINI_MODEL, then
+ * GEMINI_MODEL_FALLBACKS) — each model carries its own separate free-tier
+ * quota, so a 429 (quota exhausted) on one moves straight to the next rather
+ * than waiting out a backoff that won't help. Transient 5xx errors still get a
+ * couple of quick retries on the SAME model first, since those are infra
+ * blips, not a quota problem. A non-retryable error (bad request, auth, a
+ * blocked prompt) throws immediately — it'll fail identically on every model,
+ * so there's no point cycling. Only once every model is exhausted does this
+ * bubble up to LLMProvider, which falls back to the next chained provider (if
+ * any) and ultimately the offline heuristic engine.
  */
 export class GeminiProvider extends LLMProvider {
   readonly name = "gemini" as const;
   private apiKey = env.GEMINI_API_KEY;
-  private model = env.GEMINI_MODEL;
+  private models = geminiModelChain();
 
   protected async complete(
     system: string,
@@ -39,55 +47,67 @@ export class GeminiProvider extends LLMProvider {
       },
     });
 
-    const maxAttempts = 3;
     let lastErr = "";
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      let res: Response;
-      try {
-        res = await fetch(`${ENDPOINT}/${encodeURIComponent(this.model)}:generateContent`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
-          body,
-          signal: AbortSignal.timeout(25_000),
-        });
-      } catch (e) {
-        lastErr = (e as Error).message;
-        if (attempt < maxAttempts) {
-          await sleep(500 * attempt);
-          continue;
+    for (const model of this.models) {
+      for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
+        let res: Response;
+        try {
+          res = await fetch(`${ENDPOINT}/${encodeURIComponent(model)}:generateContent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
+            body,
+            signal: AbortSignal.timeout(25_000),
+          });
+        } catch (e) {
+          lastErr = `${model}: ${(e as Error).message}`;
+          if (attempt < ATTEMPTS_PER_MODEL) {
+            await sleep(500 * attempt);
+            continue;
+          }
+          break; // this model's out — try the next one
         }
-        throw new Error(`Gemini request failed: ${lastErr}`);
-      }
 
-      if (RETRYABLE.has(res.status) && attempt < maxAttempts) {
-        lastErr = `HTTP ${res.status}`;
-        await sleep(600 * attempt + Math.random() * 300);
-        continue;
-      }
+        if (res.status === 429) {
+          // Quota exhausted on this model specifically — waiting won't free it
+          // up, but a different model has its own untouched quota.
+          lastErr = `${model}: HTTP 429 (quota)`;
+          break;
+        }
 
-      if (!res.ok) {
-        const detail = await res.text().catch(() => "");
-        throw new Error(`Gemini API ${res.status}: ${detail.slice(0, 300)}`);
-      }
+        if (RETRYABLE_SERVER.has(res.status)) {
+          lastErr = `${model}: HTTP ${res.status}`;
+          if (attempt < ATTEMPTS_PER_MODEL) {
+            await sleep(600 * attempt + Math.random() * 300);
+            continue;
+          }
+          break; // retries exhausted on this model — try the next one
+        }
 
-      const data = (await res.json()) as {
-        candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-        promptFeedback?: { blockReason?: string };
-      };
-      if (data.promptFeedback?.blockReason) {
-        throw new Error(`Gemini blocked the prompt: ${data.promptFeedback.blockReason}`);
+        if (!res.ok) {
+          // Not model-specific (bad request, auth, etc.) — every model will
+          // fail the same way, so surface it now instead of cycling.
+          const detail = await res.text().catch(() => "");
+          throw new Error(`Gemini API ${res.status}: ${detail.slice(0, 300)}`);
+        }
+
+        const data = (await res.json()) as {
+          candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+          promptFeedback?: { blockReason?: string };
+        };
+        if (data.promptFeedback?.blockReason) {
+          throw new Error(`Gemini blocked the prompt: ${data.promptFeedback.blockReason}`);
+        }
+        const candidate = data.candidates?.[0];
+        const text = candidate?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+        if (!text) {
+          lastErr = `${model}: no text${candidate?.finishReason ? ` (${candidate.finishReason})` : ""}`;
+          break; // try the next model rather than retrying an empty response
+        }
+        return text;
       }
-      const candidate = data.candidates?.[0];
-      const text = candidate?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-      if (!text) {
-        throw new Error(
-          `Gemini returned no text${candidate?.finishReason ? ` (${candidate.finishReason})` : ""}`,
-        );
-      }
-      return text;
     }
 
-    throw new Error(`Gemini unavailable after ${maxAttempts} attempts (${lastErr})`);
+    throw new Error(`Gemini unavailable across ${this.models.length} model(s) — ${lastErr}`);
   }
 }

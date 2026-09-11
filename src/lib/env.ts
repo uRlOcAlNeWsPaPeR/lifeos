@@ -6,9 +6,22 @@ export const env = {
   ANTHROPIC_MODEL: process.env.ANTHROPIC_MODEL || "claude-sonnet-5",
   GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? "",
   GEMINI_MODEL: process.env.GEMINI_MODEL || "gemini-flash-latest",
+  // Comma-separated Gemini models to try, in order, after GEMINI_MODEL — each
+  // model has its own separate free-tier quota, so when the primary one hits
+  // its limit this buys real headroom before ever reaching the offline engine.
+  GEMINI_MODEL_FALLBACKS:
+    process.env.GEMINI_MODEL_FALLBACKS ?? "gemini-3.7-flash,gemini-3.5-flash-lite",
   AI_PROVIDER: (process.env.AI_PROVIDER as "auto" | "anthropic" | "gemini" | "heuristic") || "auto",
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME || "LifeOS",
 };
+
+/** GEMINI_MODEL, then GEMINI_MODEL_FALLBACKS, de-duplicated. */
+export function geminiModelChain(): string[] {
+  const extra = env.GEMINI_MODEL_FALLBACKS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return [env.GEMINI_MODEL, ...extra].filter((m, i, arr) => arr.indexOf(m) === i);
+}
 
 /**
  * Every configured hosted provider, in try-order. AI_PROVIDER picks which one
