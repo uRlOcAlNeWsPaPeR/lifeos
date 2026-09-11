@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  /* ---- Light (secondary) ---- */
-  :root {
+  /* ---- Light palette — retained for reference only; LifeOS is dark-only.
+         `:root` below is overridden by the dark block, so light never renders. ---- */
+  .theme-light-unused {
     --background: 150 20% 99%;
     --foreground: 156 16% 8%;
     --card: 0 0% 100%;
@@ -39,7 +40,8 @@
     --glow: 152 68% 44%;
   }
 
-  /* ---- Dark (primary — deep black + refined green) ---- */
+  /* ---- Dark (the only theme) ---- */
+  :root,
   .dark {
     --background: 160 14% 4%;
     --foreground: 150 12% 96%;
@@ -64,6 +66,7 @@
     --border: 156 8% 15%;
     --input: 156 8% 19%;
     --ring: 152 65% 50%;
+    --radius: 0.9rem;
 
     --g-green: #22d67e;
     --g-emerald: #16c98a;
