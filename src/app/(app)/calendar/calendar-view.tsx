@@ -24,6 +24,9 @@ import { Modal } from "@/components/ui/modal";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import { useAppData } from "@/lib/store/app-data";
+import { CALENDAR_INTEGRATIONS } from "@/lib/integrations/descriptors";
+import { IntegrationCard } from "@/components/app/integration-card";
+import { openStudyLockPrompt } from "@/lib/study-lock";
 import { fmtTime, toInputDateTime, isStaleOverdue, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, EventDTO, TaskDTO } from "@/lib/types";
@@ -252,6 +255,9 @@ export function CalendarView() {
               );
             }
 
+            // Past days collapse to a single "N items" pill — the day drawer
+            // still opens the full list on click. Month view only.
+            const collapsePast = dayPast && view === "month" && items.length > 0;
             const shown = view === "week" ? items : items.slice(0, 3);
             const more = items.length - shown.length;
 
@@ -270,11 +276,18 @@ export function CalendarView() {
                     "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
                     isToday
                       ? "bg-gradient-brand text-primary-foreground shadow-glow-sm"
-                      : "text-foreground",
+                      : dayPast
+                        ? "text-muted-foreground"
+                        : "text-foreground",
                   )}
                 >
                   {day.getDate()}
                 </span>
+                {collapsePast ? (
+                  <span className="mt-0.5 self-start rounded px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground/70 ring-1 ring-inset ring-white/[0.08]">
+                    {items.length} item{items.length === 1 ? "" : "s"}
+                  </span>
+                ) : (
                 <div className="flex flex-col gap-0.5">
                   {shown.map((it) => {
                     const done = it.kind === "done";
@@ -308,6 +321,7 @@ export function CalendarView() {
                     <span className="px-1.5 text-[10px] font-medium text-primary">+{more} more</span>
                   )}
                 </div>
+                )}
               </button>
             );
           })}
@@ -331,6 +345,20 @@ export function CalendarView() {
           <span className="h-2 w-2 rounded-full ring-1 ring-primary/50" /> From Canvas
         </span>
       </div>
+
+      <section className="mt-12">
+        <div className="divider-gradient mb-8" />
+        <h2 className="text-xl font-semibold tracking-tight">Connect a calendar</h2>
+        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
+          Sync your events, deadlines and study sessions both ways with the calendar you
+          already use.
+        </p>
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          {CALENDAR_INTEGRATIONS.map((i) => (
+            <IntegrationCard key={i.id} integration={i} />
+          ))}
+        </div>
+      </section>
 
       {selected && <DayDrawer dateKey={selected} onClose={() => setSelected(null)} />}
     </>
@@ -459,28 +487,42 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
 
           {events.length > 0 && (
             <Section title="Schedule">
-              {events.map((e) => (
-                <div
-                  key={e.id}
-                  className="group flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"
-                >
-                  <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", EVENT_DOT[e.kind])} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium">{e.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {e.allDay ? "All day" : `${fmtTime(e.startAt)} – ${fmtTime(e.endAt)}`}
-                      {e.location ? ` · ${e.location}` : ""} · {e.kind.replace("_", " ")}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteEvent(e.id)}
-                    className="hover-reveal -m-1 rounded p-2 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 sm:p-1"
-                    aria-label="Delete event"
+              {events.map((e) => {
+                const liveStudy =
+                  e.kind === "study_session" &&
+                  Date.parse(e.startAt) <= Date.now() &&
+                  Date.now() < Date.parse(e.endAt);
+                return (
+                  <div
+                    key={e.id}
+                    className="group flex items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
+                    <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", EVENT_DOT[e.kind])} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium">{e.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {e.allDay ? "All day" : `${fmtTime(e.startAt)} – ${fmtTime(e.endAt)}`}
+                        {e.location ? ` · ${e.location}` : ""} · {e.kind.replace("_", " ")}
+                      </p>
+                      {liveStudy && (
+                        <button
+                          onClick={() => openStudyLockPrompt()}
+                          className="mt-1.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                        >
+                          <Clock className="h-3 w-3" /> Lock in
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => deleteEvent(e.id)}
+                      className="hover-reveal -m-1 rounded p-2 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 sm:p-1"
+                      aria-label="Delete event"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </Section>
           )}
 
@@ -884,6 +926,7 @@ export function EventEditor({
     endAt: string;
     kind: string;
     location: string | null;
+    locked?: boolean;
   }) => Promise<void>;
 }) {
   const base = useMemo(() => {
@@ -893,16 +936,36 @@ export function EventEditor({
     return { s: toInputDateTime(s), e: toInputDateTime(e) };
   }, [dateKey]);
 
-  const [form, setForm] = useState({ title: "", startAt: base.s, endAt: base.e, kind: "study_session", location: "" });
+  const blankForm = {
+    title: "",
+    startAt: base.s,
+    endAt: base.e,
+    kind: "study_session",
+    location: "",
+    // Not pre-chosen — for a study session, the student has to pick one.
+    locked: null as boolean | null,
+  };
+  const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
+  const [lockError, setLockError] = useState(false);
 
   useEffect(() => {
-    if (open) setForm({ title: "", startAt: base.s, endAt: base.e, kind: "study_session", location: "" });
+    if (open) {
+      setForm({ ...blankForm, startAt: base.s, endAt: base.e });
+      setLockError(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, base]);
+
+  const needsLockChoice = form.kind === "study_session" && form.locked === null;
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
     if (!form.title.trim()) return;
+    if (needsLockChoice) {
+      setLockError(true);
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
@@ -911,6 +974,7 @@ export function EventEditor({
         endAt: new Date(form.endAt).toISOString(),
         kind: form.kind,
         location: form.location.trim() || null,
+        locked: form.kind === "study_session" ? (form.locked ?? undefined) : undefined,
       });
     } finally {
       setSaving(false);
@@ -958,6 +1022,36 @@ export function EventEditor({
             <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
           </Field>
         </div>
+        {form.kind === "study_session" && (
+          <Field
+            label="Focus lock"
+            error={lockError ? "Pick locked or unlocked before creating the session." : undefined}
+            hint={
+              lockError
+                ? undefined
+                : form.locked === null
+                  ? "Choose one."
+                  : form.locked
+                    ? "Locked — LifeOS nags you to lock in and takes over the screen while it runs."
+                    : "Unlocked — just a block on your calendar, no nagging."
+            }
+          >
+            <Select
+              value={form.locked === null ? "" : form.locked ? "locked" : "unlocked"}
+              onChange={(e) => {
+                setLockError(false);
+                setForm({ ...form, locked: e.target.value === "locked" });
+              }}
+              className={cn(lockError && "border-destructive/60 focus:border-destructive")}
+            >
+              <option value="" disabled>
+                Choose one…
+              </option>
+              <option value="locked">Locked session</option>
+              <option value="unlocked">Unlocked session</option>
+            </Select>
+          </Field>
+        )}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
