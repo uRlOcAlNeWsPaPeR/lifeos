@@ -11,6 +11,7 @@ import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
 import { UndoBar } from "@/components/ui/undo-bar";
 import { CommandPalette } from "@/components/app/command-palette";
+import { StudyLockPrompt } from "@/components/app/study-lock-prompt";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, initializing, configured } = useAuth();
@@ -53,6 +54,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         <DailyBrief />
         <CanvasAutoSync />
         <CommandPalette />
+        <StudyLockPrompt />
         <UndoBar />
       </>
     );
@@ -72,6 +74,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
       <DailyBrief />
       <CanvasAutoSync />
       <CommandPalette />
+      <StudyLockPrompt />
       <UndoBar className="lg:left-[calc(16rem+1rem)]" />
     </div>
   );

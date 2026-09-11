@@ -8,6 +8,7 @@ import {
   ListChecks,
   Brain,
   CalendarDays,
+  Timer,
   Target,
   GraduationCap,
   Percent,
@@ -30,13 +31,17 @@ import { SearchTrigger } from "@/components/app/command-palette";
  * of nine links: what's on today, the school side of it, and how it's going.
  * The AI Assistant sits on its own below — it's a tool, not a section.
  */
-const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: typeof LayoutDashboard }[] }[] = [
+export const NAV_GROUPS: {
+  label: string;
+  items: { href: string; label: string; icon: typeof LayoutDashboard }[];
+}[] = [
   {
     label: "Today",
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/brain-dump", label: "Brain Dump", icon: Brain },
       { href: "/tasks", label: "Tasks", icon: ListChecks },
+      { href: "/study", label: "Study", icon: Timer },
       { href: "/calendar", label: "Calendar", icon: CalendarDays },
     ],
   },
@@ -57,7 +62,8 @@ const NAV_GROUPS: { label: string; items: { href: string; label: string; icon: t
   },
 ];
 
-const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Sparkles };
+export const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Sparkles };
+export const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: Settings };
 
 function NavLink({
   item,
@@ -121,7 +127,7 @@ export function Sidebar({
   const body = (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-4 py-4">
-        <Link href="/dashboard" onClick={() => setOpen(false)}>
+        <Link href="/" onClick={() => setOpen(false)} aria-label="LifeOS — landing page">
           <Logo />
         </Link>
         <button className="lg:hidden" onClick={() => setOpen(false)}>

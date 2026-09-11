@@ -46,6 +46,7 @@ export const PAGES: PageEntry[] = [
   { label: "Dashboard", href: "/dashboard", group: "Today", keywords: ["home", "hub", "overview", "start"] },
   { label: "Brain Dump", href: "/brain-dump", group: "Today", keywords: ["capture", "notes", "unload", "messy", "ai"] },
   { label: "Tasks", href: "/tasks", group: "Today", keywords: ["todo", "to do", "list", "work"] },
+  { label: "Study", href: "/study", group: "Today", keywords: ["study session", "focus", "lock in", "sessions", "pomodoro"] },
   { label: "Calendar", href: "/calendar", group: "Today", keywords: ["schedule", "week", "month", "events", "agenda"] },
   { label: "School", href: "/school", group: "School", keywords: ["courses", "classes", "class", "assignments", "canvas", "subjects", "teachers"] },
   { label: "Grades", href: "/grades", group: "School", keywords: ["gpa", "marks", "scores", "average", "grade calculator"] },

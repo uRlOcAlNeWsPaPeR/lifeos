@@ -6,10 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   LogOut,
   Menu as MenuIcon,
-  Flame,
-  ArrowUpRight,
-  Sparkles,
-  Settings as SettingsIcon,
   CircleDot,
   Lock,
   Pause,
@@ -17,8 +13,6 @@ import {
 } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Modal } from "@/components/ui/modal";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList } from "@/components/app/deadline-list";
 import { useAuth } from "@/lib/firebase/auth-context";
@@ -26,26 +20,23 @@ import { useAppData } from "@/lib/store/app-data";
 import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
 import { AppOrbit } from "./app-orbit";
-import { NAV_ICONS } from "./nav-deck";
 import { QuickAdd } from "./quick-add";
+import { NAV_GROUPS, ASSISTANT, SETTINGS_NAV } from "@/components/app/sidebar";
 import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
 import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
 import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
-import { useStudyLock } from "@/lib/study-lock";
-import type { EventDTO } from "@/lib/types";
+import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from "@/lib/study-lock";
 import { cn } from "@/lib/utils";
 
-const SECTIONS = [
-  { href: "/tasks", label: "Tasks", icon: NAV_ICONS.tasks },
-  { href: "/calendar", label: "Calendar", icon: NAV_ICONS.calendar },
-  { href: "/brain-dump", label: "Brain Dump", icon: NAV_ICONS.brain },
-  { href: "/goals", label: "Goals", icon: NAV_ICONS.goals },
-  { href: "/school", label: "School", icon: NAV_ICONS.school },
-  { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics },
-  { href: "/assistant", label: "AI Assistant", icon: Sparkles },
-  { href: "/settings", label: "Settings", icon: SettingsIcon },
-] as const;
+// Same grouping the sidebar uses, so the menu reads the same way everywhere.
+const MENU_GROUPS = [
+  ...NAV_GROUPS.map((g) => ({
+    label: g.label,
+    items: g.items.filter((i) => i.href !== "/dashboard"),
+  })),
+  { label: "Tools", items: [ASSISTANT, SETTINGS_NAV] },
+];
 
 type Phase = "home" | "boom" | "console" | "closing";
 
@@ -78,8 +69,10 @@ export function CorePortal() {
   // phase timeouts to match. The plain scrolling branch below is the last-resort
   // fallback and is effectively unreachable now (kept for no-JS / SSR safety).
   const [cinematic] = useState(true);
-  const [phase, setPhase] = useState<Phase>("home");
-  const phaseRef = useRef<Phase>("home");
+  // The dashboard opens straight on the working console (the 3 panels). The
+  // cinematic Core is still one tap away via the "Core" button in the top bar.
+  const [phase, setPhase] = useState<Phase>("console");
+  const phaseRef = useRef<Phase>("console");
   phaseRef.current = phase;
   const [menu, setMenu] = useState(false);
   const [appIndex, setAppIndex] = useState(studyIndex);
@@ -88,44 +81,24 @@ export function CorePortal() {
   const [boomApp, setBoomApp] = useState<LifeApp | null>(null);
   const now = useMemo(() => new Date(), []);
 
-  // "Lock in" — a study session that's live right now. While locked, the Core
-  // refuses to detonate: clicking it flashes red and shows the time left.
+  // "Lock in" — a study session that's live right now. The Core doesn't block
+  // anything; the LockBar just shows the time left, and locking in takes the app
+  // fullscreen (handled in <StudyLockPrompt/>).
   const lock = useStudyLock(data.events);
-  const [lockPrompt, setLockPrompt] = useState(false);
-  const [redBump, setRedBump] = useState(false);
-  const redBumpTimer = useRef<number | undefined>(undefined);
 
-  const triggerRedBump = () => {
-    setRedBump(true);
-    if (redBumpTimer.current) window.clearTimeout(redBumpTimer.current);
-    redBumpTimer.current = window.setTimeout(() => setRedBump(false), 10_000);
-  };
-  useEffect(
-    () => () => {
-      if (redBumpTimer.current) window.clearTimeout(redBumpTimer.current);
-    },
-    [],
-  );
-
-  // Offer to lock in when the dashboard opens on a live session the user hasn't
-  // locked or ended yet. `promptedRef` keeps it to once per dashboard open, so
-  // pausing doesn't instantly re-ask — but reopening the page (fresh mount) does.
-  const promptedRef = useRef(false);
-  useEffect(() => {
-    if (lock.shouldPrompt && !promptedRef.current) {
-      promptedRef.current = true;
-      setLockPrompt(true);
-    } else if (!lock.shouldPrompt) {
-      promptedRef.current = false;
-      setLockPrompt(false);
-    }
-  }, [lock.shouldPrompt]);
-
-  const orbitApps = useMemo(
-    () =>
-      redBump ? LIFE_APPS.map((a) => (a.id === "study" ? { ...a, hue: 0 } : a)) : LIFE_APPS,
-    [redBump],
-  );
+  const lockBar =
+    lock.status === "locked" || lock.status === "paused" ? (
+      <LockBar
+        status={lock.status}
+        msLeft={lock.msLeft}
+        onPause={lock.pause}
+        onResume={() => {
+          lock.lockIn();
+          enterFocusFullscreen();
+        }}
+        onEnd={lock.endSession}
+      />
+    ) : undefined;
 
   useEffect(() => {
     // warm the routed apps so navigation lands the instant the burst clears
@@ -141,11 +114,6 @@ export function CorePortal() {
 
   const detonate = () => {
     if (phaseRef.current !== "home") return;
-    if (lock.status === "locked") {
-      // No exit while locked in — flash the Core red and surface the countdown.
-      triggerRedBump();
-      return;
-    }
     if (!cinematic) {
       setPhase("console");
       requestAnimationFrame(() =>
@@ -191,12 +159,6 @@ export function CorePortal() {
     window.setTimeout(() => setPhase("home"), reduced() ? 460 : TO_HOME);
   };
 
-  const returnCore = () => {
-    setMenu(false);
-    if (phaseRef.current === "console") exitToCore();
-    else window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   const ambientLine = useMemo(() => {
     const bits: string[] = [];
     if (m.dueToday) bits.push(`${m.dueToday} task${m.dueToday === 1 ? "" : "s"} today`);
@@ -222,111 +184,72 @@ export function CorePortal() {
       >
         <Logo />
       </Link>
-      {onConsole && (
-        <div className="flex items-center gap-1.5">
-          {cinematic && (
-            <button
-              onClick={exitToCore}
-              className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-foreground/90 transition-colors hover:border-primary/40 hover:text-primary"
-            >
-              <CircleDot className="h-4 w-4" />
-              <span className="hidden sm:inline">Core</span>
-            </button>
-          )}
-          <button
-            onClick={() => setMenu(true)}
-            aria-label="Menu"
-            className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-foreground/90 transition-colors hover:bg-white/[0.08]"
-          >
-            <MenuIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Menu</span>
-          </button>
-        </div>
+      {onConsole && cinematic && (
+        <button
+          onClick={exitToCore}
+          className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-xs font-medium text-foreground/90 transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <CircleDot className="h-4 w-4" />
+          <span className="hidden sm:inline">Home</span>
+        </button>
       )}
     </div>
   );
 
+  const bottomMenuButton = onConsole && (
+    <button
+      onClick={() => setMenu(true)}
+      aria-label="Menu"
+      className="fixed bottom-6 left-5 z-40 flex h-11 items-center gap-2 rounded-full border border-white/10 bg-black/50 px-4 text-xs font-medium text-foreground/90 backdrop-blur-md transition-colors hover:border-primary/40 hover:text-primary sm:bottom-8 sm:left-8"
+    >
+      <MenuIcon className="h-4 w-4" />
+      Menu
+    </button>
+  );
+
   const menuPopup = (
     <Modal open={menu} onClose={() => setMenu(false)} title="Go to">
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={returnCore}
-          className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm font-medium hover:border-primary/40 hover:text-primary"
-        >
-          <Logo showText={false} />
-          Core
-        </button>
-        {SECTIONS.map((s) => {
-          const Icon = s.icon;
-          return (
-            <Link
-              key={s.href}
-              href={s.href}
-              onClick={() => setMenu(false)}
-              className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm font-medium hover:border-primary/40 hover:text-primary"
-            >
-              <Icon className="h-4 w-4 text-primary" />
-              {s.label}
-            </Link>
-          );
-        })}
+      <div className="space-y-4">
+        {MENU_GROUPS.map((group) => (
+          <div key={group.label}>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              {group.label}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {group.items.map((s) => {
+                const Icon = s.icon;
+                return (
+                  <Link
+                    key={s.href}
+                    href={s.href}
+                    onClick={() => setMenu(false)}
+                    className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:text-primary"
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-primary" />
+                    <span className="truncate">{s.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       <button
         onClick={doLogout}
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-2.5 text-sm text-muted-foreground hover:bg-white/5 hover:text-foreground"
+        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
       >
         <LogOut className="h-4 w-4" /> Log out
       </button>
     </Modal>
   );
 
-  const welcome =
-    redBump && lock.session ? (
-      <>
-        <LockCountdown session={lock.session} />
-        <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-destructive/70">
-          You&apos;re locked in — no exit until you pause or end the session.
-        </p>
-      </>
-    ) : (
-      <>
-        <LiveClock name={firstName} />
-        <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-muted-foreground/70">
-          {ambientLine}
-        </p>
-      </>
-    );
-
-  const lockPromptModal = (
-    <Modal
-      open={lockPrompt && phase === "home"}
-      onClose={() => setLockPrompt(false)}
-      title={lock.resuming ? "Back to your study session?" : "Study session in progress"}
-      description={
-        lock.session
-          ? `${lock.session.title || "Study session"} · ${fmtLeft(lock.msLeft)} left`
-          : undefined
-      }
-      className="max-w-sm"
-    >
-      <p className="mt-1 text-sm text-muted-foreground">
-        Lock in to focus. The Core stops opening and shows your time left instead — you can
-        pause or end the session whenever you need to step away.
+  const welcome = (
+    <>
+      <LiveClock name={firstName} />
+      <p className="mx-auto mt-5 max-w-sm text-xs leading-relaxed text-muted-foreground/70">
+        {ambientLine}
       </p>
-      <div className="mt-5 flex justify-end gap-2">
-        <Button variant="ghost" onClick={() => setLockPrompt(false)}>
-          Not now
-        </Button>
-        <Button
-          onClick={() => {
-            lock.lockIn();
-            setLockPrompt(false);
-          }}
-        >
-          <Lock className="h-4 w-4" /> Lock in
-        </Button>
-      </div>
-    </Modal>
+    </>
   );
 
   /* ---------------- fallback: normal scrolling page ---------------- */
@@ -339,11 +262,12 @@ export function CorePortal() {
             {welcome}
             <div className="mt-16 w-full">
               <AppOrbit
-                apps={orbitApps}
+                apps={LIFE_APPS}
                 activeIndex={appIndex}
                 onActiveChange={setAppIndex}
                 onEnter={enterApp}
                 reducedMotion
+                centerAction={lockBar}
               />
             </div>
           </div>
@@ -352,8 +276,8 @@ export function CorePortal() {
           </div>
         </div>
         {onConsole && <QuickAdd />}
+        {bottomMenuButton}
         {menuPopup}
-        {lockPromptModal}
       </>
     );
   }
@@ -397,23 +321,11 @@ export function CorePortal() {
         {phase === "home" && (
           <div className="absolute inset-x-0 top-[27%] bottom-4 z-10 flex items-start justify-center px-4 sm:top-[34%] sm:bottom-6">
             <AppOrbit
-              apps={orbitApps}
+              apps={LIFE_APPS}
               activeIndex={appIndex}
               onActiveChange={setAppIndex}
               onEnter={enterApp}
-            />
-          </div>
-        )}
-
-        {/* lock-in control bar (home) */}
-        {phase === "home" && !redBump && (lock.status === "locked" || lock.status === "paused") && (
-          <div className="absolute inset-x-0 bottom-[max(1.25rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-6">
-            <LockBar
-              status={lock.status}
-              msLeft={lock.msLeft}
-              onPause={lock.pause}
-              onResume={lock.lockIn}
-              onEnd={lock.endSession}
+              centerAction={lockBar}
             />
           </div>
         )}
@@ -462,55 +374,13 @@ export function CorePortal() {
       </div>
 
       {onConsole && <QuickAdd />}
+      {bottomMenuButton}
       {menuPopup}
-      {lockPromptModal}
     </>
   );
 }
 
 /* ------------------------------- study lock ------------------------------- */
-
-function fmtLeft(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 60000));
-  if (total >= 60) {
-    const h = Math.floor(total / 60);
-    const m = total % 60;
-    return m ? `${h}h ${m}m` : `${h}h`;
-  }
-  return `${total || 1}m`;
-}
-
-function LockCountdown({ session }: { session: EventDTO }) {
-  const end = +new Date(session.endAt);
-  const [left, setLeft] = useState(() => Math.max(0, end - Date.now()));
-  useEffect(() => {
-    const id = setInterval(() => setLeft(Math.max(0, end - Date.now())), 1000);
-    return () => clearInterval(id);
-  }, [end]);
-
-  const total = Math.floor(left / 1000);
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const clock =
-    h > 0
-      ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
-      : `${m}:${String(s).padStart(2, "0")}`;
-
-  return (
-    <>
-      <p className="text-[11px] font-medium uppercase tracking-[0.32em] text-destructive">
-        Locked in — stay focused
-      </p>
-      <p className="mt-4 text-[2.75rem] font-semibold leading-none tracking-tight tabular-nums text-destructive sm:text-6xl">
-        {clock}
-      </p>
-      <p className="mt-3 text-sm text-destructive/70">
-        left in {session.title || "this study session"}
-      </p>
-    </>
-  );
-}
 
 function LockBar({
   status,
@@ -682,22 +552,38 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
           <p className="mt-2 text-sm text-muted-foreground">Nothing on the calendar today.</p>
         ) : (
           <ul className="mt-1 divide-y divide-white/[0.05]">
-            {model.today.slice(0, 7).map((t) => (
-              <li key={t.key} className="flex items-baseline gap-3 py-2">
-                <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">
-                  {t.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
-                <span
-                  className={cn(
-                    "shrink-0 text-[10px] font-medium uppercase tracking-wide",
-                    t.active ? "text-primary" : "text-muted-foreground/60",
-                  )}
-                >
-                  {t.active ? "Now · Study" : TODAY_LABEL[t.kind]}
-                </span>
-              </li>
-            ))}
+            {model.today.slice(0, 7).map((t) => {
+              const row = (
+                <>
+                  <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">
+                    {t.at.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-sm">{t.title}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 text-[10px] font-medium uppercase tracking-wide",
+                      t.active ? "text-primary" : "text-muted-foreground/60",
+                    )}
+                  >
+                    {t.active ? "Now · Lock in" : TODAY_LABEL[t.kind]}
+                  </span>
+                </>
+              );
+              return t.active ? (
+                <li key={t.key}>
+                  <button
+                    onClick={() => openStudyLockPrompt()}
+                    className="flex w-full items-baseline gap-3 py-2 text-left transition-colors hover:text-primary"
+                  >
+                    {row}
+                  </button>
+                </li>
+              ) : (
+                <li key={t.key} className="flex items-baseline gap-3 py-2">
+                  {row}
+                </li>
+              );
+            })}
           </ul>
         )}
         {model.today.length > 7 && (
@@ -715,7 +601,9 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
       {/* RADAR */}
       <section className="card-surface flex flex-col gap-4 p-4">
         <div>
-          <p className="text-xl font-semibold tracking-tight">{model.radarTotal} on your radar</p>
+          <p className="text-xl font-semibold tracking-tight">
+            {model.radarTotal > 0 ? `${model.radarTotal} on your radar` : "Nothing urgent"}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {model.high > 0 && (
               <>
@@ -728,34 +616,32 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
                 · <b className="text-destructive">{model.overdue}</b> overdue
               </>
             )}
-            {model.high + model.dueToday + model.overdue === 0 && "Nothing urgent."}
+            {model.high + model.dueToday + model.overdue === 0 && "You're on top of it."}
           </p>
         </div>
 
-        {model.school.total > 0 && (
-          <div>
-            <Header title="School" href="/school" cta="All" small />
-            <p className="mb-1.5 text-xs text-muted-foreground">
-              <b className="text-foreground">{model.school.dueSoon}</b> due soon
-              {model.school.dueTomorrow > 0 && (
-                <> · <b className="text-warning">{model.school.dueTomorrow}</b> tomorrow</>
-              )}
-            </p>
+        <div>
+          <Header title="To do" href="/tasks" cta="All" small />
+          {model.radarItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No open tasks.</p>
+          ) : (
             <ul className="space-y-1">
-              {model.school.items.map((s) => {
-                const due = relativeDue(s.dueAt);
+              {model.radarItems.map((t) => {
+                const due = relativeDue(t.dueAt);
                 return (
-                  <li key={s.id}>
+                  <li key={t.id}>
                     <Link
-                      href="/school"
+                      href="/tasks"
                       className="flex items-center justify-between gap-2 rounded px-1 py-0.5 text-xs transition-colors hover:bg-white/5"
                     >
-                      <span className="min-w-0 truncate">
-                        {s.course && <span className="text-muted-foreground">{s.course} · </span>}
-                        {s.title}
-                      </span>
+                      <span className="min-w-0 truncate">{t.title}</span>
                       {due && (
-                        <span className={cn("shrink-0", due.tone === "destructive" ? "text-destructive" : "text-muted-foreground")}>
+                        <span
+                          className={cn(
+                            "shrink-0",
+                            due.tone === "destructive" ? "text-destructive" : "text-muted-foreground",
+                          )}
+                        >
                           {due.label}
                         </span>
                       )}
@@ -764,8 +650,8 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
                 );
               })}
             </ul>
-          </div>
-        )}
+          )}
+        </div>
 
         {model.deadlineItems.length > 0 && (
           <div>
@@ -773,33 +659,6 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
             <DeadlineList items={model.deadlineItems.slice(0, 3)} />
           </div>
         )}
-
-        {model.goals.length > 0 && (
-          <div>
-            <Header title="Goals" href="/goals" cta="All" small />
-            <div className="space-y-2.5">
-              {model.goals.map((g) => (
-                <div key={g.id}>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="truncate font-medium">{g.title}</span>
-                    <span className="text-muted-foreground">{g.pct}%</span>
-                  </div>
-                  <Progress value={g.pct} tone={g.pct >= 100 ? "success" : "primary"} />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="mt-auto flex items-center justify-between border-t border-white/[0.06] pt-3 text-xs">
-          <span className="flex items-center gap-1.5 text-muted-foreground">
-            <Flame className="h-3.5 w-3.5 text-primary" />
-            {model.streak}-day streak · {model.done7} done
-          </span>
-          <Link href="/analytics" className="font-medium text-primary hover:underline">
-            Analytics <ArrowUpRight className="inline h-3 w-3" />
-          </Link>
-        </div>
       </section>
     </div>
   );
@@ -863,6 +722,7 @@ interface Model {
     color?: string | null;
     context?: string;
   }[];
+  radarItems: { id: string; title: string; dueAt: string | null }[];
   goals: { id: string; title: string; pct: number }[];
   streak: number;
   done7: number;
@@ -895,9 +755,27 @@ function buildModel(
   const high = open.filter((t) => t.priority === "high" || t.priority === "urgent");
   const radarTotal = new Set([...overdue, ...dueToday, ...high].map((t) => t.id)).size;
 
+  // "To do" list for the radar panel: urgent items first (overdue → due today →
+  // high priority), then any other open task, capped at 5.
+  const urgent = [...new Map([...overdue, ...dueToday, ...high].map((t) => [t.id, t])).values()];
+  const urgentIds = new Set(urgent.map((t) => t.id));
+  const radarItems = [
+    ...urgent,
+    ...open
+      .filter((t) => !urgentIds.has(t.id))
+      .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
+  ]
+    .slice(0, 5)
+    .map((t) => ({ id: t.id, title: t.title, dueAt: t.dueAt }));
+
   const eventsToday = data.events.filter((e) => {
     const s = new Date(e.startAt);
-    return s >= start && s <= end;
+    if (s < start || s > end) return false;
+    // a study session that's already finished is history — drop it from Today
+    if (e.kind === "study_session" && e.endAt && new Date(e.endAt).getTime() < now.getTime()) {
+      return false;
+    }
+    return true;
   });
   const study = eventsToday.filter((e) => e.kind === "study_session").length;
 
@@ -1006,6 +884,7 @@ function buildModel(
     study,
     today,
     deadlineItems,
+    radarItems,
     goals,
     streak: analytics.streakDays,
     done7: analytics.completed7d,

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Search, LayoutDashboard, Brain, ListChecks, CalendarDays, GraduationCap,
   Percent, Gamepad2, Target, BarChart3, Sparkles, Settings, Layers, FileText,
-  CornerDownLeft, ArrowUp, ArrowDown,
+  Timer, CornerDownLeft, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { useAppData } from "@/lib/store/app-data";
 import { searchAll, PAGES, KIND_LABEL, type ResultKind, type SearchResult } from "@/lib/search";
@@ -17,6 +17,7 @@ const PAGE_ICONS: Record<string, typeof Search> = {
   "/dashboard": LayoutDashboard,
   "/brain-dump": Brain,
   "/tasks": ListChecks,
+  "/study": Timer,
   "/calendar": CalendarDays,
   "/school": GraduationCap,
   "/grades": Percent,

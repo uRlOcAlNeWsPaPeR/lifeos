@@ -71,11 +71,11 @@ export function QuickAdd() {
           aria-label={open ? "Close quick add" : "Quick add"}
           aria-expanded={open}
           className={cn(
-            "flex h-14 w-14 items-center justify-center rounded-full bg-gradient-brand text-primary-foreground shadow-glow transition-transform duration-300 hover:shadow-glow-lg active:scale-90",
+            "flex h-16 w-16 items-center justify-center rounded-full bg-gradient-brand text-white shadow-glow-lg ring-2 ring-white/20 transition-transform duration-300 hover:scale-105 hover:shadow-glow-lg active:scale-90 motion-safe:animate-[glow-breathe_4s_ease-in-out_infinite]",
             open && "rotate-45",
           )}
         >
-          <Plus className="h-6 w-6" strokeWidth={2.4} />
+          <Plus className="h-8 w-8" strokeWidth={2.6} />
         </button>
       </div>
 

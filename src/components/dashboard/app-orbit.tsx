@@ -19,12 +19,16 @@ export function AppOrbit({
   onActiveChange,
   onEnter,
   reducedMotion = false,
+  centerAction,
 }: {
   apps: LifeApp[];
   activeIndex: number;
   onActiveChange: (i: number) => void;
   onEnter: (app: LifeApp) => void;
   reducedMotion?: boolean;
+  /** When set, replaces the "Enter" button under the active sphere (e.g. the
+   *  study-lock bar) and drops the "Tap to enter" hint. */
+  centerAction?: React.ReactNode;
 }) {
   const n = apps.length;
   const active = apps[activeIndex];
@@ -177,7 +181,7 @@ export function AppOrbit({
                   active={centre}
                 />
               </span>
-              {centre && (
+              {centre && !centerAction && (
                 <span className="pointer-events-none absolute inset-x-0 -bottom-6 text-center text-[10px] uppercase tracking-[0.3em] text-muted-foreground/60">
                   Tap to enter
                 </span>
@@ -205,13 +209,17 @@ export function AppOrbit({
             {active.tagline}
           </p>
         </div>
-        <button
-          onClick={() => onEnter(active)}
-          className="mt-3 inline-flex items-center gap-2 rounded-full bg-gradient-brand bg-[length:180%_auto] px-6 py-2.5 text-sm font-medium text-white shadow-glow-sm transition-all duration-300 hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-px sm:mt-4"
-        >
-          {active.enterLabel}
-          <ArrowRight className="h-4 w-4" />
-        </button>
+        {centerAction ? (
+          <div className="mt-3 sm:mt-4">{centerAction}</div>
+        ) : (
+          <button
+            onClick={() => onEnter(active)}
+            className="mt-3 inline-flex items-center gap-2 rounded-full bg-gradient-brand bg-[length:180%_auto] px-6 py-2.5 text-sm font-medium text-white shadow-glow-sm transition-all duration-300 hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-px sm:mt-4"
+          >
+            {active.enterLabel}
+            <ArrowRight className="h-4 w-4" />
+          </button>
+        )}
         {n > 1 && (
           <div className="mt-3 flex gap-1.5 sm:mt-4">
             {apps.map((a, i) => (
