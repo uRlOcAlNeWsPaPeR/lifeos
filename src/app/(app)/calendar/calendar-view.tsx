@@ -76,18 +76,22 @@ export function CalendarView() {
       return b;
     };
     for (const t of data.tasks) {
+      // Completed work only shows in the day drawer (click the date) — the
+      // grid itself is for what's still outstanding.
+      if (t.status === "done") continue;
       // show a task on the day you plan to WORK on it, else its due date
       const when = t.scheduledAt || t.dueAt;
       if (!when) continue;
       // hide long-abandoned open tasks (unless the user scheduled work for them)
-      if (t.status !== "done" && !t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
+      if (!t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
       bucket(KEY(new Date(when))).tasks.push(t);
     }
     for (const e of data.events) bucket(KEY(new Date(e.startAt))).events.push(e);
     for (const a of data.assignments) {
-      // only open assignments — turned-in / graded work drops off the calendar —
-      // and not the ones long past due
-      if (a.dueAt && a.status === "open" && !isStaleOverdue(a.dueAt)) {
+      // Only open, not-yet-done assignments — turned in, graded, or marked
+      // done locally all drop off the grid (still visible in the day drawer)
+      // — and not the ones long past due.
+      if (a.dueAt && a.status === "open" && !a.localDone && !isStaleOverdue(a.dueAt)) {
         bucket(KEY(parseDate(a.dueAt))).assignments.push(a);
       }
     }
