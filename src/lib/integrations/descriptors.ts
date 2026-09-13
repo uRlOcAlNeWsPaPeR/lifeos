@@ -8,6 +8,8 @@ export interface IntegrationCardInfo {
   blurb: string;
   status: "coming_soon" | "available";
   authType: string;
+  /** Where "Connect" sends the student — the real connect UI lives in Settings. */
+  settingsHref?: string;
 }
 
 export const SCHOOL_INTEGRATIONS: IntegrationCardInfo[] = [
@@ -17,6 +19,7 @@ export const SCHOOL_INTEGRATIONS: IntegrationCardInfo[] = [
     blurb: "Automatically import your courses, assignments and due dates.",
     status: "available",
     authType: "oauth2",
+    settingsHref: "/settings?tab=school",
   },
   {
     id: "infinite_campus",
@@ -31,9 +34,11 @@ export const CALENDAR_INTEGRATIONS: IntegrationCardInfo[] = [
   {
     id: "google",
     name: "Google Calendar",
-    blurb: "Two-way sync for events, deadlines and study sessions.",
-    status: "coming_soon",
+    blurb:
+      "Bring your Google Calendar events into LifeOS. Read-only — nothing is ever written back to Google. Student+.",
+    status: "available",
     authType: "oauth2",
+    settingsHref: "/settings?tab=schedule",
   },
   {
     id: "microsoft",

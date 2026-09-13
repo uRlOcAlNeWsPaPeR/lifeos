@@ -97,6 +97,7 @@ interface StoreData {
     maxCourses: number | null;
     maxDecks: number | null;
     fullAnalytics: boolean;
+    googleCalendarEnabled: boolean;
   };
 }
 
@@ -192,7 +193,11 @@ const DUPLICATE_RULES: Record<
   },
   events: {
     keyOf: (e) => `${normStr(e.title)}|${String(e.startAt ?? "")}`,
-    scoreOf: (e) => (e.canvasEventId ? 4 : 0) + (e.description ? 1 : 0),
+    // An externally-synced event must outrank a manual twin. The loser here is
+    // DELETED from Firestore — if a Google/Canvas-backed row lost, the next sync
+    // would just re-create it and we'd delete/recreate forever.
+    scoreOf: (e) =>
+      (e.canvasEventId ? 4 : 0) + (e.googleEventId ? 4 : 0) + (e.description ? 1 : 0),
   },
   alarms: {
     keyOf: (a) => `${String(a.time ?? "")}|${normStr(a.label)}`,
@@ -650,6 +655,8 @@ export function AppDataProvider({
       provider: (e.provider as string) ?? null,
       canvasUrl: (e.canvasUrl as string) ?? null,
       canvasEventId: (e.canvasEventId as string) ?? null,
+      googleUrl: (e.googleUrl as string) ?? null,
+      googleEventId: (e.googleEventId as string) ?? null,
     }));
 
     const alarms: AlarmDTO[] = alarmsRaw
@@ -739,6 +746,7 @@ export function AppDataProvider({
         maxCourses: orNull(planLimits.maxCourses),
         maxDecks: orNull(planLimits.maxDecks),
         fullAnalytics: planLimits.fullAnalytics,
+        googleCalendarEnabled: planLimits.googleCalendarEnabled,
       },
     };
   }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, ai]);

@@ -10,6 +10,7 @@ export const PLAN_LIMITS = {
     maxCourses: 8,
     maxDecks: 5,
     fullAnalytics: false,
+    googleCalendarEnabled: false,
   },
   student_plus: {
     brainDumpsPerWeek: 40,
@@ -18,6 +19,7 @@ export const PLAN_LIMITS = {
     maxCourses: 60,
     maxDecks: 200,
     fullAnalytics: true,
+    googleCalendarEnabled: true,
   },
 } as const;
 

@@ -133,6 +133,9 @@ export interface EventDTO {
   provider?: string | null;
   canvasUrl?: string | null;
   canvasEventId?: string | null;
+  /** Google Calendar-sourced event (provider: "google"), one-way pull only. */
+  googleEventId?: string | null;
+  googleUrl?: string | null;
 }
 
 export interface BrainDumpItemDTO {

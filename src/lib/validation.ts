@@ -181,6 +181,11 @@ export const canvasDisconnectSchema = z.object({
   canvasTasks: z.enum(["keep", "remove"]).default("keep"),
 });
 
+export const googleDisconnectSchema = z.object({
+  // What to do with Google Calendar-imported events — made explicit, never silent.
+  googleEvents: z.enum(["keep", "remove"]).default("keep"),
+});
+
 export const canvasCoursesSelectSchema = z.object({
   // null = sync every active course; an array = only these Canvas course ids.
   selectedIds: z.array(z.string().min(1).max(64)).max(200).nullable(),

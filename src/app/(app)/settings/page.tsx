@@ -16,6 +16,7 @@ import {
   GradeScaleSettings,
 } from "./settings-client";
 import { CanvasSettings } from "./canvas-settings";
+import { GoogleCalendarSettings } from "./google-calendar-settings";
 import { useAppData } from "@/lib/store/app-data";
 import { planLabel, isCreator, hasGrantedPlan } from "@/lib/plan-limits";
 import { cn } from "@/lib/utils";
@@ -93,9 +94,17 @@ function SettingsPanel() {
 
         <div className="min-w-0 max-w-2xl space-y-6">
           {tab === "schedule" && (
-            <Section title="Schedule & sleep" desc="LifeOS uses this to plan work into your free time and avoid pushing tasks past your bedtime.">
-              <ScheduleSettings />
-            </Section>
+            <>
+              <Section title="Schedule & sleep" desc="LifeOS uses this to plan work into your free time and avoid pushing tasks past your bedtime.">
+                <ScheduleSettings />
+              </Section>
+              <Section
+                title="Google Calendar"
+                desc="One-way — LifeOS reads your events. It never creates, edits or deletes anything on Google."
+              >
+                <GoogleCalendarSettings />
+              </Section>
+            </>
           )}
 
           {tab === "study" && (
