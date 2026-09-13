@@ -69,3 +69,22 @@ export interface GoogleCalendarEventsPage {
   items: GoogleCalendarEvent[];
   nextPageToken?: string;
 }
+
+/** One entry from the user's calendar list — the calendars they see in Google
+ *  Calendar's own UI (their own + anything they've subscribed to, e.g. a
+ *  "Holidays in <Country>" calendar, a shared family calendar). */
+export interface GoogleCalendarListEntry {
+  id: string;
+  summary?: string;
+  primary?: boolean;
+  /** Shown in the user's Google Calendar UI. Absent/false = hidden there too. */
+  selected?: boolean;
+  /** "owner" | "writer" | "reader" | "freeBusyReader" — the last exposes only
+   *  free/busy blocks, no event details, so it's not useful to sync. */
+  accessRole?: string;
+}
+
+export interface GoogleCalendarListPage {
+  items: GoogleCalendarListEntry[];
+  nextPageToken?: string;
+}

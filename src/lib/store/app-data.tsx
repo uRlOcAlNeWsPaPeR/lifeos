@@ -657,6 +657,7 @@ export function AppDataProvider({
       canvasEventId: (e.canvasEventId as string) ?? null,
       googleUrl: (e.googleUrl as string) ?? null,
       googleEventId: (e.googleEventId as string) ?? null,
+      googleCalendarId: (e.googleCalendarId as string) ?? null,
     }));
 
     const alarms: AlarmDTO[] = alarmsRaw

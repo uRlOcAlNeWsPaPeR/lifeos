@@ -2,7 +2,13 @@ import "server-only";
 import { decryptToken } from "./crypto";
 import { refreshAccess } from "./oauth";
 import { markConnection, updateAccessToken } from "./connection";
-import type { GoogleCalendarEvent, GoogleCalendarEventsPage, GoogleConnectionDoc } from "./types";
+import type {
+  GoogleCalendarEvent,
+  GoogleCalendarEventsPage,
+  GoogleCalendarListEntry,
+  GoogleCalendarListPage,
+  GoogleConnectionDoc,
+} from "./types";
 
 /** Thrown when the user must re-authorize (refresh token dead / revoked). */
 export class GoogleReauthError extends Error {
@@ -12,7 +18,8 @@ export class GoogleReauthError extends Error {
   }
 }
 
-const EVENTS_URL = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
+const CALENDAR_LIST_URL = "https://www.googleapis.com/calendar/v3/users/me/calendarList";
+const EVENTS_BASE_URL = "https://www.googleapis.com/calendar/v3/calendars";
 const MAX_PAGES = 8;
 const PAGE_SIZE = 250;
 
@@ -32,11 +39,38 @@ export class GoogleCalendarClient {
     return new GoogleCalendarClient(conn);
   }
 
-  /** Events on the primary calendar between two ISO timestamps, single instances
-   *  (recurring events expanded), soonest first. */
-  async listEvents(timeMinISO: string, timeMaxISO: string): Promise<GoogleCalendarEvent[]> {
+  /** Every calendar the student sees in Google Calendar's own UI — their own
+   *  calendar plus anything they've subscribed to (a "Holidays in <Country>"
+   *  calendar, a shared family calendar, etc). Google Calendar's UI treats
+   *  those exactly like the primary calendar, and so do we. */
+  async listCalendars(): Promise<GoogleCalendarListEntry[]> {
+    const out: GoogleCalendarListEntry[] = [];
+    let pageToken: string | undefined;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const params = new URLSearchParams({ maxResults: "250" });
+      if (pageToken) params.set("pageToken", pageToken);
+      const res = await this.fetchWithAuth(`${CALENDAR_LIST_URL}?${params.toString()}`);
+      const json = (await res.json()) as GoogleCalendarListPage;
+      out.push(...(json.items ?? []));
+      if (!json.nextPageToken) break;
+      pageToken = json.nextPageToken;
+    }
+    return out;
+  }
+
+  /** Events on one calendar between two ISO timestamps, single instances
+   *  (recurring events expanded), soonest first. Throws a plain Error (not
+   *  GoogleReauthError) on a 403 specific to this calendar — e.g. a shared
+   *  calendar whose access was revoked — so the caller can skip just that
+   *  calendar instead of treating it as the whole connection needing reauth. */
+  async listEvents(
+    calendarId: string,
+    timeMinISO: string,
+    timeMaxISO: string,
+  ): Promise<GoogleCalendarEvent[]> {
     const out: GoogleCalendarEvent[] = [];
     let pageToken: string | undefined;
+    const url = `${EVENTS_BASE_URL}/${encodeURIComponent(calendarId)}/events`;
     for (let page = 0; page < MAX_PAGES; page++) {
       const params = new URLSearchParams({
         timeMin: timeMinISO,
@@ -47,7 +81,7 @@ export class GoogleCalendarClient {
       });
       if (pageToken) params.set("pageToken", pageToken);
 
-      const res = await this.fetchWithAuth(`${EVENTS_URL}?${params.toString()}`);
+      const res = await this.fetchWithAuth(`${url}?${params.toString()}`, { allow403: true });
       const json = (await res.json()) as GoogleCalendarEventsPage;
       out.push(...(json.items ?? []));
       if (!json.nextPageToken) break;
@@ -58,7 +92,10 @@ export class GoogleCalendarClient {
 
   /* --------------------------- internals --------------------------- */
 
-  private async fetchWithAuth(url: string): Promise<Response> {
+  private async fetchWithAuth(
+    url: string,
+    opts: { allow403?: boolean } = {},
+  ): Promise<Response> {
     let res = await fetch(url, { headers: { Authorization: `Bearer ${this.accessToken}` } });
 
     if (res.status === 401 && !this.refreshedThisRun && this.refreshToken) {
@@ -67,10 +104,21 @@ export class GoogleCalendarClient {
       res = await fetch(url, { headers: { Authorization: `Bearer ${this.accessToken}` } });
     }
 
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
       await markConnection(this.uid, {
         status: "reauth_required",
-        lastError: `Google Calendar API ${res.status} and the token could not be refreshed.`,
+        lastError: "Google Calendar API 401 and the token could not be refreshed.",
+      });
+      throw new GoogleReauthError();
+    }
+
+    // A 403 on one specific calendar (permission revoked on a shared calendar,
+    // etc.) isn't a whole-connection auth problem — let the caller skip just
+    // that calendar instead of aborting the entire sync as "needs reconnect".
+    if (res.status === 403 && !opts.allow403) {
+      await markConnection(this.uid, {
+        status: "reauth_required",
+        lastError: "Google Calendar API 403 and the token could not be refreshed.",
       });
       throw new GoogleReauthError();
     }

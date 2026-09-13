@@ -133,8 +133,12 @@ export interface EventDTO {
   provider?: string | null;
   canvasUrl?: string | null;
   canvasEventId?: string | null;
-  /** Google Calendar-sourced event (provider: "google"), one-way pull only. */
+  /** Google Calendar-sourced event (provider: "google"), one-way pull only.
+   *  googleEventId is only unique WITHIN googleCalendarId (the student may
+   *  have several Google calendars synced — their own, a shared family one,
+   *  a subscribed holiday calendar). */
   googleEventId?: string | null;
+  googleCalendarId?: string | null;
   googleUrl?: string | null;
 }
 
