@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   Pencil,
   Trash2,
   Clock,
+  Plug,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { LifeosCore } from "@/components/dashboard/lifeos-core";
@@ -24,8 +26,6 @@ import { Modal } from "@/components/ui/modal";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import { useAppData } from "@/lib/store/app-data";
-import { CALENDAR_INTEGRATIONS } from "@/lib/integrations/descriptors";
-import { IntegrationCard } from "@/components/app/integration-card";
 import { openStudyLockPrompt } from "@/lib/study-lock";
 import { fmtTime, toInputDateTime, isStaleOverdue, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -132,9 +132,16 @@ export function CalendarView() {
         title="Calendar"
         description="Your whole schedule — tasks, deadlines, classes and study sessions."
         action={
-          <Button onClick={() => setSelected(KEY(new Date()))}>
-            <Plus className="h-4 w-4" /> Add for today
-          </Button>
+          <>
+            <Link href="/settings?tab=connections">
+              <Button variant="outline">
+                <Plug className="h-4 w-4" /> Connections
+              </Button>
+            </Link>
+            <Button onClick={() => setSelected(KEY(new Date()))}>
+              <Plus className="h-4 w-4" /> Add for today
+            </Button>
+          </>
         }
       />
 
@@ -349,20 +356,6 @@ export function CalendarView() {
           <span className="h-2 w-2 rounded-full ring-1 ring-primary/50" /> From Canvas
         </span>
       </div>
-
-      <section className="mt-12">
-        <div className="divider-gradient mb-8" />
-        <h2 className="text-xl font-semibold tracking-tight">Connect a calendar</h2>
-        <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-          Sync your events, deadlines and study sessions both ways with the calendar you
-          already use.
-        </p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
-          {CALENDAR_INTEGRATIONS.map((i) => (
-            <IntegrationCard key={i.id} integration={i} />
-          ))}
-        </div>
-      </section>
 
       {selected && <DayDrawer dateKey={selected} onClose={() => setSelected(null)} />}
     </>

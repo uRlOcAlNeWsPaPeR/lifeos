@@ -40,6 +40,40 @@ const MENU_GROUPS = [
 
 type Phase = "home" | "boom" | "console" | "closing";
 
+// Remembers which stable phase (the Core orb, or the working console) the
+// student was last on, so a reload lands back where they were instead of
+// always resetting to one or the other. A fresh tab has nothing stored yet,
+// so it opens on the Core.
+const PHASE_KEY = "lifeos.core.phase";
+
+function loadPhase(): Phase {
+  try {
+    const stored = sessionStorage.getItem(PHASE_KEY);
+    return stored === "console" ? "console" : "home";
+  } catch {
+    return "home";
+  }
+}
+function savePhase(phase: "home" | "console") {
+  try {
+    sessionStorage.setItem(PHASE_KEY, phase);
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Forces the next /dashboard visit to open on the Core orb, overriding
+ *  whatever was remembered from earlier in the tab. Used by the "Open
+ *  LifeOS" entry point on the landing page — that click should always land
+ *  on the Core, not wherever the console happened to be left last. */
+export function resetCoreToHome() {
+  try {
+    sessionStorage.removeItem(PHASE_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
 // detonation timeline (ms) — deliberately unhurried
 const T = { charge: 220, burst: 720, shock: 820, shard: 880, flash: 680, reveal: 760 };
 const TO_CONSOLE = 1650;
@@ -69,11 +103,18 @@ export function CorePortal() {
   // phase timeouts to match. The plain scrolling branch below is the last-resort
   // fallback and is effectively unreachable now (kept for no-JS / SSR safety).
   const [cinematic] = useState(true);
-  // The dashboard opens straight on the working console (the 3 panels). The
-  // cinematic Core is still one tap away via the "Core" button in the top bar.
-  const [phase, setPhase] = useState<Phase>("console");
-  const phaseRef = useRef<Phase>("console");
+  // Opens on whichever stable phase — the Core orb, or the working console —
+  // the student was last on (see loadPhase/savePhase below). A fresh tab
+  // starts on the Core.
+  const [phase, setPhase] = useState<Phase>(loadPhase);
+  const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
+
+  // Persist only the two stable phases — "boom" and "closing" are mid-
+  // animation and should never be what a reload lands back on.
+  useEffect(() => {
+    if (phase === "home" || phase === "console") savePhase(phase);
+  }, [phase]);
   const [menu, setMenu] = useState(false);
   const [appIndex, setAppIndex] = useState(studyIndex);
   // when a non-Study app is entered we run the SAME detonation, tinted with that

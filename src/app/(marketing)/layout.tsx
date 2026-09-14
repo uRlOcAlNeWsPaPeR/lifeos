@@ -5,6 +5,7 @@ import { Logo } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { SmoothScroll } from "@/components/marketing/cinematic/smooth-scroll";
+import { resetCoreToHome } from "@/components/dashboard/core-portal";
 
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   const { user, initializing } = useAuth();
@@ -13,7 +14,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
     <SmoothScroll>
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-background/60 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5">
+        <div className="flex h-16 w-full items-center justify-between px-6 sm:px-10">
           <Link href="/">
             <Logo />
           </Link>
@@ -25,7 +26,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           </nav>
           <div className="flex items-center gap-2">
             {!initializing && user ? (
-              <Link href="/dashboard">
+              <Link href="/dashboard" onClick={resetCoreToHome}>
                 <Button size="sm">Open LifeOS</Button>
               </Link>
             ) : (

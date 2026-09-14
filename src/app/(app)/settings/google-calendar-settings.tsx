@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Card } from "@/components/ui/card";
+import { LiveDot } from "@/components/ui/misc";
 import { toast } from "@/components/ui/toaster";
 import { useGoogle } from "@/lib/google/use-google";
 import { useAppData } from "@/lib/store/app-data";
@@ -42,8 +43,9 @@ export function GoogleCalendarSettings() {
     else if (flag === "denied")
       toast("Google Calendar wasn't connected. You can try again anytime.", "error");
     else toast("Couldn't connect Google Calendar. Please try again.", "error");
-    // default tab is already "schedule", so dropping the query lands right back here
-    window.history.replaceState(null, "", window.location.pathname);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("google");
+    window.history.replaceState(null, "", url.pathname + url.search);
   }, []);
 
   async function handleSync() {
@@ -128,7 +130,7 @@ export function GoogleCalendarSettings() {
             <div className="flex items-center gap-3">
               <div
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-xl",
+                  "relative flex h-10 w-10 items-center justify-center rounded-xl",
                   needsReauth || errored
                     ? "bg-warning/15 text-warning"
                     : "bg-primary/15 text-primary",
@@ -137,7 +139,10 @@ export function GoogleCalendarSettings() {
                 {needsReauth || errored ? (
                   <AlertTriangle className="h-5 w-5" />
                 ) : (
-                  <CheckCircle2 className="h-5 w-5" />
+                  <>
+                    <CheckCircle2 className="h-5 w-5" />
+                    <LiveDot />
+                  </>
                 )}
               </div>
               <div>

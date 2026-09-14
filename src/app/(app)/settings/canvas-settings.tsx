@@ -5,6 +5,7 @@ import { RefreshCw, GraduationCap, CheckCircle2, AlertTriangle, Plug } from "luc
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
+import { LiveDot } from "@/components/ui/misc";
 import { toast } from "@/components/ui/toaster";
 import { useCanvas } from "@/lib/canvas/use-canvas";
 import { timeAgo } from "@/lib/format";
@@ -32,7 +33,9 @@ export function CanvasSettings() {
     else if (flag === "denied")
       toast("Canvas wasn't connected. You can try again anytime.", "error");
     else toast("Couldn't connect Canvas. Please try again.", "error");
-    window.history.replaceState(null, "", window.location.pathname);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("canvas");
+    window.history.replaceState(null, "", url.pathname + url.search);
   }, []);
 
   async function handleSync() {
@@ -81,7 +84,7 @@ export function CanvasSettings() {
             <div className="flex items-center gap-3">
               <div
                 className={cn(
-                  "flex h-10 w-10 items-center justify-center rounded-xl",
+                  "relative flex h-10 w-10 items-center justify-center rounded-xl",
                   needsReauth || errored
                     ? "bg-warning/15 text-warning"
                     : "bg-primary/15 text-primary",
@@ -90,7 +93,10 @@ export function CanvasSettings() {
                 {needsReauth || errored ? (
                   <AlertTriangle className="h-5 w-5" />
                 ) : (
-                  <CheckCircle2 className="h-5 w-5" />
+                  <>
+                    <CheckCircle2 className="h-5 w-5" />
+                    <LiveDot />
+                  </>
                 )}
               </div>
               <div>

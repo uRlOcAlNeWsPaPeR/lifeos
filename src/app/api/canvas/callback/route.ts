@@ -72,9 +72,10 @@ function respond(req: Request, result: Result): NextResponse {
       ? "/onboarding"
       : result.origin === "school"
         ? "/school"
-        : "/settings";
+        : "/settings?tab=connections";
   const flag = result.ok ? "connected" : (result.reason ?? "error");
-  const redirectUrl = `${appOrigin}${back}?canvas=${encodeURIComponent(flag)}`;
+  const sep = back.includes("?") ? "&" : "?";
+  const redirectUrl = `${appOrigin}${back}${sep}canvas=${encodeURIComponent(flag)}`;
 
   const payload = JSON.stringify({ type: "lifeos:canvas-oauth", ...result });
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Canvas</title></head>

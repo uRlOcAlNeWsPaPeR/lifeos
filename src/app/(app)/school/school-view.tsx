@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Plus,
   GraduationCap,
@@ -10,11 +11,9 @@ import {
   ChevronLeft,
   Folder,
   ListPlus,
-  RefreshCw,
   CheckCircle2,
-  AlertTriangle,
+  Plug,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,14 +23,9 @@ import { Modal } from "@/components/ui/modal";
 import { confirm } from "@/components/ui/confirm";
 import { Field, Input, Select } from "@/components/ui/input";
 import { useAppData } from "@/lib/store/app-data";
-import { SCHOOL_INTEGRATIONS } from "@/lib/integrations/descriptors";
-import { IntegrationCard } from "@/components/app/integration-card";
 import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName } from "@/lib/format";
 import { assignmentGradeLabel, courseGrade, fmtPct, resolveGradeScale, type LetterScaleEntry } from "@/lib/grades";
 import { cn } from "@/lib/utils";
-import { useCanvas } from "@/lib/canvas/use-canvas";
-import { ConnectCanvas } from "@/components/canvas/connect-canvas";
-import { CanvasCoursePicker } from "@/components/canvas/course-picker";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import type { AssignmentDTO, CourseDTO } from "@/lib/types";
@@ -75,9 +69,16 @@ export function SchoolView() {
         title="School"
         description="Track courses, assignments and grades — add them yourself or connect Canvas to import them automatically."
         action={
-          <Button onClick={() => setCourseModal(true)}>
-            <Plus className="h-4 w-4" /> Add course
-          </Button>
+          <>
+            <Link href="/settings?tab=connections">
+              <Button variant="outline">
+                <Plug className="h-4 w-4" /> Connections
+              </Button>
+            </Link>
+            <Button onClick={() => setCourseModal(true)}>
+              <Plus className="h-4 w-4" /> Add course
+            </Button>
+          </>
         }
       />
 
@@ -119,29 +120,6 @@ export function SchoolView() {
             <CourseFolder key={c.id} course={c} scale={scale} onOpen={() => setOpenId(c.id)} />
           ))}
         </div>
-      )}
-
-      {!openCourse && (
-        <section className="mt-12">
-          <div className="divider-gradient mb-8" />
-          <h2 className="text-xl font-semibold tracking-tight">Connect your school</h2>
-          <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">
-            Connect Canvas to import your courses and assignments automatically. We connect
-            through Canvas&apos;s official OAuth and district-approved access —{" "}
-            <span className="font-medium text-foreground">
-              never by asking for your school password.
-            </span>
-          </p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            {SCHOOL_INTEGRATIONS.map((i) =>
-              i.id === "canvas" ? (
-                <CanvasIntegrationCard key={i.id} />
-              ) : (
-                <IntegrationCard key={i.id} integration={i} />
-              ),
-            )}
-          </div>
-        </section>
       )}
 
       <CourseEditor open={courseModal} onClose={() => setCourseModal(false)} onCreate={addCourse} />
@@ -453,88 +431,6 @@ function GradeEntry({
         aria-label="Points possible"
       />
     </span>
-  );
-}
-
-function CanvasIntegrationCard() {
-  const router = useRouter();
-  const canvas = useCanvas();
-  const { status, loading, syncing, busy, connect, connectWithToken, sync } = canvas;
-  const connected = status?.connected;
-  const attention = status?.status === "error" || status?.status === "reauth_required";
-
-  return (
-    <Card className="flex flex-col p-6 sm:col-span-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
-            <GraduationCap className="h-4 w-4" />
-          </div>
-          <span className="font-medium">Canvas LMS</span>
-        </div>
-        {connected ? (
-          <Badge tone={attention ? "warning" : "success"}>
-            {status?.status === "reauth_required"
-              ? "Reconnect needed"
-              : status?.status === "error"
-                ? "Sync issue"
-                : "Connected"}
-          </Badge>
-        ) : (
-          <Badge tone="muted">Not connected</Badge>
-        )}
-      </div>
-
-      {loading && !status ? (
-        <p className="mt-3 text-sm text-muted-foreground">Checking Canvas…</p>
-      ) : connected ? (
-        <div className="mt-4 space-y-3">
-          <div className="flex items-center gap-2 text-sm">
-            {attention ? (
-              <AlertTriangle className="h-4 w-4 text-warning" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4 text-primary" />
-            )}
-            <span className="text-muted-foreground">
-              {status?.school ? `${status.school} · ` : ""}
-              Last synced {timeAgo(status?.lastSyncedAt)}
-            </span>
-          </div>
-          {status?.message && <p className="text-xs text-warning">{status.message}</p>}
-          {status?.status === "reauth_required" ? (
-            <ConnectCanvas status={status} busy={busy} onConnect={(url) => connect(url, "school")} onConnectToken={connectWithToken} />
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => sync()} loading={syncing}>
-                <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-                {syncing ? "Syncing…" : status?.status === "error" ? "Try again" : "Sync now"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={canvas.openCoursePicker}
-                disabled={busy || canvas.coursePicker.loading}
-              >
-                Choose courses
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => router.push("/settings?tab=school")}>
-                Manage in Settings
-              </Button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="mt-4">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Connect Canvas to automatically import your courses, assignments and due
-            dates. We connect through Canvas&apos;s official OAuth —{" "}
-            <span className="font-medium text-foreground">never your school password.</span>
-          </p>
-          <ConnectCanvas status={status} busy={busy} onConnect={(url) => connect(url, "school")} onConnectToken={connectWithToken} />
-        </div>
-      )}
-      <CanvasCoursePicker canvas={canvas} />
-    </Card>
   );
 }
 

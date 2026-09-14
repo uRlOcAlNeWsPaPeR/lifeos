@@ -55,7 +55,7 @@ interface Result {
 function respond(req: Request, result: Result): NextResponse {
   const appOrigin = new URL(req.url).origin;
   const flag = result.ok ? "connected" : (result.reason ?? "error");
-  const redirectUrl = `${appOrigin}/settings?tab=schedule&google=${encodeURIComponent(flag)}`;
+  const redirectUrl = `${appOrigin}/settings?tab=connections&google=${encodeURIComponent(flag)}`;
 
   const payload = JSON.stringify({ type: "lifeos:google-oauth", ...result });
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Google Calendar</title></head>

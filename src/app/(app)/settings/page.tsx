@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap } from "lucide-react";
+import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap, Plug } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,8 @@ import { CanvasSettings } from "./canvas-settings";
 import { GoogleCalendarSettings } from "./google-calendar-settings";
 import { useAppData } from "@/lib/store/app-data";
 import { planLabel, isCreator, hasGrantedPlan } from "@/lib/plan-limits";
+import { SCHOOL_INTEGRATIONS, CALENDAR_INTEGRATIONS } from "@/lib/integrations/descriptors";
+import { IntegrationCard } from "@/components/app/integration-card";
 import { cn } from "@/lib/utils";
 
 function planSummary(l: ReturnType<typeof useAppData>["data"]["limits"]) {
@@ -30,6 +32,7 @@ const TABS = [
   { id: "schedule", label: "Schedule", icon: CalendarClock },
   { id: "study", label: "Study", icon: Timer },
   { id: "school", label: "School", icon: GraduationCap },
+  { id: "connections", label: "Connections", icon: Plug },
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "profile", label: "Profile", icon: User },
   { id: "plan", label: "Plan", icon: CreditCard },
@@ -57,9 +60,9 @@ function SettingsPanel() {
   const params = useSearchParams();
   const p = data.profile;
 
-  // The tab lives in the URL, so /settings?tab=school opens on School — that's
-  // where "Canvas settings" over on the Courses page points — and so a tab can
-  // be linked, bookmarked and reached with the back button.
+  // The tab lives in the URL, so /settings?tab=connections opens on Connections —
+  // that's where the "Connections" button on School and Calendar points — and so
+  // a tab can be linked, bookmarked and reached with the back button.
   const fromUrl = params.get("tab");
   const [fallbackTab, setFallbackTab] = useState<TabId>("schedule");
   const tab: TabId = isTabId(fromUrl) ? fromUrl : fallbackTab;
@@ -94,17 +97,9 @@ function SettingsPanel() {
 
         <div className="min-w-0 max-w-2xl space-y-6">
           {tab === "schedule" && (
-            <>
-              <Section title="Schedule & sleep" desc="LifeOS uses this to plan work into your free time and avoid pushing tasks past your bedtime.">
-                <ScheduleSettings />
-              </Section>
-              <Section
-                title="Google Calendar"
-                desc="One-way — LifeOS reads your events. It never creates, edits or deletes anything on Google."
-              >
-                <GoogleCalendarSettings />
-              </Section>
-            </>
+            <Section title="Schedule & sleep" desc="LifeOS uses this to plan work into your free time and avoid pushing tasks past your bedtime.">
+              <ScheduleSettings />
+            </Section>
           )}
 
           {tab === "study" && (
@@ -114,6 +109,15 @@ function SettingsPanel() {
           )}
 
           {tab === "school" && (
+            <Section
+              title="Grading scale"
+              desc="Pick the cutoffs your school actually uses — plenty vary from the U.S. default."
+            >
+              <GradeScaleSettings />
+            </Section>
+          )}
+
+          {tab === "connections" && (
             <>
               <Section
                 title="Canvas"
@@ -122,10 +126,22 @@ function SettingsPanel() {
                 <CanvasSettings />
               </Section>
               <Section
-                title="Grading scale"
-                desc="Pick the cutoffs your school actually uses — plenty vary from the U.S. default."
+                title="Google Calendar"
+                desc="One-way — LifeOS reads your events. It never creates, edits or deletes anything on Google."
               >
-                <GradeScaleSettings />
+                <GoogleCalendarSettings />
+              </Section>
+              <Section
+                title="More integrations"
+                desc="On the way — connect once they're available."
+              >
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[...SCHOOL_INTEGRATIONS, ...CALENDAR_INTEGRATIONS]
+                    .filter((i) => i.status === "coming_soon")
+                    .map((i) => (
+                      <IntegrationCard key={i.id} integration={i} />
+                    ))}
+                </div>
               </Section>
             </>
           )}

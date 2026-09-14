@@ -30,6 +30,20 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded-lg bg-muted", className)} />;
 }
 
+/** Small "online" indicator — a pulsing green dot for a live-connected
+ *  integration. Meant to sit on the corner of an icon badge. */
+export function LiveDot({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn("absolute -right-0.5 -top-0.5 flex h-3 w-3", className)}
+      aria-hidden="true"
+    >
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" />
+      <span className="relative inline-flex h-3 w-3 rounded-full bg-success ring-2 ring-popover" />
+    </span>
+  );
+}
+
 export function SectionTitle({
   children,
   right,

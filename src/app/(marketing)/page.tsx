@@ -194,11 +194,13 @@ export default function LandingPage() {
             ).map(({ icon: Icon, n, title, body }, i) => (
               <Reveal key={n} delay={i * 0.1}>
                 <div className="card-surface h-full p-6">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-brand text-sm font-semibold text-primary-foreground shadow-glow-sm">
+                  <div className="relative inline-flex">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-brand text-xs font-bold text-white shadow-glow-sm ring-2 ring-background">
                       {n}
                     </span>
-                    <Icon className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <p className="mt-4 font-medium">{title}</p>
                   <p className="mt-1 text-sm text-muted-foreground">{body}</p>

@@ -30,7 +30,7 @@ export const PLAN_TIERS: PlanTier[] = [
   {
     id: "student_plus",
     name: "Student+",
-    price: "$12.99",
+    price: "$5.99",
     cadence: "/month",
     tagline: "For students running their whole life in LifeOS.",
     cta: "Go Student+",

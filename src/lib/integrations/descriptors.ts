@@ -19,7 +19,7 @@ export const SCHOOL_INTEGRATIONS: IntegrationCardInfo[] = [
     blurb: "Automatically import your courses, assignments and due dates.",
     status: "available",
     authType: "oauth2",
-    settingsHref: "/settings?tab=school",
+    settingsHref: "/settings?tab=connections",
   },
   {
     id: "infinite_campus",
@@ -38,7 +38,7 @@ export const CALENDAR_INTEGRATIONS: IntegrationCardInfo[] = [
       "Bring your Google Calendar events into LifeOS. Read-only — nothing is ever written back to Google. Student+.",
     status: "available",
     authType: "oauth2",
-    settingsHref: "/settings?tab=schedule",
+    settingsHref: "/settings?tab=connections",
   },
   {
     id: "microsoft",
