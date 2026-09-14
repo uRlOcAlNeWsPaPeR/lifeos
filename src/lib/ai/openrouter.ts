@@ -120,11 +120,22 @@ export class OpenRouterProvider extends LLMProvider {
           break; // retries exhausted on this model — try the next one
         }
 
-        if (!res.ok) {
-          // Not model-specific (bad request, auth, etc.) — every model will
-          // fail the same way, so surface it now instead of cycling.
+        if (res.status === 401 || res.status === 403) {
+          // The API key itself is bad/revoked — genuinely account-wide, every
+          // model will fail identically, so surface it now instead of cycling.
           const detail = await res.text().catch(() => "");
           throw new Error(`OpenRouter API ${res.status}: ${detail.slice(0, 300)}`);
+        }
+
+        if (!res.ok) {
+          // A 400 here is routinely model-specific — e.g. a given free model
+          // not supporting response_format: json_object — not something every
+          // other model in the chain will also hit. Move on rather than
+          // aborting the whole provider (which used to skip past perfectly
+          // working models later in the list).
+          const detail = await res.text().catch(() => "");
+          lastErr = `${model}: HTTP ${res.status} ${detail.slice(0, 200)}`;
+          break;
         }
 
         const data = (await res.json()) as {

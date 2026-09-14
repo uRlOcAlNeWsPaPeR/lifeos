@@ -14,28 +14,33 @@ import {
 import { Modal } from "@/components/ui/modal";
 import { confirm } from "@/components/ui/confirm";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
-import { DeadlineList } from "@/components/app/deadline-list";
+import { DeadlineList, type DeadlineItem } from "@/components/app/deadline-list";
+import { AssignmentDetail } from "@/components/app/assignment-detail";
+import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { useAppData } from "@/lib/store/app-data";
 import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
 import { AppOrbit } from "./app-orbit";
 import { QuickAdd } from "./quick-add";
-import { NAV_GROUPS, ASSISTANT, SETTINGS_NAV } from "@/components/app/sidebar";
+import { NAV_GROUPS, SETTINGS_NAV } from "@/components/app/sidebar";
 import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
 import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
 import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
 import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from "@/lib/study-lock";
 import { cn } from "@/lib/utils";
+import type { AssignmentDTO, TaskDTO } from "@/lib/types";
 
 // Same grouping the sidebar uses, so the menu reads the same way everywhere.
+// The AI Assistant is deliberately left out — it's reachable only from the
+// actual sidebar, never from this popup or the app orbit.
 const MENU_GROUPS = [
   ...NAV_GROUPS.map((g) => ({
     label: g.label,
     items: g.items.filter((i) => i.href !== "/dashboard"),
   })),
-  { label: "Tools", items: [ASSISTANT, SETTINGS_NAV] },
+  { label: "Tools", items: [SETTINGS_NAV] },
 ];
 
 type Phase = "home" | "boom" | "console" | "closing";
@@ -616,7 +621,36 @@ function LiveClock({ name }: { name: string }) {
 /* -------------------------------- console -------------------------------- */
 
 function Console({ model, constrained }: { model: Model; constrained: boolean }) {
+  const { data, updateTask } = useAppData();
+  const [detailAssignment, setDetailAssignment] = useState<AssignmentDTO | null>(null);
+  const [editingTask, setEditingTask] = useState<TaskDTO | null>(null);
+
+  const goals = useMemo(
+    () => data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title })),
+    [data.goals],
+  );
+  const courses = useMemo(
+    () => data.courses.map((c) => ({ id: c.id, name: c.name })),
+    [data.courses],
+  );
+
+  function openDeadlineItem(item: DeadlineItem) {
+    if (item.kind === "assignment") {
+      const a = data.assignments.find((x) => x.id === item.id);
+      if (a) setDetailAssignment(a);
+    } else {
+      const t = data.tasks.find((x) => x.id === item.id);
+      if (t) setEditingTask(t);
+    }
+  }
+
+  async function saveTask(draft: TaskDraft) {
+    if (!editingTask) return;
+    await updateTask(editingTask.id, draftToPayload(draft));
+  }
+
   return (
+    <>
     <div
       className={cn(
         "grid items-start gap-3 sm:gap-4 lg:grid-cols-3",
@@ -734,11 +768,22 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
         {model.deadlineItems.length > 0 && (
           <div>
             <Header title="Coming up" href="/calendar" cta="All" small />
-            <DeadlineList items={model.deadlineItems.slice(0, 3)} />
+            <DeadlineList items={model.deadlineItems.slice(0, 3)} onSelect={openDeadlineItem} />
           </div>
         )}
       </section>
     </div>
+
+    <AssignmentDetail assignment={detailAssignment} onClose={() => setDetailAssignment(null)} />
+    <TaskEditor
+      open={!!editingTask}
+      onClose={() => setEditingTask(null)}
+      onSave={saveTask}
+      task={editingTask}
+      goals={goals}
+      courses={courses}
+    />
+    </>
   );
 }
 

@@ -338,8 +338,13 @@ function Toggle({
   onChange: (v: boolean) => void;
   small?: boolean;
 }) {
+  // A plain <div>, not <label> — this row can hold two interactive buttons
+  // (the Help popover and the switch itself), and a <label> forwards clicks
+  // to whichever labelable descendant the browser picks, which made the
+  // switch fire from clicks meant for Help (and vice versa). The switch is
+  // accessible on its own via role="switch" + aria-checked + aria-label.
   return (
-    <label
+    <div
       className={cn(
         "flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] text-sm",
         small ? "p-2.5" : "p-3.5",
@@ -354,6 +359,7 @@ function Toggle({
         type="button"
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
         className={cn(
           "relative h-5 w-9 shrink-0 rounded-full transition-colors",
@@ -367,7 +373,7 @@ function Toggle({
           )}
         />
       </button>
-    </label>
+    </div>
   );
 }
 

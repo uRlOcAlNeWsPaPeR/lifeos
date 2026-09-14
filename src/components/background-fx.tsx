@@ -9,8 +9,15 @@ import { usePathname } from "next/navigation";
  */
 export function BackgroundFX() {
   const pathname = usePathname();
-  // "/" and "/dashboard" run their own cinematic atmosphere.
-  if (pathname === "/" || pathname === "/dashboard") return null;
+  // "/", "/dashboard", "/assistant" and "/brain-game" run their own cinematic
+  // atmosphere.
+  if (
+    pathname === "/" ||
+    pathname === "/dashboard" ||
+    pathname === "/assistant" ||
+    pathname === "/brain-game"
+  )
+    return null;
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">

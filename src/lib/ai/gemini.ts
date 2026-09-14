@@ -84,11 +84,21 @@ export class GeminiProvider extends LLMProvider {
           break; // retries exhausted on this model — try the next one
         }
 
-        if (!res.ok) {
-          // Not model-specific (bad request, auth, etc.) — every model will
-          // fail the same way, so surface it now instead of cycling.
+        if (res.status === 401 || res.status === 403) {
+          // The API key itself is bad/revoked — genuinely account-wide, every
+          // model will fail identically, so surface it now instead of cycling.
           const detail = await res.text().catch(() => "");
           throw new Error(`Gemini API ${res.status}: ${detail.slice(0, 300)}`);
+        }
+
+        if (!res.ok) {
+          // A 400 can be model-specific (an unsupported generationConfig
+          // option on a particular model, say) — not necessarily something
+          // every other model in the chain will also hit. Move on rather than
+          // aborting the whole provider.
+          const detail = await res.text().catch(() => "");
+          lastErr = `${model}: HTTP ${res.status} ${detail.slice(0, 200)}`;
+          break;
         }
 
         const data = (await res.json()) as {

@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { AppDataProvider, useAppData } from "@/lib/store/app-data";
 import { AssistantChatProvider } from "@/lib/assistant-chat";
+import { recordLastPage } from "@/lib/last-page";
 import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
 import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
@@ -42,12 +43,18 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
     if (ready && !data.profile.onboarded) router.replace("/onboarding");
   }, [ready, data.profile.onboarded, router]);
 
+  // So "Exit AI" on the Assistant screen can return to wherever the student
+  // actually came from, not always the dashboard.
+  useEffect(() => {
+    if (ready) recordLastPage(pathname);
+  }, [ready, pathname]);
+
   if (!ready) return <FullscreenLoader label="Loading your workspace…" />;
   if (!data.profile.onboarded) return <FullscreenLoader />;
 
-  // The dashboard is its own full-bleed experience — no sidebar, reached from
-  // the hub. Every other page keeps the rail.
-  if (pathname === "/dashboard") {
+  // The dashboard, AI Assistant and Brain Game are their own full-bleed
+  // experiences — no sidebar. Every other page keeps the rail.
+  if (pathname === "/dashboard" || pathname === "/assistant" || pathname === "/brain-game") {
     return (
       <>
         <main className="min-h-[100svh]">{children}</main>

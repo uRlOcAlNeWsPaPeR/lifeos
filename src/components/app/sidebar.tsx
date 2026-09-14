@@ -15,6 +15,7 @@ import {
   BarChart3,
   Sparkles,
   Gamepad2,
+  Puzzle,
   LogOut,
   Menu,
   X,
@@ -63,6 +64,7 @@ export const NAV_GROUPS: {
 ];
 
 export const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Sparkles };
+export const BRAIN_GAME = { href: "/brain-game", label: "Brain Game", icon: Puzzle };
 export const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: Settings };
 
 function NavLink({
@@ -157,8 +159,9 @@ export function Sidebar({
             </div>
           </div>
         ))}
-        <div className="mt-1 border-t border-white/[0.06] pt-3">
+        <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
           <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
+          <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
         </div>
       </nav>
 
