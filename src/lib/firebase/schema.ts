@@ -31,6 +31,38 @@ export function userDoc(uid: string): DocumentReference {
   return doc(db(), "users", uid);
 }
 
+/**
+ * The Brain Game's weekly Competitive leaderboard — the one thing shared
+ * ACROSS students rather than scoped to one uid, so its security rule is
+ * different from everything above it: anyone signed in can read a week's
+ * board, but a student can only ever write their own entry (doc id == their
+ * uid). `points` here is a student's BEST 30-second Competitive score this
+ * week (correct answers, not tasks) — resets automatically every week since
+ * each week gets its own board.
+ *
+ *   leaderboard/{weekKey}/entries/{uid}  → joined-in students, ranked by score
+ *   leaderboard/{weekKey}/skips/{uid}    → "asked, declined" — so Skip sticks
+ *                                          for the rest of that week
+ */
+export interface LeaderboardEntryDoc {
+  uid: string;
+  name: string;
+  points: number;
+  updatedAt: string;
+}
+
+export function leaderboardEntriesCol(weekKey: string): CollectionReference {
+  return collection(db(), "leaderboard", weekKey, "entries");
+}
+
+export function leaderboardEntryDoc(weekKey: string, uid: string): DocumentReference {
+  return doc(db(), "leaderboard", weekKey, "entries", uid);
+}
+
+export function leaderboardSkipDoc(weekKey: string, uid: string): DocumentReference {
+  return doc(db(), "leaderboard", weekKey, "skips", uid);
+}
+
 export function col(uid: string, name: AnyCol): CollectionReference {
   return collection(db(), "users", uid, name);
 }

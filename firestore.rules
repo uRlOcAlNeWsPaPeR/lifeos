@@ -24,6 +24,31 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // The Brain Game's weekly Competitive leaderboard — the one thing shared
+    // ACROSS students rather than scoped to one uid. Anyone signed in can
+    // read a week's board; a student can only ever write their own entry
+    // (doc id must be their own uid), and only with a sane shape — same
+    // trust level as the rest of the app (which never re-verifies a
+    // completed task server-side either).
+    match /leaderboard/{week}/entries/{uid} {
+      allow read: if request.auth != null;
+      // Deletes have no request.resource — split from create/update so
+      // "delete my progress" in Settings isn't checking a shape that isn't
+      // there for a delete.
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 40
+        && request.resource.data.points is number
+        && request.resource.data.points >= 0
+        && request.resource.data.points <= 100000;
+    }
+    match /leaderboard/{week}/skips/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
     // deny everything else
     match /{document=**} {
       allow read, write: if false;

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap, Plug } from "lucide-react";
+import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap, Plug, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import {
 } from "./settings-client";
 import { CanvasSettings } from "./canvas-settings";
 import { GoogleCalendarSettings } from "./google-calendar-settings";
+import { BrainGameLeaderboardSettings } from "./brain-game-leaderboard-settings";
 import { useAppData } from "@/lib/store/app-data";
 import { planLabel, isCreator, hasGrantedPlan } from "@/lib/plan-limits";
 import { SCHOOL_INTEGRATIONS, CALENDAR_INTEGRATIONS } from "@/lib/integrations/descriptors";
@@ -34,6 +35,7 @@ const TABS = [
   { id: "school", label: "School", icon: GraduationCap },
   { id: "connections", label: "Connections", icon: Plug },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "leaderboard", label: "Leaderboard", icon: Trophy },
   { id: "profile", label: "Profile", icon: User },
   { id: "plan", label: "Plan", icon: CreditCard },
 ] as const;
@@ -149,6 +151,15 @@ function SettingsPanel() {
           {tab === "notifications" && (
             <Section title="Notifications & alarms">
               <NotificationSettings />
+            </Section>
+          )}
+
+          {tab === "leaderboard" && (
+            <Section
+              title="Brain Game leaderboard"
+              desc="This week's Competitive score, under the name you're shown as — change it or drop off the board any time."
+            >
+              <BrainGameLeaderboardSettings />
             </Section>
           )}
 
