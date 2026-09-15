@@ -16,7 +16,7 @@ let heuristicSingleton: HeuristicProvider | null = null;
 
 /**
  * One hosted provider per configured API key, chained in preference order —
- * OpenRouter's free pool first (see env.ts), then Groq's free tier, then
+ * Groq's free tier first (see env.ts), then OpenRouter's free pool, then
  * Gemini/Anthropic, then the offline heuristic engine. A rate limit, outage,
  * or bad response on one link retries the next before the student ever sees
  * the offline engine. With nothing configured, this collapses to

@@ -8,6 +8,13 @@ import { LLMProvider } from "./llm-base";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 const RETRYABLE_SERVER = new Set([500, 502, 503, 504]);
 const ATTEMPTS_PER_MODEL = 2;
+// Measured live (2026-09-15) against LifeOS's real, non-trivial prompts: a
+// model that's actually going to answer never took anywhere near this long
+// (successful responses landed well under 11s); a model that's currently
+// choking on real-sized prompts hung for 30s+ every time, and retrying it
+// hung for another 30s+ — pure wasted latency, not a safety net. 15s cleanly
+// separates "working" from "broken" without cutting off a real answer.
+const TIMEOUT_MS = 15_000;
 
 // OpenRouter's ":free" tier is ONE pool shared across the whole account — not
 // per-user, not per-model: 20 requests/minute, and 1,000/day once $10+ of
@@ -79,7 +86,7 @@ export class OpenRouterProvider extends LLMProvider {
               response_format: { type: "json_object" },
               temperature: 0.2,
             }),
-            signal: AbortSignal.timeout(25_000),
+            signal: AbortSignal.timeout(TIMEOUT_MS),
           });
         } catch (e) {
           // Unknown whether this actually reached OpenRouter's servers before
@@ -88,7 +95,11 @@ export class OpenRouterProvider extends LLMProvider {
           // ceiling sneak up on the old success-only counter.
           this.recordUsage();
           lastErr = `${model}: ${(e as Error).message}`;
-          if (attempt < ATTEMPTS_PER_MODEL) {
+          // A timeout specifically doesn't get a same-model retry — measured
+          // live, a model that hangs on a real prompt hangs again on retry,
+          // so this only ever burns another full TIMEOUT_MS for nothing.
+          // Move straight to the next model instead.
+          if ((e as Error).name !== "TimeoutError" && attempt < ATTEMPTS_PER_MODEL) {
             await sleep(500 * attempt);
             continue;
           }

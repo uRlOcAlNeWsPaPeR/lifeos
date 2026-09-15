@@ -77,11 +77,11 @@ export function appOrigin(): string {
 }
 
 /**
- * Every configured hosted provider, in try-order: OpenRouter's free pool,
- * then Groq's free tier, then Gemini/Anthropic (order between those two
- * picked by AI_PROVIDER), then — handled by the caller — the offline
+ * Every configured hosted provider, in try-order: Groq's free tier first,
+ * then OpenRouter's free pool, then Gemini/Anthropic (order between those
+ * two picked by AI_PROVIDER), then — handled by the caller — the offline
  * heuristic engine. Whichever ones actually have an API key (and, for
- * OpenRouter/Groq, at least one configured model) are included; the rest are
+ * Groq/OpenRouter, at least one configured model) are included; the rest are
  * skipped, not retried as empty links. `getAI()` chains them — if the first
  * one's request fails (rate limit, outage, bad response) it tries the next
  * before giving up to the offline engine. The two free layers lead
@@ -100,9 +100,14 @@ export function resolveAiProviderChain(): ("openrouter" | "groq" | "anthropic" |
   // (only AI_PROVIDER=heuristic does that, handled above).
   const paidOrder: ("anthropic" | "gemini")[] =
     env.AI_PROVIDER === "gemini" ? ["gemini", "anthropic"] : ["anthropic", "gemini"];
-  const order: ("openrouter" | "groq" | "anthropic" | "gemini")[] = [
-    "openrouter",
+  // Groq leads OpenRouter — measured live (2026-09-15) on the app's real
+  // system prompt: faster (1.8-1.9s vs. 10-11s), better instruction
+  // following, and Groq's per-model daily quota (each of 3 configured models
+  // gets its own separate ~1K/day bucket, ~3K/day aggregate) comfortably
+  // beats OpenRouter's single shared 1K/day pool across ALL its free models.
+  const order: ("groq" | "openrouter" | "anthropic" | "gemini")[] = [
     "groq",
+    "openrouter",
     ...paidOrder,
   ];
   return order.filter((p) =>

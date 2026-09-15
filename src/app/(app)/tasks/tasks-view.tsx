@@ -34,7 +34,12 @@ export function TasksView() {
   const buckets = useMemo(() => {
     const eod = new Date();
     eod.setHours(23, 59, 59, 999);
-    const sorted = [...data.tasks].sort(
+    // `allTasks` (not the narrower `tasks`) so a task created anywhere in the
+    // app — including an assignment's own "planning task" over on School,
+    // which `tasks` deliberately hides everywhere else to avoid double-
+    // counting against its assignment — still shows up here. This is the one
+    // place meant to be the complete, unfiltered list of everything to do.
+    const sorted = [...data.allTasks].sort(
       (a, b) => a.sortOrder - b.sortOrder || (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z"),
     );
     const open = sorted.filter((t) => t.status === "todo");
@@ -46,7 +51,7 @@ export function TasksView() {
         .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")),
       all: open,
     };
-  }, [data.tasks]);
+  }, [data.allTasks]);
 
   const list = buckets[tab];
 
