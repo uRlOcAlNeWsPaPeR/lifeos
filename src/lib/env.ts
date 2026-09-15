@@ -29,6 +29,13 @@ export const env = {
   // model's own page, e.g. "meta-llama/llama-3.1-8b-instruct:free") and set
   // this as a comma list, most-preferred first.
   OPENROUTER_MODELS: process.env.OPENROUTER_MODELS ?? "",
+  GROQ_API_KEY: process.env.GROQ_API_KEY ?? "",
+  // Unlike OpenRouter's roster, Groq's free tier is a real, documented,
+  // no-credit-card allowance per model (see console.groq.com/docs/models for
+  // the current list and their individual RPM/RPD/TPM caps) — but exact
+  // model names still get renamed/deprecated over time, so no default here
+  // either. Comma list, most-preferred first.
+  GROQ_MODELS: process.env.GROQ_MODELS ?? "",
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "",
   AI_PROVIDER:
     (process.env.AI_PROVIDER as "auto" | "anthropic" | "gemini" | "openrouter" | "heuristic") ||
@@ -52,6 +59,14 @@ export function openRouterModelChain(): string[] {
     .filter((m, i, arr) => arr.indexOf(m) === i);
 }
 
+/** GROQ_MODELS, comma-split, de-duplicated. Empty when unconfigured. */
+export function groqModelChain(): string[] {
+  return env.GROQ_MODELS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((m, i, arr) => arr.indexOf(m) === i);
+}
+
 /** This deploy's own URL, for the OpenRouter "HTTP-Referer" header. */
 export function appOrigin(): string {
   return (
@@ -62,34 +77,47 @@ export function appOrigin(): string {
 }
 
 /**
- * Every configured hosted provider, in try-order. AI_PROVIDER picks which one
- * goes first (default: OpenRouter's free pool, then Anthropic, then Gemini);
- * whichever ones actually have an API key (and, for OpenRouter, at least one
- * configured model) are included. `getAI()` chains them — if the first one's
- * request fails (rate limit, outage, bad response) it tries the next before
- * giving up to the offline heuristic engine. OpenRouter leads by default
- * because it's the $0 layer — Gemini/Anthropic only get hit on overflow or
- * error. Set AI_PROVIDER=heuristic to force offline mode regardless of what
- * keys are present.
+ * Every configured hosted provider, in try-order: OpenRouter's free pool,
+ * then Groq's free tier, then Gemini/Anthropic (order between those two
+ * picked by AI_PROVIDER), then — handled by the caller — the offline
+ * heuristic engine. Whichever ones actually have an API key (and, for
+ * OpenRouter/Groq, at least one configured model) are included; the rest are
+ * skipped, not retried as empty links. `getAI()` chains them — if the first
+ * one's request fails (rate limit, outage, bad response) it tries the next
+ * before giving up to the offline engine. The two free layers lead
+ * unconditionally — Gemini/Anthropic only get hit on overflow or error. Set
+ * AI_PROVIDER=heuristic to force offline mode regardless of what keys are
+ * present.
  */
-export function resolveAiProviderChain(): ("openrouter" | "anthropic" | "gemini")[] {
+export function resolveAiProviderChain(): ("openrouter" | "groq" | "anthropic" | "gemini")[] {
   if (env.AI_PROVIDER === "heuristic") return [];
   const hasOpenRouter = Boolean(env.OPENROUTER_API_KEY) && openRouterModelChain().length > 0;
+  const hasGroq = Boolean(env.GROQ_API_KEY) && groqModelChain().length > 0;
   const hasAnthropic = Boolean(env.ANTHROPIC_API_KEY);
   const hasGemini = Boolean(env.GEMINI_API_KEY);
-  // AI_PROVIDER only picks which PAID provider leads once OpenRouter's free
-  // pool is skipped/exhausted/erroring — it never opts out of the free layer
-  // itself (only AI_PROVIDER=heuristic does that, handled above).
+  // AI_PROVIDER only picks which PAID provider leads once both free pools are
+  // skipped/exhausted/erroring — it never opts out of the free layer itself
+  // (only AI_PROVIDER=heuristic does that, handled above).
   const paidOrder: ("anthropic" | "gemini")[] =
     env.AI_PROVIDER === "gemini" ? ["gemini", "anthropic"] : ["anthropic", "gemini"];
-  const order: ("openrouter" | "anthropic" | "gemini")[] = ["openrouter", ...paidOrder];
+  const order: ("openrouter" | "groq" | "anthropic" | "gemini")[] = [
+    "openrouter",
+    "groq",
+    ...paidOrder,
+  ];
   return order.filter((p) =>
-    p === "openrouter" ? hasOpenRouter : p === "anthropic" ? hasAnthropic : hasGemini,
+    p === "openrouter"
+      ? hasOpenRouter
+      : p === "groq"
+        ? hasGroq
+        : p === "anthropic"
+          ? hasAnthropic
+          : hasGemini,
   );
 }
 
 /** The provider a fresh request starts with — first in the chain, else heuristic. */
-export function resolveAiProvider(): "openrouter" | "anthropic" | "gemini" | "heuristic" {
+export function resolveAiProvider(): "openrouter" | "groq" | "anthropic" | "gemini" | "heuristic" {
   return resolveAiProviderChain()[0] ?? "heuristic";
 }
 

@@ -3,6 +3,7 @@ import { resolveAiProvider, resolveAiProviderChain } from "@/lib/env";
 import { AnthropicProvider } from "./anthropic";
 import { GeminiProvider } from "./gemini";
 import { OpenRouterProvider } from "./openrouter";
+import { GroqProvider } from "./groq";
 import { HeuristicProvider } from "./heuristic";
 import type { LLMProvider } from "./llm-base";
 import type { AIProvider } from "./types";
@@ -15,10 +16,11 @@ let heuristicSingleton: HeuristicProvider | null = null;
 
 /**
  * One hosted provider per configured API key, chained in preference order —
- * OpenRouter's free pool first (see env.ts), then Gemini/Anthropic, then the
- * offline heuristic engine. A rate limit, outage, or bad response on one link
- * retries the next before the student ever sees the offline engine. With
- * nothing configured, this collapses to heuristic-only.
+ * OpenRouter's free pool first (see env.ts), then Groq's free tier, then
+ * Gemini/Anthropic, then the offline heuristic engine. A rate limit, outage,
+ * or bad response on one link retries the next before the student ever sees
+ * the offline engine. With nothing configured, this collapses to
+ * heuristic-only.
  */
 export function getAI(): AIProvider {
   if (provider) return provider;
@@ -33,9 +35,11 @@ export function getAI(): AIProvider {
   const instances: LLMProvider[] = chain.map((name) =>
     name === "openrouter"
       ? new OpenRouterProvider()
-      : name === "anthropic"
-        ? new AnthropicProvider()
-        : new GeminiProvider(),
+      : name === "groq"
+        ? new GroqProvider()
+        : name === "anthropic"
+          ? new AnthropicProvider()
+          : new GeminiProvider(),
   );
   instances.forEach((p, i) => p.setFallback(instances[i + 1] ?? heuristic));
 
@@ -60,6 +64,7 @@ export function getAIFor(plan: PlanId): AIProvider {
 // still distinguishes "hosted" vs "offline" for the free-tier upsell copy.
 const ENGINE_LABELS = {
   openrouter: "LifeOS AI",
+  groq: "LifeOS AI",
   anthropic: "LifeOS AI",
   gemini: "LifeOS AI",
   heuristic: "LifeOS AI (offline)",
