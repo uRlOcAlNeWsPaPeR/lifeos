@@ -4,9 +4,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  Search, LayoutDashboard, Brain, ListChecks, CalendarDays, GraduationCap,
-  Percent, Gamepad2, Target, BarChart3, Sparkles, Settings, Layers, FileText,
-  Timer, CornerDownLeft, ArrowUp, ArrowDown, Puzzle,
+  ArrowDown,
+  ArrowUp,
+  BarChart3,
+  Brain,
+  CalendarDays,
+  CornerDownLeft,
+  FileText,
+  Gamepad2,
+  GraduationCap,
+  Headphones,
+  Layers,
+  LayoutDashboard,
+  ListChecks,
+  Percent,
+  Puzzle,
+  Search,
+  Settings,
+  Sparkles,
+  Target,
+  Timer,
 } from "lucide-react";
 import { useAppData } from "@/lib/store/app-data";
 import { searchAll, PAGES, KIND_LABEL, type ResultKind, type SearchResult } from "@/lib/search";
@@ -22,6 +39,7 @@ const PAGE_ICONS: Record<string, typeof Search> = {
   "/school": GraduationCap,
   "/grades": Percent,
   "/practice": Gamepad2,
+  "/podcast": Headphones,
   "/goals": Target,
   "/analytics": BarChart3,
   "/assistant": Sparkles,

@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useRef } from "react";
 import {
-  ListChecks,
-  CalendarDays,
-  Brain,
-  Target,
-  GraduationCap,
-  BarChart3,
   ArrowUpRight,
+  BarChart3,
+  Brain,
+  CalendarDays,
   Gamepad2,
+  GraduationCap,
+  Headphones,
+  ListChecks,
   Percent,
   Sparkles,
+  Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +34,7 @@ export const NAV_ICONS = {
   practice: Gamepad2,
   grades: Percent,
   assistant: Sparkles,
+  podcast: Headphones,
 };
 
 /**

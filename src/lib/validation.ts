@@ -147,6 +147,15 @@ export const generateCardsSchema = z.object({
   title: z.string().max(120).optional().nullable(),
 });
 
+export const generatePodcastSchema = z.object({
+  notes: z.string().min(40, "Paste a bit more of your notes").max(12000),
+  title: z.string().max(120).optional().nullable(),
+  subject: z.string().max(80).optional().nullable(),
+  format: z.enum(["solo", "duo"]).default("solo"),
+  // Bounded so a request can't ask for an hour of generation.
+  targetMinutes: z.number().int().min(1).max(30).default(5),
+});
+
 export const assistantSchema = z
   .object({
     // Legacy single-shot form.

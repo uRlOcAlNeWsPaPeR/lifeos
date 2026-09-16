@@ -1,3 +1,5 @@
+import { sanitizeScript, wordBudget } from "@/lib/podcast/script";
+import type { PodcastOptions } from "@/lib/podcast/types";
 import type {
   AIEngine,
   AIProvider,
@@ -6,6 +8,7 @@ import type {
   BrainDumpItem,
   BrainDumpResult,
   GenerateCardsResult,
+  GeneratePodcastResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
@@ -223,6 +226,39 @@ export abstract class LLMProvider implements AIProvider {
     }
   }
 
+  async generatePodcast(notes: string, opts: PodcastOptions): Promise<GeneratePodcastResult> {
+    try {
+      const budget = wordBudget(opts.targetMinutes);
+      const parsed = await this.json<unknown>(
+        PODCAST_SYSTEM,
+        [
+          opts.title ? `Episode topic: ${opts.title}` : "",
+          opts.subject ? `Subject: ${opts.subject}` : "",
+          `Format: ${opts.format === "duo" ? "TWO hosts in conversation" : "ONE host, solo"}`,
+          `Target length: about ${opts.targetMinutes} minutes, which is roughly ${budget} spoken words. Get within 10% of that.`,
+          "",
+          `The student's notes:\n"""${notes.slice(0, 12000)}"""`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+        { schema: PODCAST_SCHEMA },
+      );
+
+      const script = sanitizeScript(parsed, opts.format);
+      if (!script) throw new Error("model did not return a usable script");
+      // A two-host episode with only one speaker is a failed brief, not a
+      // stylistic choice — the student picked a second voice that would sit
+      // silent, so fall back rather than ship it.
+      if (opts.format === "duo" && !script.segments.some((x) => x.speaker === "cohost")) {
+        throw new Error("model returned a solo script for a two-host episode");
+      }
+      return { engine: this.name, script };
+    } catch (e) {
+      console.error(`[ai:${this.name}] podcast generation fell back:`, (e as Error).message);
+      return this.fallback.generatePodcast(notes, opts);
+    }
+  }
+
   async assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult> {
     try {
       const transcript = messages
@@ -310,6 +346,48 @@ const CARDS_SYSTEM = [
   "",
   'Output ONLY minified JSON: {"cards":[{"front":string,"back":string}]}. Aim for 8–25 cards, fewer when the notes are short.',
 ].join("\n");
+
+/* ------------------------------- podcast ------------------------------ */
+
+const PODCAST_SYSTEM = [
+  "You are LifeOS's study-podcast writer. A student gives you their own class notes; you turn them into a script they can listen to while walking or on the bus.",
+  "",
+  "Return STRICT JSON: { title, summary, segments: [{ speaker, kind, text }] }.",
+  "",
+  "THE ONE RULE THAT MATTERS: every fact you state must come from the student's notes. You are re-teaching their material, not adding to it. You may explain, rephrase, give an analogy for, or connect ideas that are already in the notes. You may NOT introduce a date, number, name, definition or claim that isn't there. If the notes are thin, go deeper on what they do say — never pad with outside content. A student revising from this will assume everything they hear is examinable.",
+  "",
+  "SPEAKER: \"host\" or \"cohost\". For a solo episode use \"host\" for every segment. For a two-host episode, write a real conversation — the co-host asks the question the student would ask, pushes back, or says the idea back in plainer words. Alternate naturally; don't just bolt one co-host line onto the end.",
+  "",
+  "KIND: \"intro\" to open, \"point\" for teaching a piece of the material, \"aside\" for a co-host reaction or a quick clarifier, \"recap\" to pull it together near the end, \"outro\" to close.",
+  "",
+  "TEXT: what is actually spoken, so write for the ear. Full sentences, no bullet points, no markdown, no stage directions, no \"[pause]\", no speaker labels inside the text. Numbers and symbols spelled out the way you'd say them (\"thirty-six ATP\", \"H two O\"). Keep each segment to one turn of speech — a few sentences, not an essay.",
+  "",
+  "STRUCTURE: open by saying what the episode covers, teach the material in the order the notes present it, recap the key points, then close. Sound like a person talking to one student, not a lecture or an advert.",
+  "",
+  "LENGTH: match the requested runtime. Spread the budget across segments rather than writing one enormous block.",
+].join("\n");
+
+const PODCAST_SCHEMA = {
+  type: "object",
+  properties: {
+    title: { type: "string" },
+    summary: { type: "string" },
+    segments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          speaker: { type: "string", enum: ["host", "cohost"] },
+          kind: { type: "string", enum: ["intro", "point", "aside", "recap", "outro"] },
+          text: { type: "string" },
+        },
+        required: ["speaker", "kind", "text"],
+        propertyOrdering: ["speaker", "kind", "text"],
+      },
+    },
+  },
+  required: ["title", "summary", "segments"],
+} as const;
 
 const CARDS_SCHEMA = {
   type: "object",
