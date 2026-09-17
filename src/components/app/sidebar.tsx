@@ -100,14 +100,27 @@ function NavLink({
 export function Sidebar({
   user,
   plan,
+  open: openProp,
+  onOpenChange,
 }: {
   user: { name: string; email: string };
   plan: string;
+  /**
+   * Controlled mode — e.g. the dashboard's own menu button opens this same
+   * drawer instead of a separate reduced popup. When passed, the sidebar's
+   * own mobile top bar and the persistent desktop rail are both suppressed
+   * (the caller owns the trigger), and only the drawer itself renders.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
   const { logout: signOutUser } = useAuth();
-  const [open, setOpen] = useState(false);
+  const controlled = openProp !== undefined;
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlled ? openProp : internalOpen;
+  const setOpen = controlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
 
   // Lock the page behind the drawer + close it on Escape.
   useEffect(() => {
@@ -204,17 +217,21 @@ export function Sidebar({
 
   return (
     <>
-      {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-background/70 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
-        <Logo />
-        <button onClick={() => setOpen(true)}>
-          <Menu className="h-5 w-5" />
-        </button>
-      </div>
+      {/* Mobile top bar — the caller owns its own trigger in controlled mode */}
+      {!controlled && (
+        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-background/70 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
+          <Logo />
+          <button onClick={() => setOpen(true)}>
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
+      )}
 
-      {/* Mobile drawer */}
+      {/* Drawer — every screen size in controlled mode (the dashboard never
+          shows a persistent rail), mobile-only otherwise (desktop gets the
+          rail below instead). */}
       {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className={cn("fixed inset-0 z-50", !controlled && "lg:hidden")}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
           <div className="absolute left-0 top-0 h-full w-72 border-r border-white/10 bg-card/95 backdrop-blur-xl animate-fade-in">
             {body}
@@ -223,9 +240,11 @@ export function Sidebar({
       )}
 
       {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r border-white/[0.06] bg-card/40 backdrop-blur-xl lg:block">
-        <div className="sticky top-0 h-screen">{body}</div>
-      </aside>
+      {!controlled && (
+        <aside className="hidden w-64 shrink-0 border-r border-white/[0.06] bg-card/40 backdrop-blur-xl lg:block">
+          <div className="sticky top-0 h-screen">{body}</div>
+        </aside>
+      )}
     </>
   );
 }
