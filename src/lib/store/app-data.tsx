@@ -589,26 +589,37 @@ export function AppDataProvider({
 
     const assignments: AssignmentDTO[] = assignmentsRaw
       .filter((a) => !dup.assignments.drop.has(a.id))
-      .map((a) => ({
-        id: a.id,
-        title: (a.title as string) ?? "",
-        description: (a.description as string) ?? null,
-        courseId: (a.courseId as string) ?? null,
-        dueAt: (a.dueAt as string) ?? null,
-        status: (a.status as AssignmentDTO["status"]) ?? "open",
-        createdAt: (a.createdAt as string) ?? null,
-        gradeValue: (a.gradeValue as string) ?? null,
-        pointsEarned: (a.pointsEarned as number) ?? null,
-        pointsPossible: (a.pointsPossible as number) ?? null,
-        category: (a.category as string) ?? null,
-        provider: (a.provider as string) ?? null,
-        canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
-        canvasUrl: (a.canvasUrl as string) ?? null,
-        localDone: Boolean(a.localDone),
-        course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
-        tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
-        linkedTask: null as AssignmentDTO["linkedTask"],
-      }));
+      .map((a) => {
+        const pointsEarned = (a.pointsEarned as number) ?? null;
+        const gradeValue = (a.gradeValue as string) ?? null;
+        // A real grade is stronger evidence of "graded" than whatever status
+        // happens to be stored — covers a row synced before deriveStatus()
+        // treated a score as graded on its own, or any other path that set a
+        // grade without also flipping status. Never displays or counts
+        // toward the course grade as "open" once a real score/grade exists.
+        const rawStatus = (a.status as AssignmentDTO["status"]) ?? "open";
+        const status = pointsEarned != null || gradeValue ? "graded" : rawStatus;
+        return {
+          id: a.id,
+          title: (a.title as string) ?? "",
+          description: (a.description as string) ?? null,
+          courseId: (a.courseId as string) ?? null,
+          dueAt: (a.dueAt as string) ?? null,
+          status,
+          createdAt: (a.createdAt as string) ?? null,
+          gradeValue,
+          pointsEarned,
+          pointsPossible: (a.pointsPossible as number) ?? null,
+          category: (a.category as string) ?? null,
+          provider: (a.provider as string) ?? null,
+          canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
+          canvasUrl: (a.canvasUrl as string) ?? null,
+          localDone: Boolean(a.localDone),
+          course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
+          tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
+          linkedTask: null as AssignmentDTO["linkedTask"],
+        };
+      });
 
     /* --- shadow-task dedup: a task that mirrors an assignment (same name, same
        due day, or an explicit link) becomes that assignment's planning layer and

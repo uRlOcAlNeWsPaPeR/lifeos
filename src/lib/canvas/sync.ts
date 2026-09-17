@@ -590,7 +590,12 @@ function rows(snap: QuerySnapshot): Row[] {
 
 function deriveStatus(sub: CanvasSubmission | null): "open" | "submitted" | "graded" {
   if (!sub) return "open";
-  if (sub.workflow_state === "graded" || sub.graded_at) return "graded";
+  // A real score is stronger evidence of "graded" than workflow_state alone —
+  // Canvas can report a score without workflow_state ever landing on exactly
+  // "graded" (an excused-but-scored submission, a manually posted grade on a
+  // "not_graded" assignment type, etc.), which otherwise left the assignment
+  // showing a grade while still reading as "open" here.
+  if (sub.workflow_state === "graded" || sub.graded_at || sub.score != null) return "graded";
   if (sub.submitted_at || sub.workflow_state === "submitted" || sub.workflow_state === "pending_review") {
     return "submitted";
   }
