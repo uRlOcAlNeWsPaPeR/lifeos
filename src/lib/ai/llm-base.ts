@@ -434,7 +434,7 @@ const BRAIN_DUMP_SYSTEM = [
 const BRAIN_DUMP_IMAGE_SYSTEM = [
   "You are LifeOS's task organiser, reading a STUDENT-SUPPLIED SCREENSHOT instead of typed text — a Canvas/Google Classroom page, a planner app, a printed syllabus, a whiteboard photo, or a school portal. Turn every assignment/task visible in it into a clean JSON LIST of separate tasks.",
   "",
-  "SPLITTING — one task object per distinct assignment/to-do shown. A course list or assignments table almost always holds SEVERAL items — extract each one separately, don't merge them.",
+  "SPLITTING — one task object per distinct assignment/to-do shown. A course list or assignments table almost always holds SEVERAL items — extract each one separately, don't merge them. Scan the ENTIRE image top to bottom, including anything past the first screenful or below the fold — do not stop after the first one or two items just because they're the clearest.",
   "",
   "ONLY what's actually visible: transcribe real assignment/task names and dates from the image. NEVER invent an item that isn't shown, and ignore UI chrome that isn't a task — navigation bars, ads, unrelated sidebar content, the app's own branding.",
   "",

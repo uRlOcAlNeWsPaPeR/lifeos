@@ -156,7 +156,14 @@ const FILLER =
 // Work-type keywords used to build a short "{Subject} {type}" title.
 const WORK_TYPES =
   "essay|paper|report|lab report|lab|homework|hw|assignment|project|presentation|pset|problem set|worksheet|packet|reading|quiz|test|exam|midterm|final|review|notes|outline|draft|discussion post|reflection";
-const WORK_TYPE_RE = new RegExp(`\\b([a-z][a-z+-]{1,20})\\s+(${WORK_TYPES})\\b`, "i");
+// The optional trailing group grabs a number/letter right after the work-type
+// word ("Homework 4", "Quiz #3", "Lab 2B") — without it, "Homework 1" and
+// "Homework 2" from the same screenshot both tighten down to the identical
+// "Homework" and the second one gets silently deduped away as a "repeat".
+const WORK_TYPE_RE = new RegExp(
+  `\\b([a-z][a-z+-]{1,20})\\s+(${WORK_TYPES})\\b\\s*(#?\\d[a-z0-9]{0,2})?`,
+  "i",
+);
 const NORMALISE_TYPE: Record<string, string> = { hw: "HW", pset: "pset", "problem set": "pset" };
 
 /**
@@ -187,10 +194,11 @@ export function tightenTitle(input: string): string {
     const subject = m[1].toLowerCase();
     const type = m[2].toLowerCase();
     const typeLabel = NORMALISE_TYPE[type] ?? type;
+    const suffix = m[3] ? ` ${m[3].replace(/^#/, "")}` : "";
     if (!/^(the|a|an|my|his|her|their|this|that|some|our)$/.test(subject)) {
-      return titleCase(`${subject} ${typeLabel}`);
+      return titleCase(`${subject} ${typeLabel}${suffix}`);
     }
-    return titleCase(typeLabel);
+    return titleCase(`${typeLabel}${suffix}`);
   }
 
   if (t.split(/\s+/).length <= 5) return titleCase(t);
