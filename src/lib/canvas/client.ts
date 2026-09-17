@@ -3,10 +3,11 @@ import { canvasEnv } from "./env";
 import { decryptToken } from "./crypto";
 import { refreshAccess } from "./oauth";
 import { markConnection, updateAccessToken } from "./connection";
-import { MOCK_COURSES, mockAssignments, mockCalendarEvents } from "./mock";
+import { MOCK_COURSES, mockAssignmentGroups, mockAssignments, mockCalendarEvents } from "./mock";
 import type {
   CanvasActivityItem,
   CanvasAssignment,
+  CanvasAssignmentGroup,
   CanvasCalendarEvent,
   CanvasConnectionDoc,
   CanvasCourse,
@@ -58,6 +59,14 @@ export class CanvasClient {
     return this.paginate<CanvasAssignment>(
       `/courses/${courseId}/assignments?include[]=submission` +
         `&order_by=due_at&per_page=${PER_PAGE}`,
+    );
+  }
+
+  /** The course's grading categories ("Tests", "Homework"…) and their weights. */
+  async listAssignmentGroups(courseId: number | string): Promise<CanvasAssignmentGroup[]> {
+    if (canvasEnv.mock) return mockAssignmentGroups(Number(courseId));
+    return this.paginate<CanvasAssignmentGroup>(
+      `/courses/${courseId}/assignment_groups?per_page=${PER_PAGE}`,
     );
   }
 

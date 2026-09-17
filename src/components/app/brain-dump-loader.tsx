@@ -3,19 +3,22 @@
 import { useEffect, useState } from "react";
 
 const STEPS = ["Reading your notes", "Finding the tasks", "Sorting by priority", "Almost ready"];
+const IMAGE_STEPS = ["Reading the screenshot", "Finding the assignments", "Sorting by due date", "Almost ready"];
 
 /**
- * Full-screen, on-brand loading state for Brain Dump.
- * Covers the whole app (sidebar included), uses the LifeOS primary palette,
- * and never reads as an error or a separate page.
+ * Full-screen, on-brand loading state for Brain Dump (and the assignment
+ * screenshot importer, which shares this same visual). Covers the whole app
+ * (sidebar included), uses the LifeOS primary palette, and never reads as an
+ * error or a separate page.
  */
-export function BrainDumpLoader() {
+export function BrainDumpLoader({ source = "text" }: { source?: "text" | "image" }) {
   const [step, setStep] = useState(0);
+  const steps = source === "image" ? IMAGE_STEPS : STEPS;
 
   useEffect(() => {
-    const id = setInterval(() => setStep((s) => Math.min(s + 1, STEPS.length - 1)), 1600);
+    const id = setInterval(() => setStep((s) => Math.min(s + 1, steps.length - 1)), 1600);
     return () => clearInterval(id);
-  }, []);
+  }, [steps.length]);
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-background/85 backdrop-blur-2xl animate-fade-in">
@@ -50,7 +53,7 @@ export function BrainDumpLoader() {
       </div>
 
       <p key={step} className="relative mt-8 animate-fade-in text-sm font-medium text-muted-foreground">
-        {STEPS[step]}…
+        {steps[step]}…
       </p>
 
       <div className="relative mt-5 h-1 w-40 overflow-hidden rounded-full bg-white/10">

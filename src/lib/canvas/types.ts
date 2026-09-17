@@ -122,6 +122,15 @@ export interface CanvasCourse {
   }[];
   /** Present with `include[]=teachers` — the course's teacher(s). */
   teachers?: { id: number; display_name?: string; short_name?: string }[];
+  /** True when the teacher actually turned on weighted grading by category. */
+  apply_assignment_group_weights?: boolean;
+}
+
+/** A Canvas grading category ("Tests", "Homework"…) and its share of the final grade. */
+export interface CanvasAssignmentGroup {
+  id: number;
+  name: string;
+  group_weight?: number | null;
 }
 
 export interface CanvasSubmission {
@@ -144,6 +153,8 @@ export interface CanvasAssignment {
   published?: boolean;
   /** When the teacher created it on Canvas — not always present. */
   created_at?: string | null;
+  /** Which grading category (assignment group) this counts toward. */
+  assignment_group_id?: number | null;
 }
 
 export interface CanvasActivityItem {

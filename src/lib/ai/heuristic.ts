@@ -39,6 +39,15 @@ export class HeuristicProvider implements AIProvider {
     return { engine: this.name, cards: dedupeCards(cardsFromNotes(notes)) };
   }
 
+  /** No OCR/vision offline — reading a screenshot needs a hosted AI provider. */
+  async parseBrainDumpImage(): Promise<BrainDumpResult> {
+    const err = new Error(
+      "Screenshot import needs LifeOS AI, which isn't available right now — try again in a bit, or type the tasks in instead.",
+    );
+    (err as { status?: number }).status = 503;
+    throw err;
+  }
+
   async parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult> {
     const slots = freeSlots(ctx, 7);
     let slotCursor = 0;

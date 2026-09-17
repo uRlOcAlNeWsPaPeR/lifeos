@@ -24,17 +24,23 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  */
 export class GeminiProvider extends LLMProvider {
   readonly name = "gemini" as const;
+  protected supportsVision = true;
   private apiKey = env.GEMINI_API_KEY;
   private models = geminiModelChain();
 
   protected async complete(
     system: string,
     user: string,
-    opts?: { schema?: unknown },
+    opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<string> {
+    // Gemini reads a single-image prompt best with the image part first.
+    const parts = opts?.image
+      ? [{ inlineData: { mimeType: opts.image.mimeType, data: opts.image.data } }, { text: user }]
+      : [{ text: user }];
+
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: system }] },
-      contents: [{ role: "user", parts: [{ text: user }] }],
+      contents: [{ role: "user", parts }],
       generationConfig: {
         responseMimeType: "application/json",
         // Force the exact output shape when the caller provides a schema — this is

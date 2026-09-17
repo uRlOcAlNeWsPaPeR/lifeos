@@ -1,5 +1,5 @@
 import "server-only";
-import type { CanvasAssignment, CanvasCalendarEvent, CanvasCourse } from "./types";
+import type { CanvasAssignment, CanvasAssignmentGroup, CanvasCalendarEvent, CanvasCourse } from "./types";
 
 // Canned Canvas data for CANVAS_MOCK=1 — lets the full connect → sync → dedupe →
 // UI path be exercised end-to-end without a real developer key. IDs are stable
@@ -23,6 +23,7 @@ export const MOCK_COURSES: CanvasCourse[] = [
       { type: "student", enrollment_state: "active", computed_current_grade: "A-", computed_current_score: 91 },
     ],
     teachers: [{ id: 900, display_name: "Ms. Diane York" }],
+    apply_assignment_group_weights: true,
   },
   {
     id: 102,
@@ -80,6 +81,7 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
           points_possible: 20,
           published: true,
           submission: { workflow_state: "unsubmitted", submitted_at: null },
+          assignment_group_id: 9002,
         },
         {
           id: 5003,
@@ -97,6 +99,7 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
             score: 46,
             grade: "A-",
           },
+          assignment_group_id: 9001,
         },
         {
           id: 5004,
@@ -114,6 +117,7 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
             score: 57,
             grade: "95%",
           },
+          assignment_group_id: 9002,
         },
         {
           id: 5002,
@@ -125,6 +129,7 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
           points_possible: 50,
           published: true,
           submission: { workflow_state: "unsubmitted", submitted_at: null },
+          assignment_group_id: 9003,
         },
       ];
     case 102:
@@ -199,6 +204,19 @@ export function mockAssignments(courseId: number): CanvasAssignment[] {
             grade: "B+",
           },
         },
+      ];
+    default:
+      return [];
+  }
+}
+
+export function mockAssignmentGroups(courseId: number): CanvasAssignmentGroup[] {
+  switch (courseId) {
+    case 101:
+      return [
+        { id: 9001, name: "Tests", group_weight: 50 },
+        { id: 9002, name: "Homework", group_weight: 20 },
+        { id: 9003, name: "Quizzes", group_weight: 30 },
       ];
     default:
       return [];

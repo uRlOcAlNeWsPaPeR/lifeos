@@ -32,6 +32,7 @@ import type { CourseDTO } from "@/lib/types";
 
 const SOURCE_LABEL: Record<GradeSource, string> = {
   canvas: "From Canvas",
+  weighted: "Weighted by category",
   computed: "Calculated from graded work",
   manual: "Entered manually",
 };

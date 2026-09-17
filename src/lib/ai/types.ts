@@ -165,6 +165,12 @@ export interface GenerateCardsResult {
 export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
+  /** Same output as parseBrainDump, but read off a screenshot (planner, Canvas, syllabus, whiteboard…). */
+  parseBrainDumpImage(
+    imageBase64: string,
+    mimeType: string,
+    ctx: LifeOSContext,
+  ): Promise<BrainDumpResult>;
   prioritize(ctx: LifeOSContext): Promise<PrioritizeResult>;
   assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult>;
   /** Turn a block of the student's own notes into study cards. */

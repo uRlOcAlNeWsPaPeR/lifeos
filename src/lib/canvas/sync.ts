@@ -6,6 +6,7 @@ import { CanvasClient, CanvasReauthError } from "./client";
 import { getConnection, markConnection, requireConnection } from "./connection";
 import type {
   CanvasAssignment,
+  CanvasAssignmentGroup,
   CanvasCourse,
   CanvasSubmission,
   CanvasSyncCounts,
@@ -129,11 +130,33 @@ export async function syncCanvas(
         .map((c) => [String(c.name ?? "").trim().toLowerCase(), c]),
     );
 
+    // Grade categories, fetched only for courses that actually turned on weighted
+    // grading — a course with assignment groups but weighting switched off (the
+    // common case: groups used purely to organize, not to grade) gets no fetch
+    // and no gradeWeights, same as if it had none.
+    const groupsByCourseId = new Map<number, CanvasAssignmentGroup[]>();
+    await Promise.all(
+      canvasCourses
+        .filter((cc) => cc.apply_assignment_group_weights)
+        .map(async (cc) => {
+          groupsByCourseId.set(cc.id, await client.listAssignmentGroups(cc.id));
+        }),
+    );
+
     for (const cc of canvasCourses) {
       const canvasCourseId = String(cc.id);
       const enrollment = cc.enrollments?.find((e) => e.type === "student") ?? cc.enrollments?.[0];
       const teacher = cc.teachers?.[0]?.display_name?.trim() || null;
       const baseName = cc.name?.trim() || `Canvas course ${canvasCourseId}`;
+      const groups = groupsByCourseId.get(cc.id) ?? [];
+      // Canvas is the source of truth for a synced course's weights, same as its
+      // score/letter grade — always reflect its current state, clearing back to
+      // null the moment the teacher turns weighting off or removes every group.
+      const gradeWeights = cc.apply_assignment_group_weights
+        ? groups
+            .filter((g) => typeof g.group_weight === "number" && g.group_weight! > 0 && g.name?.trim())
+            .map((g) => ({ category: g.name!.trim(), weight: g.group_weight! }))
+        : null;
       const desired = {
         // "AP Calculus AB" + teacher "Ms. York" → "AP Calculus AB - York"
         name: courseNameWithTeacher(baseName, teacher),
@@ -144,6 +167,7 @@ export async function syncCanvas(
         provider: "canvas",
         canvasCourseId,
         canvasUrl: `${conn.instanceUrl}/courses/${canvasCourseId}`,
+        gradeWeights: gradeWeights?.length ? gradeWeights : null,
       };
 
       const match =
@@ -211,7 +235,11 @@ export async function syncCanvas(
     // course) and courses don't depend on each other, so there's no reason to
     // serialize them.
     const assignmentsByCourse = await Promise.all(
-      canvasCourses.map(async (cc) => ({ cc, assignments: await client.listAssignments(cc.id) })),
+      canvasCourses.map(async (cc) => ({
+        cc,
+        assignments: await client.listAssignments(cc.id),
+        groups: groupsByCourseId.get(cc.id) ?? [],
+      })),
     );
 
     // Every Canvas assignment id this sync actually saw, across all synced
@@ -222,9 +250,10 @@ export async function syncCanvas(
     // refreshes what's already mirrored here — it must not treat "still open
     // on Canvas" as a reason to bring a deleted one back.
     const deletedIds = new Set(conn.deletedCanvasAssignmentIds ?? []);
-    for (const { cc, assignments: canvasAssignments } of assignmentsByCourse) {
+    for (const { cc, assignments: canvasAssignments, groups } of assignmentsByCourse) {
       const canvasCourseId = String(cc.id);
       const lifeosCourseId = courseIdByCanvas.get(canvasCourseId)!;
+      const groupNameById = new Map(groups.map((g) => [g.id, (g.name ?? "").trim()]));
 
       for (const ca of canvasAssignments) {
         const canvasAssignmentId = String(ca.id);
@@ -242,7 +271,6 @@ export async function syncCanvas(
         if (!existingA && deletedIds.has(canvasAssignmentId)) continue;
 
         const derivedStatus = deriveStatus(ca.submission ?? null);
-        const submittedAt = ca.submission?.submitted_at ?? ca.submission?.graded_at ?? null;
 
         // Never downgrade a locally-advanced assignment when Canvas gives us no
         // submission signal.
@@ -264,6 +292,8 @@ export async function syncCanvas(
           canvasCourseId,
           canvasUrl: ca.html_url ?? null,
           source: "canvas",
+          category:
+            ca.assignment_group_id != null ? groupNameById.get(ca.assignment_group_id) || null : null,
         };
         // The real "when was this created" answer, when Canvas gives us one —
         // patched onto an existing row too, so an assignment synced before this
@@ -313,7 +343,11 @@ export async function syncCanvas(
          * The assignment is the item that shows. LifeOS does NOT auto-create a
          * mirror task. If a linked task exists (from an older sync or the user),
          * keep it only when it carries real planning info; otherwise remove the
-         * duplicate. Canvas submission still closes out an open plan. */
+         * duplicate. Once Canvas reports the work turned in or graded, the
+         * task's job is done — remove it outright rather than leaving it
+         * sitting "done" in the list. This only ever applies to Canvas-sourced
+         * tasks; a manual task is never auto-removed, the student deletes it
+         * themselves. */
         const linkedTask = existingTasks.find(
           (t) =>
             t.canvasAssignmentId === canvasAssignmentId ||
@@ -327,14 +361,10 @@ export async function syncCanvas(
             linkedTask.estimatedMinutes != null ||
             Boolean(linkedTask.scheduledAt);
 
-          if (isDone && linkedTask.status !== "done") {
-            batch.set(
-              base.collection("tasks").doc(linkedTask.id),
-              stamped({ status: "done", completedAt: submittedAt ?? now }, now),
-              { merge: true },
-            );
+          if (isDone) {
+            batch.delete(base.collection("tasks").doc(linkedTask.id));
             writes++;
-          } else if (!isDone && linkedTask.status !== "done" && !hasPlanningInfo) {
+          } else if (linkedTask.status !== "done" && !hasPlanningInfo) {
             // bare duplicate of the assignment — drop it
             batch.delete(base.collection("tasks").doc(linkedTask.id));
             writes++;
@@ -577,6 +607,10 @@ function changedFields(
     const cur = existing[k];
     if (cur === v) continue;
     if (cur == null && v == null) continue;
+    // Reference equality never holds for a freshly-built array/object (e.g.
+    // gradeWeights) even when its content is identical — compare by value so
+    // an unchanged Canvas weighting scheme doesn't trigger a write every sync.
+    if (Array.isArray(v) && Array.isArray(cur) && JSON.stringify(cur) === JSON.stringify(v)) continue;
     patch[k] = v;
   }
   return Object.keys(patch).length ? patch : null;

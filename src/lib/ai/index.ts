@@ -83,7 +83,7 @@ export function aiStatus(plan?: PlanId) {
 
 export { PLAN_LIMITS, limitsFor, effectivePlan, type PlanId } from "@/lib/plan-limits";
 
-type MeteredFeature = "brainDump" | "assistant";
+type MeteredFeature = "brainDump" | "assistant" | "screenshotImport";
 
 const FEATURE_CONFIG: Record<
   MeteredFeature,
@@ -105,6 +105,12 @@ const FEATURE_CONFIG: Record<
     period: "day",
     cap: (l) => l.assistantPerDay,
     noun: "AI Assistant question",
+  },
+  screenshotImport: {
+    usageField: "screenshotImportUsage",
+    period: "week",
+    cap: (l) => l.screenshotImportsPerWeek,
+    noun: "screenshot import",
   },
 };
 

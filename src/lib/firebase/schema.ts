@@ -156,6 +156,8 @@ export interface ProfileDoc {
   brainDumpUsage: Record<string, number>;
   /** { "2026-08-28": 4 } — per-day AI Assistant question count */
   assistantUsage?: Record<string, number>;
+  /** { "2026-W35": 2 } — per-WEEK screenshot-import (assignment OCR) count */
+  screenshotImportUsage?: Record<string, number>;
 }
 
 export function emptyProfile(name: string, email: string): ProfileDoc {
