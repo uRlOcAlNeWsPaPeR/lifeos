@@ -143,6 +143,11 @@ export function filterToBestTier(voices: VoiceOption[]): VoiceOption[] {
   return ranked.filter((r) => r.rank === best).map((r) => r.v);
 }
 
+/** True once any voice in the list is a Premium/Natural/Enhanced/Google-tier one. */
+export function hasHighQualityVoice(voices: VoiceOption[]): boolean {
+  return voices.some((v) => voiceQualityRank(v.name) <= 1);
+}
+
 /** Load the device's voices once and keep them for the session. */
 export function useVoices() {
   const [voices, setVoices] = useState<VoiceOption[]>([]);
@@ -158,7 +163,7 @@ export function useVoices() {
     return () => { alive = false; };
   }, []);
 
-  return { voices, loading, supported: speechSupported() };
+  return { voices, loading, supported: speechSupported(), hasHighQuality: hasHighQualityVoice(voices) };
 }
 
 /**
