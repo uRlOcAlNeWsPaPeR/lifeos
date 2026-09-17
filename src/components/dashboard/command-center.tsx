@@ -49,6 +49,7 @@ export function CommandCenter() {
     { href: "/school", label: "School", icon: NAV_ICONS.school, sub: model.nav.school },
     { href: "/grades", label: "Grades", icon: NAV_ICONS.grades, sub: model.nav.grades },
     { href: "/practice", label: "Practice", icon: NAV_ICONS.practice, sub: model.nav.practice },
+    { href: "/podcast", label: "Podcast", icon: NAV_ICONS.podcast, sub: model.nav.podcast },
     { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics, sub: model.nav.analytics },
     { href: "/assistant", label: "AI Assistant", icon: NAV_ICONS.assistant, sub: "Ask about your work" },
   ];
@@ -338,6 +339,7 @@ interface Model {
     school: string;
     grades: string;
     practice: string;
+    podcast: string;
     analytics: string;
   };
 }
@@ -352,6 +354,7 @@ function buildModel(
   const prefs = data.profile.prefs;
   const open = data.tasks.filter((t) => t.status === "todo");
   const cardsDue = data.decks.reduce((n, d) => n + dueCount(d.cards), 0);
+  const episodes = data.podcasts.length;
   const gradedCourses = data.courses.filter((c) => c.currentGrade || c.currentScore != null).length;
 
   const overdue = open.filter((t) => t.dueAt && parseDate(t.dueAt) < startToday);
@@ -495,6 +498,7 @@ function buildModel(
       school: openAssign ? `${openAssign} assignment${openAssign === 1 ? "" : "s"}` : "Courses & grades",
       grades: gradedCourses ? `${gradedCourses} class${gradedCourses === 1 ? "" : "es"} tracked` : "GPA & calculators",
       practice: cardsDue ? `${cardsDue} card${cardsDue === 1 ? "" : "s"} to review` : "Drill with games",
+      podcast: episodes ? `${episodes} episode${episodes === 1 ? "" : "s"} to listen to` : "Notes you can listen to",
       analytics: `${analytics.completionRate}% completion`,
     },
   };

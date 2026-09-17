@@ -4,22 +4,23 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  LayoutDashboard,
-  ListChecks,
+  BarChart3,
   Brain,
   CalendarDays,
-  Timer,
-  Target,
-  GraduationCap,
-  Percent,
-  BarChart3,
-  Sparkles,
   Gamepad2,
-  Puzzle,
+  GraduationCap,
+  Headphones,
+  LayoutDashboard,
+  ListChecks,
   LogOut,
   Menu,
-  X,
+  Percent,
+  Puzzle,
   Settings,
+  Sparkles,
+  Target,
+  Timer,
+  X,
 } from "lucide-react";
 import { Logo } from "@/components/brand";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ export const NAV_GROUPS: {
       { href: "/study", label: "Study", icon: Timer },
       { href: "/grades", label: "Grades", icon: Percent },
       { href: "/practice", label: "Practice", icon: Gamepad2 },
+      { href: "/podcast", label: "Podcast", icon: Headphones },
     ],
   },
   {

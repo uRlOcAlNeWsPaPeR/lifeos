@@ -35,6 +35,7 @@ import type {
   CardDTO,
   CourseDTO,
   DeckDTO,
+  PodcastDTO,
   EventDTO,
   FocusSessionDTO,
   GameMode,
@@ -86,6 +87,7 @@ interface StoreData {
   focusSessions: FocusSessionDTO[];
   /** Practice study sets, most recently studied first. */
   decks: DeckDTO[];
+  podcasts: PodcastDTO[];
   ai: { engine: string; label: string };
   limits: {
     plan: string;
@@ -293,6 +295,22 @@ interface AppDataValue {
 
   logFocusSession: (s: Omit<FocusSessionDTO, "id">) => Promise<void>;
 
+  addPodcast: (input: {
+    title: string;
+    summary?: string | null;
+    courseId?: string | null;
+    subject?: string | null;
+    format: PodcastDTO["format"];
+    segments: PodcastDTO["segments"];
+    voices: PodcastDTO["voices"];
+    targetMinutes: number;
+    estimatedSeconds: number;
+    source?: PodcastDTO["source"];
+  }) => Promise<PodcastDTO | undefined>;
+  updatePodcast: (id: string, patch: Partial<PodcastDTO>) => Promise<void>;
+  deletePodcast: (id: string) => Promise<void>;
+  markPodcastPlayed: (id: string) => Promise<void>;
+
   addDeck: (input: {
     title: string;
     description?: string | null;
@@ -345,6 +363,7 @@ export function AppDataProvider({
   const [alarmsRaw, setAlarmsRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [focusRaw, setFocusRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [decksRaw, setDecksRaw] = useState<Raw<Record<string, unknown>>[]>([]);
+  const [podcastsRaw, setPodcastsRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [loaded, setLoaded] = useState({ profile: false, tasks: false, goals: false, courses: false, assignments: false, events: false });
 
   useEffect(() => {
@@ -359,7 +378,7 @@ export function AppDataProvider({
     const mark = (k: keyof typeof loaded) => setLoaded((s) => (s[k] ? s : { ...s, [k]: true }));
     const snap =
       <T,>(
-        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions" | "decks",
+        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions" | "decks" | "podcasts",
         set: (v: T[]) => void,
         markKey?: keyof typeof loaded,
       ) =>
@@ -384,6 +403,7 @@ export function AppDataProvider({
       snap("alarms", setAlarmsRaw),
       snap("focusSessions", setFocusRaw),
       snap("decks", setDecksRaw),
+      snap("podcasts", setPodcastsRaw),
     ];
     return () => unsubs.forEach((u) => u());
   }, [uid]);
@@ -719,6 +739,36 @@ export function AppDataProvider({
         (b.lastStudiedAt ?? b.createdAt).localeCompare(a.lastStudiedAt ?? a.createdAt),
       );
 
+    const podcasts: PodcastDTO[] = podcastsRaw
+      .map((p) => ({
+        id: p.id,
+        title: (p.title as string) ?? "Untitled episode",
+        summary: (p.summary as string) ?? null,
+        courseId: (p.courseId as string) ?? null,
+        subject: (p.subject as string) ?? null,
+        format: (p.format as PodcastDTO["format"]) ?? "solo",
+        // Hydrated defensively — an episode may predate a field, or have been
+        // written by an older build.
+        segments: (((p.segments as PodcastDTO["segments"]) ?? []) as PodcastDTO["segments"]).filter(
+          (seg: PodcastDTO["segments"][number]) =>
+            seg && typeof seg.text === "string" && Boolean(seg.text.trim()),
+        ),
+        voices: {
+          host: ((p.voices as PodcastDTO["voices"])?.host as string) ?? null,
+          cohost: ((p.voices as PodcastDTO["voices"])?.cohost as string) ?? null,
+        },
+        targetMinutes: typeof p.targetMinutes === "number" ? p.targetMinutes : 5,
+        estimatedSeconds: typeof p.estimatedSeconds === "number" ? p.estimatedSeconds : 0,
+        source: (p.source as PodcastDTO["source"]) ?? "offline",
+        createdAt: (p.createdAt as string) ?? now(),
+        lastPlayedAt: (p.lastPlayedAt as string) ?? null,
+        plays: typeof p.plays === "number" ? p.plays : 0,
+      }))
+      // Most recently played first; never-played episodes fall back to creation.
+      .sort((a, b) =>
+        (b.lastPlayedAt ?? b.createdAt).localeCompare(a.lastPlayedAt ?? a.createdAt),
+      );
+
     const email = profile?.email || authEmail || "";
     const plan = effectivePlan(profile?.plan, email);
     const planLimits = limitsFor(plan);
@@ -746,6 +796,7 @@ export function AppDataProvider({
       alarms,
       focusSessions,
       decks,
+      podcasts,
       ai,
       limits: {
         plan,
@@ -763,7 +814,7 @@ export function AppDataProvider({
         screenshotImportsUsedThisWeek: profile?.screenshotImportUsage?.[weekKey()] ?? 0,
       },
     };
-  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, ai]);
+  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, podcastsRaw, ai]);
 
   const analytics = useMemo(
     () => deriveAnalytics(data.allTasks, data.goals, data.assignments),
@@ -1270,6 +1321,60 @@ export function AppDataProvider({
 
       /* ------------------------------ Practice ------------------------------ */
 
+      addPodcast: (input) =>
+        guard(async () => {
+          const segments = (input.segments ?? []).filter(
+            (x: PodcastDTO["segments"][number]) => Boolean(x?.text?.trim()),
+          );
+          if (!segments.length) throw new Error("An episode needs at least one segment.");
+          const doc = {
+            title: input.title.trim().slice(0, 120) || "Untitled episode",
+            summary: input.summary?.trim() || null,
+            courseId: input.courseId ?? null,
+            subject: input.subject?.trim() || null,
+            format: input.format,
+            segments,
+            voices: { host: input.voices.host ?? null, cohost: input.voices.cohost ?? null },
+            targetMinutes: input.targetMinutes,
+            estimatedSeconds: input.estimatedSeconds,
+            source: input.source ?? "offline",
+            createdAt: now(),
+            lastPlayedAt: null,
+            plays: 0,
+          };
+          const ref = await addDoc(col(uid, "podcasts"), doc);
+          return { id: ref.id, ...doc } as PodcastDTO;
+        }, "Couldn't save that episode"),
+
+      updatePodcast: (id, patch) =>
+        guard(
+          () => updateDoc(entityDoc(uid, "podcasts", id), patch as Record<string, unknown>),
+          "Couldn't update that episode",
+        ).then(() => undefined),
+
+      deletePodcast: (id) =>
+        guard(async () => {
+          const snap = podcastsRaw.find((d) => d.id === id);
+          await deleteDoc(entityDoc(uid, "podcasts", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: `Deleted episode \u201C${String(snap.title || "episode")}\u201D`,
+              onUndo: () => setDoc(entityDoc(uid, "podcasts", id), restore),
+            });
+          }
+        }, "Couldn't delete that episode").then(() => undefined),
+
+      markPodcastPlayed: (id) =>
+        guard(async () => {
+          const snap = podcastsRaw.find((d) => d.id === id);
+          const plays = typeof snap?.plays === "number" ? snap.plays : 0;
+          await updateDoc(entityDoc(uid, "podcasts", id), {
+            lastPlayedAt: now(),
+            plays: plays + 1,
+          });
+        }, "Couldn't update that episode").then(() => undefined),
+
       addDeck: (input) =>
         guard(async () => {
           const cards = toCards(input.cards);
@@ -1351,7 +1456,7 @@ export function AppDataProvider({
           await updateDoc(entityDoc(uid, "decks", id), patch);
         }, "Couldn't save your progress").then(() => undefined),
     };
-  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, decksRaw]);
+  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, decksRaw, podcastsRaw]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

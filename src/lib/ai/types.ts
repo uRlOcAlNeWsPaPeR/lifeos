@@ -2,6 +2,8 @@
 // Every AI capability operates over a snapshot of the user's LifeOS data
 // (LifeOSContext) — never as a free-floating chatbot.
 
+import type { PodcastOptions, PodcastScript } from "@/lib/podcast/types";
+
 export type Priority = "low" | "medium" | "high" | "urgent";
 
 /** Which engine produced a result. */
@@ -162,6 +164,11 @@ export interface GenerateCardsResult {
   cards: GeneratedCard[];
 }
 
+export interface GeneratePodcastResult {
+  engine: AIEngine;
+  script: PodcastScript;
+}
+
 export interface AIProvider {
   readonly name: AIEngine;
   parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult>;
@@ -175,4 +182,6 @@ export interface AIProvider {
   assist(messages: AssistantMessage[], ctx: LifeOSContext): Promise<AssistantResult>;
   /** Turn a block of the student's own notes into study cards. */
   generateCards(notes: string, title: string | null): Promise<GenerateCardsResult>;
+  /** Turn a block of the student's own notes into a listenable episode. */
+  generatePodcast(notes: string, opts: PodcastOptions): Promise<GeneratePodcastResult>;
 }

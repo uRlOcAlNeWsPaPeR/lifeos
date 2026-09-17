@@ -247,3 +247,19 @@ export type GameMode = "flashcards" | "match" | "quiz" | "rush";
 
 /** How the student rated their recall on a flashcard. */
 export type Grade = "again" | "hard" | "good" | "easy";
+
+/* -------------------------------------------------------------------------- *
+ * Podcast — episodes built from the student's own notes. Defined alongside the
+ * script-building logic in lib/podcast, re-exported here so the store and UI
+ * import every DTO from one place.
+ * -------------------------------------------------------------------------- */
+export type {
+  PodcastDTO,
+  PodcastFormat,
+  PodcastOptions,
+  PodcastScript,
+  PodcastSegment,
+  PodcastSource,
+  SegmentKind,
+  Speaker,
+} from "@/lib/podcast/types";

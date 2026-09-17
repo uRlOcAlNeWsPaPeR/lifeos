@@ -51,6 +51,7 @@ export const PAGES: PageEntry[] = [
   { label: "School", href: "/school", group: "School", keywords: ["courses", "classes", "class", "assignments", "canvas", "subjects", "teachers"] },
   { label: "Grades", href: "/grades", group: "School", keywords: ["gpa", "marks", "scores", "average", "grade calculator"] },
   { label: "Practice", href: "/practice", group: "School", keywords: ["flashcards", "decks", "study", "quiz", "match", "revise", "memorize", "games"] },
+  { label: "Podcast", href: "/podcast", group: "School", keywords: ["audio", "listen", "episode", "voice", "narrate", "notes out loud", "headphones"] },
   { label: "Goals", href: "/goals", group: "Progress", keywords: ["targets", "habits", "milestones", "ambitions"] },
   { label: "Analytics", href: "/analytics", group: "Progress", keywords: ["stats", "insights", "streak", "progress", "charts"] },
   { label: "AI Assistant", href: "/assistant", group: "Tools", keywords: ["ask", "chat", "help", "question", "ai"] },

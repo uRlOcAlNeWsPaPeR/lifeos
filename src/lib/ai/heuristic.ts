@@ -6,10 +6,13 @@ import type {
   BrainDumpItem,
   BrainDumpResult,
   GenerateCardsResult,
+  GeneratePodcastResult,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
 import { cardsFromNotes, dedupeCards } from "@/lib/practice/parse";
+import { heuristicScript } from "@/lib/podcast/script";
+import type { PodcastOptions } from "@/lib/podcast/types";
 import {
   consolidateFragments,
   derivePriority,
@@ -46,6 +49,15 @@ export class HeuristicProvider implements AIProvider {
     );
     (err as { status?: number }).status = 503;
     throw err;
+  }
+
+  /**
+   * Offline episode building. Reorganises the student's own sentences into a
+   * narrated structure and never generates a factual claim of its own — see
+   * `heuristicScript`.
+   */
+  async generatePodcast(notes: string, opts: PodcastOptions): Promise<GeneratePodcastResult> {
+    return { engine: this.name, script: heuristicScript(notes, opts) };
   }
 
   async parseBrainDump(text: string, ctx: LifeOSContext): Promise<BrainDumpResult> {
