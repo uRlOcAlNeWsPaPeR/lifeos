@@ -1056,6 +1056,8 @@ interface ScreenshotDraft {
   dueAt: string;
   notes: string;
   pointsPossible: string;
+  pointsEarned: string;
+  gradeValue: string;
   keep: boolean;
 }
 
@@ -1063,6 +1065,9 @@ interface ScreenshotAiItem {
   title: string;
   notes: string | null;
   suggestedDueAt: string | null;
+  pointsPossible: number | null;
+  pointsEarned: number | null;
+  gradeValue: string | null;
 }
 
 /**
@@ -1083,7 +1088,15 @@ function AssignmentScreenshotImporter({
   onClose: () => void;
   onImport: (
     courseId: string,
-    items: { title: string; dueAt: string | null; description: string | null; pointsPossible: number | null }[],
+    items: {
+      title: string;
+      dueAt: string | null;
+      description: string | null;
+      pointsPossible: number | null;
+      pointsEarned: number | null;
+      gradeValue: string | null;
+      status: string;
+    }[],
   ) => Promise<number>;
   onUsed: () => void;
   enabled: boolean;
@@ -1141,7 +1154,9 @@ function AssignmentScreenshotImporter({
           title: it.title,
           dueAt: toInputDate(it.suggestedDueAt),
           notes: it.notes ?? "",
-          pointsPossible: "",
+          pointsPossible: it.pointsPossible != null ? String(it.pointsPossible) : "",
+          pointsEarned: it.pointsEarned != null ? String(it.pointsEarned) : "",
+          gradeValue: it.gradeValue ?? "",
           keep: true,
         })),
       );
@@ -1164,12 +1179,21 @@ function AssignmentScreenshotImporter({
     setImporting(true);
     const count = await onImport(
       course.id,
-      kept.map((i) => ({
-        title: i.title.trim(),
-        dueAt: i.dueAt || null,
-        description: i.notes.trim() || null,
-        pointsPossible: i.pointsPossible ? Number(i.pointsPossible) : null,
-      })),
+      kept.map((i) => {
+        const pointsEarned = i.pointsEarned ? Number(i.pointsEarned) : null;
+        const gradeValue = i.gradeValue.trim() || null;
+        return {
+          title: i.title.trim(),
+          dueAt: i.dueAt || null,
+          description: i.notes.trim() || null,
+          pointsPossible: i.pointsPossible ? Number(i.pointsPossible) : null,
+          pointsEarned,
+          gradeValue,
+          // A captured score/grade means the screenshot already shows this as
+          // graded — matches how a grade is treated everywhere else in the app.
+          status: pointsEarned != null || gradeValue ? "graded" : "open",
+        };
+      }),
     );
     setImporting(false);
     if (count) toast(`Added ${count} assignment${count === 1 ? "" : "s"} ✓`, "success");
@@ -1218,12 +1242,19 @@ function AssignmentScreenshotImporter({
                     className="mt-1 h-4 w-4 shrink-0 accent-primary"
                   />
                   <div className="min-w-0 flex-1 space-y-2">
-                    <Input
-                      value={it.title}
-                      onChange={(e) => patch(i, { title: e.target.value })}
-                      placeholder="Assignment title"
-                      className="h-9"
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={it.title}
+                        onChange={(e) => patch(i, { title: e.target.value })}
+                        placeholder="Assignment title"
+                        className="h-9"
+                      />
+                      {(it.pointsEarned || it.gradeValue) && (
+                        <Badge tone="success" className="shrink-0">
+                          Graded
+                        </Badge>
+                      )}
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <Input
                         type="date"
@@ -1233,12 +1264,29 @@ function AssignmentScreenshotImporter({
                       />
                       <Input
                         inputMode="decimal"
-                        placeholder="Points"
+                        placeholder="Points possible"
                         value={it.pointsPossible}
                         onChange={(e) => patch(i, { pointsPossible: e.target.value })}
                         className="h-9"
                       />
                     </div>
+                    {(it.pointsEarned || it.gradeValue) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          inputMode="decimal"
+                          placeholder="Score earned"
+                          value={it.pointsEarned}
+                          onChange={(e) => patch(i, { pointsEarned: e.target.value })}
+                          className="h-9"
+                        />
+                        <Input
+                          placeholder="Grade (A-, 95%)"
+                          value={it.gradeValue}
+                          onChange={(e) => patch(i, { gradeValue: e.target.value })}
+                          className="h-9"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1269,8 +1317,8 @@ function AssignmentScreenshotImporter({
             A photo of a Canvas assignments page, a syllabus, or a planner — LifeOS reads every assignment off it.
           </p>
           <p className="text-xs text-muted-foreground/70">
-            This only pulls in assignment titles, due dates and points possible — not grades, scores, or
-            anything else. Add scores yourself once they&apos;re back.
+            Pulls in titles, due dates, and points possible — and if a score or grade is already showing
+            for something, that comes in too and it's marked graded automatically.
           </p>
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChosen} />
           <Button

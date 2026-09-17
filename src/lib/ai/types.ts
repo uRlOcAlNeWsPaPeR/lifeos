@@ -76,6 +76,15 @@ export interface BrainDumpItem {
   estimatedMinutes: number | null;
   suggestedSlot: string | null;
   reasoning: string;
+  /**
+   * Only ever populated from a screenshot — a text brain dump has no grade to
+   * read. When present, the assignment is already graded: `pointsEarned`
+   * (with `pointsPossible`) for a shown score like "18/20", or `gradeValue`
+   * for a letter/percent like "A-"/"95%" when no raw point score is shown.
+   */
+  pointsPossible?: number | null;
+  pointsEarned?: number | null;
+  gradeValue?: string | null;
 }
 
 export interface BrainDumpResult {

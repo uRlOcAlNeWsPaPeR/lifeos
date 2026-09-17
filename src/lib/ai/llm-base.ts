@@ -448,9 +448,15 @@ const BRAIN_DUMP_IMAGE_SYSTEM = [
   "",
   "PRIORITY (`suggestedPriority` ∈ low|medium|high|urgent): default \"medium\" unless the image itself marks something urgent/overdue.",
   "",
+  "GRADE — if a score is visibly shown for that specific item, capture it, since that item is already graded:",
+  '- A raw score like "18/20" or "45/50": put the first number in `pointsEarned` and the second in `pointsPossible`.',
+  '- A points-possible-only value with no score yet ("20 pts", "Out of 50"): `pointsPossible` only, leave `pointsEarned` null — this one is NOT graded.',
+  '- A letter or percent with no raw point score shown ("A-", "92%"): put it in `gradeValue` verbatim, leave `pointsEarned`/`pointsPossible` null.',
+  "- Nothing graded shown for that item: all three null. Never invent a score — most items in a typical list are still open.",
+  "",
   "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
   "",
-  'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"summary":"..."}.',
+  'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"summary":"..."}.',
 ].join("\n");
 
 /**
@@ -520,6 +526,16 @@ function buildBrainDumpItems(
             ? raw.suggestedSlot.trim()
             : null,
         reasoning: typeof raw.reasoning === "string" ? raw.reasoning : "",
+        pointsPossible:
+          typeof raw.pointsPossible === "number" && raw.pointsPossible > 0
+            ? raw.pointsPossible
+            : null,
+        pointsEarned:
+          typeof raw.pointsEarned === "number" && raw.pointsEarned >= 0 ? raw.pointsEarned : null,
+        gradeValue:
+          typeof raw.gradeValue === "string" && raw.gradeValue.trim()
+            ? raw.gradeValue.trim().slice(0, 20)
+            : null,
       };
     })
     .filter((x): x is BrainDumpItem => x !== null);
@@ -546,6 +562,9 @@ const BRAIN_DUMP_SCHEMA = {
           estimatedMinutes: { type: "number" },
           suggestedSlot: { type: "string" },
           reasoning: { type: "string" },
+          pointsPossible: { type: "number" },
+          pointsEarned: { type: "number" },
+          gradeValue: { type: "string" },
         },
         required: ["title"],
         propertyOrdering: [
@@ -558,6 +577,9 @@ const BRAIN_DUMP_SCHEMA = {
           "estimatedMinutes",
           "suggestedSlot",
           "reasoning",
+          "pointsPossible",
+          "pointsEarned",
+          "gradeValue",
         ],
       },
     },

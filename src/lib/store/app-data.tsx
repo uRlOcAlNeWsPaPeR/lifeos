@@ -265,7 +265,15 @@ interface AppDataValue {
   addAssignment: (input: Record<string, unknown>) => Promise<AssignmentDTO | undefined>;
   addAssignmentsBatch: (
     courseId: string,
-    items: { title: string; dueAt: string | null; description: string | null; pointsPossible: number | null }[],
+    items: {
+      title: string;
+      dueAt: string | null;
+      description: string | null;
+      pointsPossible: number | null;
+      pointsEarned: number | null;
+      gradeValue: string | null;
+      status: string;
+    }[],
   ) => Promise<number>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
@@ -1148,9 +1156,9 @@ export function AppDataProvider({
               description: it.description ?? null,
               courseId,
               dueAt: it.dueAt ?? null,
-              status: "open",
-              gradeValue: null,
-              pointsEarned: null,
+              status: it.status,
+              gradeValue: it.gradeValue ?? null,
+              pointsEarned: it.pointsEarned ?? null,
               pointsPossible: it.pointsPossible ?? null,
               createdAt: now(),
             });
