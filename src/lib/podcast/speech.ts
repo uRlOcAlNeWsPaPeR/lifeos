@@ -108,6 +108,24 @@ export function sortVoices(voices: SpeechSynthesisVoice[]): VoiceOption[] {
     });
 }
 
+// A stock OS install bundles voices for dozens of languages and English
+// accents nobody asked for here — keep just the two generic ones.
+const GENERIC_ENGLISH = new Set(["en-us", "en-gb"]);
+
+/**
+ * Drop every voice except generic American/British English — every other
+ * language and every other English accent (Australian, Indian, Irish,
+ * Scottish, South African, Canadian...) is gone, not just deprioritized.
+ * Falls back to whatever English (then whatever at all) the device actually
+ * has if that filter would otherwise leave the picker empty.
+ */
+export function filterToGenericEnglish(voices: VoiceOption[]): VoiceOption[] {
+  const generic = voices.filter((v) => GENERIC_ENGLISH.has(v.lang.toLowerCase()));
+  if (generic.length) return generic;
+  const anyEnglish = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+  return anyEnglish.length ? anyEnglish : voices;
+}
+
 /** Load the device's voices once and keep them for the session. */
 export function useVoices() {
   const [voices, setVoices] = useState<VoiceOption[]>([]);
@@ -117,7 +135,7 @@ export function useVoices() {
     let alive = true;
     loadVoices().then((list) => {
       if (!alive) return;
-      setVoices(sortVoices(list));
+      setVoices(filterToGenericEnglish(sortVoices(list)));
       setLoading(false);
     });
     return () => { alive = false; };
