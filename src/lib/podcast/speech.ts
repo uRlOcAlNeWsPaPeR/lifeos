@@ -126,6 +126,23 @@ export function filterToGenericEnglish(voices: VoiceOption[]): VoiceOption[] {
   return anyEnglish.length ? anyEnglish : voices;
 }
 
+/**
+ * Keep only the best quality tier this specific device actually has —
+ * Premium/Natural if any exist, hiding every Standard voice; otherwise
+ * Enhanced/Google if any exist; and so on down to Standard. A device's voice
+ * tier is entirely local to that machine (there's no way for a website to
+ * install or force a particular voice on a visitor), so "best available"
+ * has to be computed per-device rather than assumed — this is what makes
+ * every visitor get the best THEY have, without leaving someone whose
+ * device only offers Standard voices with an empty picker.
+ */
+export function filterToBestTier(voices: VoiceOption[]): VoiceOption[] {
+  if (!voices.length) return voices;
+  const ranked = voices.map((v) => ({ v, rank: voiceQualityRank(v.name) }));
+  const best = Math.min(...ranked.map((r) => r.rank));
+  return ranked.filter((r) => r.rank === best).map((r) => r.v);
+}
+
 /** Load the device's voices once and keep them for the session. */
 export function useVoices() {
   const [voices, setVoices] = useState<VoiceOption[]>([]);
@@ -135,7 +152,7 @@ export function useVoices() {
     let alive = true;
     loadVoices().then((list) => {
       if (!alive) return;
-      setVoices(filterToGenericEnglish(sortVoices(list)));
+      setVoices(filterToBestTier(filterToGenericEnglish(sortVoices(list))));
       setLoading(false);
     });
     return () => { alive = false; };
