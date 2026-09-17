@@ -149,9 +149,12 @@ export async function syncCanvas(
       const teacher = cc.teachers?.[0]?.display_name?.trim() || null;
       const baseName = cc.name?.trim() || `Canvas course ${canvasCourseId}`;
       const groups = groupsByCourseId.get(cc.id) ?? [];
-      // Canvas is the source of truth for a synced course's weights, same as its
-      // score/letter grade — always reflect its current state, clearing back to
-      // null the moment the teacher turns weighting off or removes every group.
+      // Canvas only gets to own `gradeWeights` when it actually HAS weighted
+      // grading turned on — that's real official data, so it always wins.
+      // When it doesn't, the field is left out of `desired` entirely (not
+      // forced to null) so a student's own manually-entered categories on
+      // that Canvas course — allowed same as any manual course — survive
+      // every resync instead of getting silently wiped.
       const gradeWeights = cc.apply_assignment_group_weights
         ? groups
             .filter((g) => typeof g.group_weight === "number" && g.group_weight! > 0 && g.name?.trim())
@@ -167,7 +170,9 @@ export async function syncCanvas(
         provider: "canvas",
         canvasCourseId,
         canvasUrl: `${conn.instanceUrl}/courses/${canvasCourseId}`,
-        gradeWeights: gradeWeights?.length ? gradeWeights : null,
+        ...(cc.apply_assignment_group_weights
+          ? { gradeWeights: gradeWeights?.length ? gradeWeights : null }
+          : {}),
       };
 
       const match =
@@ -292,9 +297,15 @@ export async function syncCanvas(
           canvasCourseId,
           canvasUrl: ca.html_url ?? null,
           source: "canvas",
-          category:
-            ca.assignment_group_id != null ? groupNameById.get(ca.assignment_group_id) || null : null,
         };
+        // Same rule as the course's gradeWeights: only Canvas's own group data
+        // overwrites category. When the course has no weighting turned on (no
+        // groups fetched), leave the field out entirely so a student's own
+        // manual categorization of a Canvas assignment survives resyncs.
+        if (groupNameById.size > 0) {
+          desiredA.category =
+            ca.assignment_group_id != null ? groupNameById.get(ca.assignment_group_id) || null : null;
+        }
         // The real "when was this created" answer, when Canvas gives us one —
         // patched onto an existing row too, so an assignment synced before this
         // was tracked self-corrects on its next sync instead of staying stuck

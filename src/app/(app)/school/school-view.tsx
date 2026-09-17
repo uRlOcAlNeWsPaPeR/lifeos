@@ -433,11 +433,9 @@ function CourseCard({
         <Button size="sm" variant="ghost" onClick={onImportScreenshot}>
           <Camera className="h-3.5 w-3.5" /> Screenshot
         </Button>
-        {course.provider !== "canvas" && (
-          <Button size="sm" variant="ghost" onClick={onEditWeights}>
-            <Scale className="h-3.5 w-3.5" /> Weights
-          </Button>
-        )}
+        <Button size="sm" variant="ghost" onClick={onEditWeights}>
+          <Scale className="h-3.5 w-3.5" /> Weights
+        </Button>
         {visible.length > 0 && (
           <Button
             size="sm"
@@ -452,7 +450,7 @@ function CourseCard({
       {selectMode && selected.size > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5 animate-fade-in">
           <span className="px-1 text-xs font-medium">{selected.size} selected</span>
-          {course.provider !== "canvas" && course.gradeWeights && course.gradeWeights.length > 0 && (
+          {course.gradeWeights && course.gradeWeights.length > 0 && (
             <Select
               className="h-8 w-36 text-xs"
               defaultValue=""
@@ -631,7 +629,7 @@ function AssignmentRow({
       )}
       {!selectMode && (
         <>
-          {course.provider !== "canvas" && course.gradeWeights && course.gradeWeights.length > 0 && (
+          {course.gradeWeights && course.gradeWeights.length > 0 && (
             <Select
               className="h-8 w-28 text-xs"
               value={a.category ?? ""}
