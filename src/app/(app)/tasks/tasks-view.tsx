@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, ListChecks, Clock, Flame } from "lucide-react";
+import { Plus, ListChecks, Clock, Flame, CalendarClock, CalendarX2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -9,14 +9,16 @@ import { EmptyState } from "@/components/ui/misc";
 import { TaskItem } from "@/components/app/task-item";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtDuration, parseDate } from "@/lib/format";
+import { fmtDate, fmtDuration, fmtTime, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskDTO } from "@/lib/types";
 
+type Group = "planned" | "unplanned";
 type Tab = "today" | "upcoming" | "completed" | "all";
 
 export function TasksView() {
   const { data, addTask, updateTask, toggleTask, deleteTask, reorderTasks } = useAppData();
+  const [group, setGroup] = useState<Group>("planned");
   const [tab, setTab] = useState<Tab>("today");
   const [editing, setEditing] = useState<TaskDTO | null>(null);
   const [creating, setCreating] = useState(false);
@@ -31,33 +33,68 @@ export function TasksView() {
     [data.courses],
   );
 
+  // `allTasks` (not the narrower `tasks`) so a task created anywhere in the
+  // app — including an assignment's own "planning task" over on School, which
+  // `tasks` deliberately hides everywhere else to avoid double-counting
+  // against its assignment — still shows up here. This is the one place
+  // meant to be the complete, unfiltered list of everything to do.
+  const sortedAll = useMemo(
+    () =>
+      [...data.allTasks].sort(
+        (a, b) => a.sortOrder - b.sortOrder || (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z"),
+      ),
+    [data.allTasks],
+  );
+
+  // Planned = has a "work on it at" time (scheduledAt); everything else is
+  // unplanned. That split is the top-level nav; Today/Upcoming/All/Completed
+  // then slice whichever group is selected.
+  const { plannedAll, unplannedAll } = useMemo(
+    () => ({
+      plannedAll: sortedAll
+        .filter((t) => t.scheduledAt)
+        .sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? "")),
+      unplannedAll: sortedAll.filter((t) => !t.scheduledAt),
+    }),
+    [sortedAll],
+  );
+
+  const groupTasks = group === "planned" ? plannedAll : unplannedAll;
+
   const buckets = useMemo(() => {
     const eod = new Date();
     eod.setHours(23, 59, 59, 999);
-    // `allTasks` (not the narrower `tasks`) so a task created anywhere in the
-    // app — including an assignment's own "planning task" over on School,
-    // which `tasks` deliberately hides everywhere else to avoid double-
-    // counting against its assignment — still shows up here. This is the one
-    // place meant to be the complete, unfiltered list of everything to do.
-    const sorted = [...data.allTasks].sort(
-      (a, b) => a.sortOrder - b.sortOrder || (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z"),
-    );
-    const open = sorted.filter((t) => t.status === "todo");
+    const open = groupTasks.filter((t) => t.status === "todo");
+    const completed = groupTasks
+      .filter((t) => t.status === "done")
+      .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? ""));
+    // Planned tasks are sliced by *when you planned to work on them*, not
+    // their due date — a task planned for today with no separate due date is
+    // still today's task, not "upcoming". Unplanned tasks have no scheduledAt
+    // at all, so they keep the old due-date split.
+    if (group === "planned") {
+      return {
+        today: open.filter((t) => t.scheduledAt && new Date(t.scheduledAt) <= eod),
+        upcoming: open.filter((t) => t.scheduledAt && new Date(t.scheduledAt) > eod),
+        completed,
+        all: open,
+      };
+    }
     return {
       today: open.filter((t) => t.dueAt && parseDate(t.dueAt) <= eod),
       upcoming: open.filter((t) => !t.dueAt || parseDate(t.dueAt) > eod),
-      completed: sorted
-        .filter((t) => t.status === "done")
-        .sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")),
+      completed,
       all: open,
     };
-  }, [data.allTasks]);
+  }, [groupTasks, group]);
 
   const list = buckets[tab];
 
-  const openTasks = buckets.all;
-  const totalMinutes = openTasks.reduce((n, t) => n + (t.estimatedMinutes ?? 0), 0);
-  const overdue = openTasks.filter((t) => t.dueAt && parseDate(t.dueAt) < new Date()).length;
+  // Page-level stats stay global — switching Planned/Unplanned shouldn't
+  // change your sense of total workload or what's overdue.
+  const allOpen = sortedAll.filter((t) => t.status === "todo");
+  const totalMinutes = allOpen.reduce((n, t) => n + (t.estimatedMinutes ?? 0), 0);
+  const overdue = allOpen.filter((t) => t.dueAt && parseDate(t.dueAt) < new Date()).length;
 
   async function save(draft: TaskDraft) {
     const payload = draftToPayload(draft);
@@ -70,12 +107,17 @@ export function TasksView() {
     const ordered = [...list];
     const from = ordered.findIndex((t) => t.id === dragId);
     const to = ordered.findIndex((t) => t.id === targetId);
+    setDragId(null);
     if (from < 0 || to < 0) return;
     const [moved] = ordered.splice(from, 1);
     ordered.splice(to, 0, moved);
-    setDragId(null);
     await reorderTasks(ordered.map((t) => t.id));
   }
+
+  const groups: { id: Group; label: string; icon: React.ComponentType<{ className?: string }>; count: number }[] = [
+    { id: "planned", label: "Planned", icon: CalendarClock, count: plannedAll.filter((t) => t.status === "todo").length },
+    { id: "unplanned", label: "Unplanned", icon: CalendarX2, count: unplannedAll.filter((t) => t.status === "todo").length },
+  ];
 
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: "today", label: "Today", count: buckets.today.length },
@@ -97,7 +139,7 @@ export function TasksView() {
       />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        <StatChip icon={ListChecks} label="Open tasks" value={openTasks.length} />
+        <StatChip icon={ListChecks} label="Open tasks" value={allOpen.length} />
         <StatChip icon={Clock} label="Estimated work" value={fmtDuration(totalMinutes) || "0m"} />
         <StatChip
           icon={Flame}
@@ -105,6 +147,39 @@ export function TasksView() {
           value={overdue}
           tone={overdue > 0 ? "warn" : "ok"}
         />
+      </div>
+
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        {groups.map((g) => (
+          <button
+            key={g.id}
+            onClick={() => {
+              setGroup(g.id);
+              setTab("today");
+            }}
+            className={cn(
+              "flex items-center gap-2.5 rounded-2xl border p-3.5 text-left transition-all duration-200",
+              group === g.id
+                ? "border-primary/40 bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_0_0_1px_hsl(var(--glow)/0.3)]"
+                : "border-white/[0.07] bg-card/60 hover:border-white/15",
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
+                group === g.id ? "bg-primary/20 text-primary" : "bg-white/[0.05] text-muted-foreground",
+              )}
+            >
+              <g.icon className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">{g.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {g.count} open task{g.count === 1 ? "" : "s"}
+              </p>
+            </div>
+          </button>
+        ))}
       </div>
 
       <div className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-white/[0.07] bg-card/60 p-1.5 backdrop-blur-xl">
@@ -134,12 +209,16 @@ export function TasksView() {
 
       {list.length === 0 ? (
         <EmptyState
-          icon={ListChecks}
+          icon={group === "planned" ? CalendarClock : ListChecks}
           title={tab === "completed" ? "Nothing completed yet" : "No tasks here"}
           description={
-            tab === "today"
-              ? "Nothing due today. Check Upcoming or add something new."
-              : "Add a task, or run a Brain Dump to capture everything at once."
+            group === "planned"
+              ? tab === "today"
+                ? "Nothing planned for today. Set a time on a task to see it here."
+                : "Nothing planned yet. Set a \"work on it at\" time on a task's editor to see it here."
+              : tab === "today"
+                ? "Nothing due today. Check Upcoming or add something new."
+                : "Add a task, or run a Brain Dump to capture everything at once."
           }
           action={
             tab !== "completed" && (
@@ -167,6 +246,11 @@ export function TasksView() {
                 onDelete={(t) => deleteTask(t.id)}
                 draggable={tab !== "completed"}
               />
+              {task.scheduledAt && (
+                <p className="mt-1 pl-1 text-xs text-muted-foreground">
+                  Planned for {fmtPlanned(task.scheduledAt)}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -185,6 +269,13 @@ export function TasksView() {
       />
     </>
   );
+}
+
+function fmtPlanned(scheduledAt: string) {
+  const d = new Date(scheduledAt);
+  const sameDay = d.toDateString() === new Date().toDateString();
+  const time = fmtTime(d);
+  return sameDay ? `Today, ${time}` : `${fmtDate(d, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 function StatChip({

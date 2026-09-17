@@ -9,6 +9,7 @@ import { recordLastPage } from "@/lib/last-page";
 import { Sidebar } from "@/components/app/sidebar";
 import { DailyBrief } from "@/components/app/daily-brief";
 import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
+import { TaskReminders } from "@/components/app/task-reminders";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
 import { UndoBar } from "@/components/ui/undo-bar";
 import { CommandPalette } from "@/components/app/command-palette";
@@ -60,6 +61,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         <main className="min-h-[100svh]">{children}</main>
         <DailyBrief />
         <CanvasAutoSync />
+        <TaskReminders />
         <CommandPalette />
         <StudyLockPrompt />
         <UndoBar />
@@ -80,6 +82,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
       </main>
       <DailyBrief />
       <CanvasAutoSync />
+      <TaskReminders />
       <CommandPalette />
       <StudyLockPrompt />
       <UndoBar className="lg:left-[calc(16rem+1rem)]" />

@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { HelpButton } from "@/components/ui/help-button";
+import { Switch } from "@/components/ui/switch";
 import { useAppData } from "@/lib/store/app-data";
 import { checkBedtime, fmt12, splitSessions } from "@/lib/scheduling/sleep";
 import { toInputDate } from "@/lib/format";
@@ -80,6 +81,16 @@ export function TaskEditor({
     return checkBedtime(start, Number(draft.estimatedMinutes), prefs, draft.respectSleep);
   }, [draft.scheduledDate, draft.scheduledTime, draft.estimatedMinutes, draft.respectSleep, prefs]);
 
+  // Planning to start work after the thing is already due is almost always a
+  // mistake — flag it instead of silently accepting it.
+  const scheduledAfterDue = useMemo(() => {
+    if (!draft.scheduledDate || !draft.dueAt) return false;
+    const due = new Date(`${draft.dueAt}T${draft.dueTime || "23:59"}`);
+    const scheduled = new Date(`${draft.scheduledDate}T${draft.scheduledTime || "09:00"}`);
+    if (Number.isNaN(due.getTime()) || Number.isNaN(scheduled.getTime())) return false;
+    return scheduled.getTime() > due.getTime();
+  }, [draft.scheduledDate, draft.scheduledTime, draft.dueAt, draft.dueTime]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!draft.title.trim()) return;
@@ -100,6 +111,9 @@ export function TaskEditor({
   }
 
   const isEdit = Boolean(task && task.id);
+  // Canvas is the source of truth for its own assignments' due dates — a sync
+  // would just overwrite a manual change anyway, so don't let it happen here.
+  const isCanvasTask = task?.source === "canvas";
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? "Edit task" : "New task"}>
@@ -133,15 +147,20 @@ export function TaskEditor({
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label="Due date" hint="Blank = no deadline">
-            <Input type="date" value={draft.dueAt} onChange={(e) => setDraft({ ...draft, dueAt: e.target.value })} />
+          <Field label="Due date" hint={isCanvasTask ? "Set by Canvas" : "Blank = no deadline"}>
+            <Input
+              type="date"
+              value={draft.dueAt}
+              onChange={(e) => setDraft({ ...draft, dueAt: e.target.value })}
+              disabled={isCanvasTask}
+            />
           </Field>
           <Field label="Due time">
             <Input
               type="time"
               value={draft.dueTime}
               onChange={(e) => setDraft({ ...draft, dueTime: e.target.value })}
-              disabled={!draft.dueAt}
+              disabled={isCanvasTask || !draft.dueAt}
             />
           </Field>
           <Field label="Est. time (min)" hint="Used for planning">
@@ -176,9 +195,46 @@ export function TaskEditor({
             />
           </div>
 
-          <label className="mt-3 flex items-center justify-between gap-2 text-sm">
-            <span className="flex items-center gap-1.5">
-              Respect my sleep schedule
+          {scheduledAfterDue && (
+            <div className="mt-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs animate-scale-in">
+              <p className="flex items-center gap-1.5 font-medium text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" /> This is planned after the due date
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                You&apos;d be starting this after it&apos;s already due.{" "}
+                {isCanvasTask
+                  ? "Pick an earlier time to work on it — the due date is set by Canvas."
+                  : "Push the due date out, or pick an earlier time to work on it."}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {!isCanvasTask && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraft({ ...draft, dueAt: draft.scheduledDate, dueTime: draft.scheduledTime })
+                    }
+                    className="rounded-md border border-white/10 px-2 py-1 font-medium hover:border-primary/40 hover:text-primary"
+                  >
+                    Move due date to match
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, scheduledDate: "", scheduledTime: "" })}
+                  className="rounded-md border border-white/10 px-2 py-1 font-medium text-muted-foreground hover:border-white/25 hover:text-foreground"
+                >
+                  Clear planned time
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* A plain <div>, not <label> — a <label> forwards clicks to whichever
+              labelable descendant the browser picks, which fires the switch from
+              clicks meant for Help (and vice versa). */}
+          <div className="mt-3 flex items-center justify-between gap-2 text-sm">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0">Respect my sleep schedule</span>
               <HelpButton>
                 <p className="font-medium text-foreground">Why does LifeOS need this?</p>
                 <p className="mt-1">
@@ -191,24 +247,12 @@ export function TaskEditor({
                 </p>
               </HelpButton>
             </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={draft.respectSleep}
-              onClick={() => setDraft({ ...draft, respectSleep: !draft.respectSleep })}
-              className={cn(
-                "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-                draft.respectSleep ? "bg-gradient-brand" : "bg-white/15",
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
-                  draft.respectSleep ? "translate-x-4" : "translate-x-0.5",
-                )}
-              />
-            </button>
-          </label>
+            <Switch
+              checked={draft.respectSleep}
+              onChange={(v) => setDraft({ ...draft, respectSleep: v })}
+              label="Respect my sleep schedule"
+            />
+          </div>
 
           {bedtime?.conflict && (
             <div className="mt-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs animate-scale-in">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Badge, priorityTone } from "@/components/ui/badge";
 import { relativeDue, fmtDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,7 @@ export function TaskItem({
         "group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-card/60 backdrop-blur-xl transition-all duration-200 hover:border-white/15",
         compact ? "px-3 py-2" : "px-4 py-3.5",
         done && "opacity-55",
-        past && "opacity-60",
+        past && "border-destructive/30",
       )}
     >
       {draggable && (
@@ -92,8 +92,9 @@ export function TaskItem({
       </div>
 
       {due && !done && (
-        <Badge tone={due.tone} className="shrink-0">
-          {due.label}
+        <Badge tone={due.past ? "destructive" : due.tone} className="shrink-0">
+          {due.past && <AlertTriangle className="h-3 w-3" />}
+          {due.past ? "Overdue" : due.label}
         </Badge>
       )}
       {!done && (
