@@ -272,6 +272,7 @@ interface AppDataValue {
       pointsPossible: number | null;
       pointsEarned: number | null;
       gradeValue: string | null;
+      category: string | null;
       status: string;
     }[],
   ) => Promise<number>;
@@ -1160,6 +1161,7 @@ export function AppDataProvider({
               gradeValue: it.gradeValue ?? null,
               pointsEarned: it.pointsEarned ?? null,
               pointsPossible: it.pointsPossible ?? null,
+              category: it.category ?? null,
               createdAt: now(),
             });
           }

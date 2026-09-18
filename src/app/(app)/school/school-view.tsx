@@ -1058,6 +1058,7 @@ interface ScreenshotDraft {
   pointsPossible: string;
   pointsEarned: string;
   gradeValue: string;
+  category: string;
   keep: boolean;
 }
 
@@ -1068,6 +1069,7 @@ interface ScreenshotAiItem {
   pointsPossible: number | null;
   pointsEarned: number | null;
   gradeValue: string | null;
+  category: string | null;
 }
 
 /**
@@ -1095,6 +1097,7 @@ function AssignmentScreenshotImporter({
       pointsPossible: number | null;
       pointsEarned: number | null;
       gradeValue: string | null;
+      category: string | null;
       status: string;
     }[],
   ) => Promise<number>;
@@ -1149,6 +1152,18 @@ function AssignmentScreenshotImporter({
         );
         return;
       }
+      // Pre-select a category when the screenshot's own label matches one of
+      // this course's declared weight categories (case-insensitive) — a
+      // gradebook screenshot often already shows "Formative"/"Homework"/etc.
+      // right next to each item. Otherwise left blank: an assignment with no
+      // category doesn't count toward ANY weighted bucket, so a captured
+      // grade silently wouldn't move the course grade at all until tagged.
+      const weights = course?.gradeWeights ?? [];
+      const matchCategory = (raw: string | null) => {
+        if (!raw) return "";
+        const hit = weights.find((w) => w.category.toLowerCase() === raw.trim().toLowerCase());
+        return hit?.category ?? "";
+      };
       setItems(
         res.items.map((it) => ({
           title: it.title,
@@ -1157,6 +1172,7 @@ function AssignmentScreenshotImporter({
           pointsPossible: it.pointsPossible != null ? String(it.pointsPossible) : "",
           pointsEarned: it.pointsEarned != null ? String(it.pointsEarned) : "",
           gradeValue: it.gradeValue ?? "",
+          category: matchCategory(it.category),
           keep: true,
         })),
       );
@@ -1189,6 +1205,7 @@ function AssignmentScreenshotImporter({
           pointsPossible: i.pointsPossible ? Number(i.pointsPossible) : null,
           pointsEarned,
           gradeValue,
+          category: i.category || null,
           // A captured score/grade means the screenshot already shows this as
           // graded — matches how a grade is treated everywhere else in the app.
           status: pointsEarned != null || gradeValue ? "graded" : "open",
@@ -1270,6 +1287,21 @@ function AssignmentScreenshotImporter({
                         className="h-9"
                       />
                     </div>
+                    {course?.gradeWeights && course.gradeWeights.length > 0 && (
+                      <Select
+                        className="h-9"
+                        value={it.category}
+                        onChange={(e) => patch(i, { category: e.target.value })}
+                        aria-label="Grade category"
+                      >
+                        <option value="">No category — won&apos;t count toward the weighted grade</option>
+                        {byWeightDesc(course.gradeWeights).map((w) => (
+                          <option key={w.category} value={w.category}>
+                            {w.category} ({w.weight}%)
+                          </option>
+                        ))}
+                      </Select>
+                    )}
                     {(it.pointsEarned || it.gradeValue) && (
                       <div className="grid grid-cols-2 gap-2">
                         <Input
