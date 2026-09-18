@@ -453,6 +453,7 @@ const BRAIN_DUMP_IMAGE_SYSTEM = [
   '- A points-possible-only value with no score yet ("20 pts", "Out of 50"): `pointsPossible` only, leave `pointsEarned` null — this one is NOT graded.',
   '- A letter or percent with no raw point score shown ("A-", "92%"): put it in `gradeValue` verbatim, leave `pointsEarned`/`pointsPossible` null.',
   "- Nothing graded shown for that item: all three null. Never invent a score — most items in a typical list are still open.",
+  '- DO NOT confuse a CATEGORY-level number with an individual assignment\'s grade. A gradebook often shows a running average or subtotal for a whole group ("Homework: 92%", "Tests Average", a category header/footer row, an overall course score) — that number belongs to the CATEGORY, not to any one assignment underneath it, even the closest-looking row. Only attach a grade to a specific item when the score sits directly ON that item\'s own row/line, clearly tied to its own name — if you\'re not sure a score belongs to that exact item, leave it null rather than guess.',
   "",
   "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
   "",
