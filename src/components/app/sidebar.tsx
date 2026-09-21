@@ -275,11 +275,12 @@ export function Sidebar({
             </div>
           ))
         )}
-        <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
-          <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
-          <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
-        </div>
       </nav>
+
+      <div className="space-y-1 border-t border-white/[0.06] px-3 pt-3">
+        <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
+        <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
+      </div>
 
       <div className="pb-safe space-y-2 p-3">
         <Link
