@@ -2,8 +2,8 @@
 // entry along an invisible arc; the centred one is active. Adding a future
 // app (Coding, Finance, Fitness…) is a single entry here — the orbit
 // positions it. Each app gets its own hue for a real color identity, not
-// just a green-family variant — SAT's genuinely blue, Progress genuinely
-// amber, so the spheres stay distinguishable at a glance.
+// just a green-family variant — SAT's genuinely blue, so the spheres stay
+// distinguishable at a glance.
 
 export interface LifeApp {
   id: string;
@@ -42,16 +42,6 @@ export const LIFE_APPS: LifeApp[] = [
     hue: 227,
     kind: "internal",
     enterLabel: "Enter SAT",
-  },
-  {
-    id: "progress",
-    name: "Progress",
-    tagline: "Goals, streaks and how your week's actually going.",
-    motif: "progress",
-    hue: 38,
-    kind: "internal",
-    route: "/progress",
-    enterLabel: "Enter Progress",
   },
 ];
 
