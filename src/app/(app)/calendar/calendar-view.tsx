@@ -1,8 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -57,32 +56,7 @@ const EVENT_DOT: Record<string, string> = {
 };
 
 export function CalendarView() {
-  return (
-    <Suspense fallback={null}>
-      <CalendarPanel />
-    </Suspense>
-  );
-}
-
-function CalendarPanel() {
   const { data } = useAppData();
-  const params = useSearchParams();
-  // The Life section links here with ?scope=personal — Canvas-sourced items
-  // (classes, deadlines synced from school) stay out of the personal view;
-  // the School section's own Calendar link keeps everything.
-  const personalOnly = params.get("scope") === "personal";
-  const tasks = useMemo(
-    () => (personalOnly ? data.tasks.filter((t) => t.source !== "canvas") : data.tasks),
-    [data.tasks, personalOnly],
-  );
-  const events = useMemo(
-    () => (personalOnly ? data.events.filter((e) => e.provider !== "canvas") : data.events),
-    [data.events, personalOnly],
-  );
-  const assignments = useMemo(
-    () => (personalOnly ? data.assignments.filter((a) => a.provider !== "canvas") : data.assignments),
-    [data.assignments, personalOnly],
-  );
   const [cursor, setCursor] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -101,7 +75,7 @@ function CalendarPanel() {
       if (!b) map.set(k, (b = { tasks: [], events: [], assignments: [] }));
       return b;
     };
-    for (const t of tasks) {
+    for (const t of data.tasks) {
       // Completed work only shows in the day drawer (click the date) — the
       // grid itself is for what's still outstanding.
       if (t.status === "done") continue;
@@ -112,8 +86,8 @@ function CalendarPanel() {
       if (!t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
       bucket(KEY(new Date(when))).tasks.push(t);
     }
-    for (const e of events) bucket(KEY(new Date(e.startAt))).events.push(e);
-    for (const a of assignments) {
+    for (const e of data.events) bucket(KEY(new Date(e.startAt))).events.push(e);
+    for (const a of data.assignments) {
       // Only open, not-yet-done assignments — turned in, graded, or marked
       // done locally all drop off the grid (still visible in the day drawer)
       // — and not the ones long past due.
@@ -122,7 +96,7 @@ function CalendarPanel() {
       }
     }
     return map;
-  }, [tasks, events, assignments]);
+  }, [data.tasks, data.events, data.assignments]);
 
   const grid = useMemo(() => {
     if (view === "week") {
@@ -383,24 +357,14 @@ function CalendarPanel() {
         </span>
       </div>
 
-      {selected && (
-        <DayDrawer dateKey={selected} onClose={() => setSelected(null)} personalOnly={personalOnly} />
-      )}
+      {selected && <DayDrawer dateKey={selected} onClose={() => setSelected(null)} />}
     </>
   );
 }
 
 /* --------------------------- expandable date view --------------------------- */
 
-function DayDrawer({
-  dateKey,
-  onClose,
-  personalOnly,
-}: {
-  dateKey: string;
-  onClose: () => void;
-  personalOnly: boolean;
-}) {
+function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void }) {
   const { data, addTask, updateTask, toggleTask, deleteTask, addEvent, deleteEvent } = useAppData();
   const [taskModal, setTaskModal] = useState<TaskDTO | "new" | null>(null);
   const [eventModal, setEventModal] = useState(false);
@@ -429,19 +393,14 @@ function DayDrawer({
   const dk = dateKey;
   const events = data.events
     .filter((e) => KEY(new Date(e.startAt)) === dk)
-    .filter((e) => !personalOnly || e.provider !== "canvas")
     .sort((a, b) => a.startAt.localeCompare(b.startAt));
 
-  const dayTasks = data.tasks
-    .filter(
-      (t) =>
-        (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
-        (t.dueAt && KEY(parseDate(t.dueAt)) === dk),
-    )
-    .filter((t) => !personalOnly || t.source !== "canvas");
-  const dayAssignments = data.assignments
-    .filter((a) => a.dueAt && KEY(parseDate(a.dueAt)) === dk)
-    .filter((a) => !personalOnly || a.provider !== "canvas");
+  const dayTasks = data.tasks.filter(
+    (t) =>
+      (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
+      (t.dueAt && KEY(parseDate(t.dueAt)) === dk),
+  );
+  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(parseDate(a.dueAt)) === dk);
 
   type Bucket = "todo" | "planned" | "done";
   const taskBucket = (t: TaskDTO): Bucket =>

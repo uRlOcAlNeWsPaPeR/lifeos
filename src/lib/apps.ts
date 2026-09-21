@@ -1,9 +1,7 @@
 // The apps that live inside LifeOS. The dashboard renders one sphere per
 // entry along an invisible arc; the centred one is active. Adding a future
 // app (Coding, Finance, Fitness…) is a single entry here — the orbit
-// positions it. Each app gets its own hue for a real color identity, not
-// just a green-family variant — SAT's genuinely blue, so the spheres stay
-// distinguishable at a glance.
+// positions it.
 
 export interface LifeApp {
   id: string;
@@ -17,25 +15,18 @@ export interface LifeApp {
   hue: number;
   /** "internal" = lives inside LifeOS. "external" = opens in a new tab. */
   kind: "internal" | "external";
-  /** Internal route to push to (Study and SAT are special — they detonate in place, no route). */
+  /** Internal route to push to. No route + no href = "not set up yet" toast. */
   route?: string;
   /** External target (opened in a new tab). */
   href?: string;
   enterLabel: string;
 }
 
+// SAT is a placeholder — no section built yet, so it has no route and just
+// tells you so when you tap it.
 export const LIFE_APPS: LifeApp[] = [
   {
-    id: "study",
-    name: "Study",
-    tagline: "Your day, organized — tasks, deadlines and focus in one place.",
-    motif: "study",
-    hue: 152,
-    kind: "internal",
-    enterLabel: "Enter Study",
-  },
-  {
-    id: "school",
+    id: "sat",
     name: "SAT",
     tagline: "Coming soon.",
     motif: "school",

@@ -167,15 +167,13 @@ export function CorePortal() {
     window.setTimeout(() => setPhase("console"), reduced() ? 640 : TO_CONSOLE);
   };
 
-  // Entry point from the app orbit: Study opens the in-place console (Today /
-  // Focus / Radar) right here on the Core — no navigation. SAT doesn't have
-  // its own section yet, so it opens the same console for now. Every other
-  // internal app detonates the same way — same timeline, same shard burst —
-  // just tinted with the app's own hue, then routes to it. External apps
+  // Entry point from the app orbit: Study runs the existing detonation; any
+  // other internal app detonates the same way — same timeline, same shard
+  // burst — just tinted with the app's own hue, then route to it. External apps
   // open in a tab.
   const enterApp = (app: LifeApp) => {
     if (phaseRef.current !== "home") return;
-    if (app.id === "study" || app.id === "school") {
+    if (app.id === "study") {
       detonate();
       return;
     }
