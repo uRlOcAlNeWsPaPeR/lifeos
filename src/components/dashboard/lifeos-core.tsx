@@ -41,7 +41,7 @@ export function LifeosCore({
   className?: string;
   variant?: "panel" | "hero" | "orbit";
   /** Subtle etched cue inside the orb (dashboard hub). */
-  motif?: "study" | "generic";
+  motif?: "study" | "school" | "progress" | "generic";
   /** Force a specific `--core-hue` (per-app identity) instead of the state colour. */
   hueOverride?: number;
   /** `orbit` only — the centred/active sphere blooms into the full treatment. */
@@ -231,7 +231,7 @@ function OrbitCore({
   className,
 }: {
   hue: string;
-  motif: "study" | "generic";
+  motif: "study" | "school" | "progress" | "generic";
   active: boolean;
   className?: string;
 }) {
@@ -329,7 +329,7 @@ function OrbitCore({
 }
 
 /** A faint etched pattern inside a hub sphere — signals what the app is for. */
-function CoreMotif({ motif }: { motif: "study" | "generic" }) {
+function CoreMotif({ motif }: { motif: "study" | "school" | "progress" | "generic" }) {
   if (motif === "generic") return null;
   return (
     <svg
@@ -339,13 +339,34 @@ function CoreMotif({ motif }: { motif: "study" | "generic" }) {
       fill="none"
       stroke="currentColor"
       strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      {/* concentric arcs + a data tick — study / progress cue */}
-      <g opacity="0.16">
-        <path d="M28 62 A24 24 0 0 1 72 62" strokeWidth="3" />
-        <path d="M36 55 A15 15 0 0 1 64 55" strokeWidth="2.5" />
-        <line x1="50" y1="30" x2="50" y2="40" strokeWidth="3" />
-      </g>
+      {motif === "study" && (
+        // concentric arcs + a data tick
+        <g opacity="0.16">
+          <path d="M28 62 A24 24 0 0 1 72 62" strokeWidth="3" />
+          <path d="M36 55 A15 15 0 0 1 64 55" strokeWidth="2.5" />
+          <line x1="50" y1="30" x2="50" y2="40" strokeWidth="3" />
+        </g>
+      )}
+      {motif === "school" && (
+        // a mortarboard — flat cap + tassel
+        <g opacity="0.16">
+          <path d="M50 32 L78 45 L50 58 L22 45 Z" strokeWidth="3" />
+          <path d="M38 50 V64 Q50 71 62 64 V50" strokeWidth="2.5" />
+          <line x1="74" y1="47" x2="74" y2="62" strokeWidth="2.5" />
+        </g>
+      )}
+      {motif === "progress" && (
+        // an ascending trend line with three checkpoints
+        <g opacity="0.16">
+          <path d="M26 66 L44 50 L58 58 L76 34" strokeWidth="3" />
+          <circle cx="26" cy="66" r="3" fill="currentColor" stroke="none" />
+          <circle cx="44" cy="50" r="3" fill="currentColor" stroke="none" />
+          <circle cx="58" cy="58" r="3" fill="currentColor" stroke="none" />
+          <circle cx="76" cy="34" r="3" fill="currentColor" stroke="none" />
+        </g>
+      )}
     </svg>
   );
 }
