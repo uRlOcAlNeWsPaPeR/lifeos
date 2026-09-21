@@ -17,7 +17,7 @@ export interface LifeApp {
   hue: number;
   /** "internal" = lives inside LifeOS. "external" = opens in a new tab. */
   kind: "internal" | "external";
-  /** Internal route to push to (Study is special — it detonates, no route). */
+  /** Internal route to push to. */
   route?: string;
   /** External target (opened in a new tab). */
   href?: string;
@@ -27,12 +27,13 @@ export interface LifeApp {
 export const LIFE_APPS: LifeApp[] = [
   {
     id: "study",
-    name: "Study",
-    tagline: "Your day, organized — tasks, deadlines and focus in one place.",
+    name: "Life",
+    tagline: "Your day, organized — brain dump, tasks and calendar in one place.",
     motif: "study",
     hue: 152,
     kind: "internal",
-    enterLabel: "Enter Study",
+    route: "/tasks",
+    enterLabel: "Enter Life",
   },
   {
     id: "school",

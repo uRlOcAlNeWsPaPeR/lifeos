@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   Brain,
   CalendarDays,
@@ -69,16 +70,73 @@ export const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Spar
 export const BRAIN_GAME = { href: "/brain-game", label: "Brain Game", icon: Puzzle };
 export const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: Settings };
 
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** For active-state matching when `href` carries a query string (e.g. the
+   *  two Calendar entries below) — compared against the pathname alone. */
+  matchHref?: string;
+}
+
+export type SectionId = "life" | "school" | "progress";
+
+/**
+ * Each of the three Core orbs gets its own scoped sidebar — just that
+ * section's own pages, not the full site directory — plus a "Back to Core"
+ * link shown above everything else. AI Assistant, Brain Game and Settings
+ * stay reachable from all three (rendered by <Sidebar> itself, not listed
+ * here) so nobody has to guess which section has the "common" tools.
+ */
+export const SECTIONS: Record<SectionId, { label: string; hue: number; items: NavItem[] }> = {
+  life: {
+    label: "Life",
+    hue: 152,
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/brain-dump", label: "Brain Dump", icon: Brain },
+      { href: "/tasks", label: "Tasks", icon: ListChecks },
+      {
+        href: "/calendar?scope=personal",
+        matchHref: "/calendar",
+        label: "Calendar",
+        icon: CalendarDays,
+      },
+    ],
+  },
+  school: {
+    label: "School",
+    hue: 227,
+    items: [
+      { href: "/school", label: "School", icon: GraduationCap },
+      { href: "/grades", label: "Grades", icon: Percent },
+      { href: "/practice", label: "Practice", icon: Gamepad2 },
+      { href: "/podcast", label: "Podcast", icon: Headphones },
+      { href: "/study", label: "Study", icon: Timer },
+      { href: "/calendar", label: "Calendar", icon: CalendarDays },
+    ],
+  },
+  progress: {
+    label: "Progress",
+    hue: 38,
+    items: [
+      { href: "/goals", label: "Goals", icon: Target },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+    ],
+  },
+};
+
 function NavLink({
   item,
   pathname,
   onNavigate,
 }: {
-  item: { href: string; label: string; icon: typeof LayoutDashboard };
+  item: NavItem;
   pathname: string;
   onNavigate: () => void;
 }) {
-  const active = pathname === item.href || pathname.startsWith(item.href + "/");
+  const matchAgainst = item.matchHref ?? item.href;
+  const active = pathname === matchAgainst || pathname.startsWith(matchAgainst + "/");
   return (
     <Link
       href={item.href}
@@ -100,11 +158,19 @@ function NavLink({
 export function Sidebar({
   user,
   plan,
+  section,
   open: openProp,
   onOpenChange,
 }: {
   user: { name: string; email: string };
   plan: string;
+  /**
+   * Scope the sidebar to one Core section (its own pages + "Back to Core")
+   * instead of the full site directory. Omit for the full-directory view —
+   * that's what the dashboard's own menu button still shows, since from the
+   * Core hub itself there's no one section to scope to yet.
+   */
+  section?: SectionId;
   /**
    * Controlled mode — e.g. the dashboard's own menu button opens this same
    * drawer instead of a separate reduced popup. When passed, the sidebar's
@@ -121,6 +187,7 @@ export function Sidebar({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlled ? openProp : internalOpen;
   const setOpen = controlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
+  const activeSection = section ? SECTIONS[section] : null;
 
   // Lock the page behind the drawer + close it on Escape.
   useEffect(() => {
@@ -152,18 +219,34 @@ export function Sidebar({
         </button>
       </div>
 
+      {activeSection && (
+        <div className="px-3 pb-3">
+          <Link
+            href="/dashboard"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:border-white/15 hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to Core
+          </Link>
+        </div>
+      )}
+
       <div className="px-3 pb-3">
         <SearchTrigger />
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 scrollbar-thin">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mb-4">
-            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-              {group.label}
+        {activeSection ? (
+          <div className="mb-4">
+            <p
+              className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em]"
+              style={{ color: `hsl(${activeSection.hue} 70% 62%)` }}
+            >
+              {activeSection.label}
             </p>
             <div className="space-y-1">
-              {group.items.map((item) => (
+              {activeSection.items.map((item) => (
                 <NavLink
                   key={item.href}
                   item={item}
@@ -173,7 +256,25 @@ export function Sidebar({
               ))}
             </div>
           </div>
-        ))}
+        ) : (
+          NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-4">
+              <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.href}
+                    item={item}
+                    pathname={pathname}
+                    onNavigate={() => setOpen(false)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
         <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
           <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
           <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
