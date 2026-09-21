@@ -153,11 +153,32 @@ export function CorePortal() {
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  // Entry point from the app orbit: every internal app detonates the same
-  // way — same timeline, same shard burst — just tinted with the app's own
-  // hue, then routes to it. External apps open in a tab.
+  const detonate = () => {
+    if (phaseRef.current !== "home") return;
+    if (!cinematic) {
+      setPhase("console");
+      requestAnimationFrame(() =>
+        document.getElementById("console")?.scrollIntoView({ behavior: "smooth" }),
+      );
+      return;
+    }
+    setPhase("boom");
+    // reduced-motion still gets the (shortened) burst — hold long enough to see it
+    window.setTimeout(() => setPhase("console"), reduced() ? 640 : TO_CONSOLE);
+  };
+
+  // Entry point from the app orbit: Study opens the in-place console (Today /
+  // Focus / Radar) right here on the Core — no navigation. SAT doesn't have
+  // its own section yet, so it opens the same console for now. Every other
+  // internal app detonates the same way — same timeline, same shard burst —
+  // just tinted with the app's own hue, then routes to it. External apps
+  // open in a tab.
   const enterApp = (app: LifeApp) => {
     if (phaseRef.current !== "home") return;
+    if (app.id === "study" || app.id === "school") {
+      detonate();
+      return;
+    }
     if (app.kind === "internal" && app.route) {
       const to = app.route;
       if (!cinematic) {

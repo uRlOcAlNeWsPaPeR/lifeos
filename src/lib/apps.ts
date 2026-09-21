@@ -2,7 +2,7 @@
 // entry along an invisible arc; the centred one is active. Adding a future
 // app (Coding, Finance, Fitness…) is a single entry here — the orbit
 // positions it. Each app gets its own hue for a real color identity, not
-// just a green-family variant — School's genuinely blue, Progress genuinely
+// just a green-family variant — SAT's genuinely blue, Progress genuinely
 // amber, so the spheres stay distinguishable at a glance.
 
 export interface LifeApp {
@@ -17,7 +17,7 @@ export interface LifeApp {
   hue: number;
   /** "internal" = lives inside LifeOS. "external" = opens in a new tab. */
   kind: "internal" | "external";
-  /** Internal route to push to. */
+  /** Internal route to push to (Study and SAT are special — they detonate in place, no route). */
   route?: string;
   /** External target (opened in a new tab). */
   href?: string;
@@ -27,23 +27,21 @@ export interface LifeApp {
 export const LIFE_APPS: LifeApp[] = [
   {
     id: "study",
-    name: "Life",
-    tagline: "Your day, organized — brain dump, tasks and calendar in one place.",
+    name: "Study",
+    tagline: "Your day, organized — tasks, deadlines and focus in one place.",
     motif: "study",
     hue: 152,
     kind: "internal",
-    route: "/tasks",
-    enterLabel: "Enter Life",
+    enterLabel: "Enter Study",
   },
   {
     id: "school",
-    name: "School",
-    tagline: "Courses, assignments and grades — Canvas synced, or add it yourself.",
+    name: "SAT",
+    tagline: "Coming soon.",
     motif: "school",
     hue: 227,
     kind: "internal",
-    route: "/school",
-    enterLabel: "Enter School",
+    enterLabel: "Enter SAT",
   },
   {
     id: "progress",
