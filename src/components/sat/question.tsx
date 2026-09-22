@@ -9,14 +9,15 @@ import type { Difficulty, Question, Section } from "@/lib/sat/types";
 import { cn } from "@/lib/utils";
 
 /**
- * The light test sheet question content sits on. Uses LifeOS's own light
- * palette (`.theme-light`), because College Board figures are black lines on a
- * transparent background and disappear against the dark theme.
+ * The test sheet question content sits on — same dark card as the rest of
+ * LifeOS. College Board's figures/formula images are black lines on a
+ * transparent background, so `.sat-content` gives each one its own white
+ * backing plate (see globals.css) rather than lightening the whole sheet.
  */
 export function Sheet({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
-      className={cn("theme-light sat-sheet rounded-2xl border border-border p-5 shadow-sm sm:p-6", className)}
+      className={cn("sat-sheet rounded-2xl border border-border p-5 shadow-sm sm:p-6", className)}
       {...props}
     />
   );

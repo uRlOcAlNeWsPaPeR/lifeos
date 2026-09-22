@@ -3,45 +3,6 @@
 @tailwind utilities;
 
 @layer base {
-  /* ---- Light palette. LifeOS itself is dark-only; this is applied only to
-         SAT question sheets, whose College Board figures are black-on-
-         transparent and vanish on a dark surface. Scoped by class, so the
-         tokens resolve light inside the sheet and dark everywhere else. ---- */
-  .theme-light {
-    --background: 150 20% 99%;
-    --foreground: 156 16% 8%;
-    --card: 0 0% 100%;
-    --card-foreground: 156 16% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 156 16% 8%;
-    --primary: 152 62% 40%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 150 14% 95%;
-    --secondary-foreground: 156 16% 18%;
-    --muted: 150 14% 95%;
-    --muted-foreground: 150 8% 40%;
-    --accent: 152 55% 94%;
-    --accent-foreground: 152 55% 28%;
-    --destructive: 0 72% 48%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 152 58% 38%;
-    --success-foreground: 0 0% 100%;
-    --warning: 34 92% 44%;
-    --warning-foreground: 0 0% 100%;
-    --border: 150 12% 88%;
-    --input: 150 12% 85%;
-    --ring: 152 62% 40%;
-    --radius: 0.9rem;
-
-    --g-green: #17b866;
-    --g-emerald: #10b981;
-    --g-mint: #4bd6a0;
-    --g-teal: #0fb9a8;
-    --g-lime: #7fe6a8;
-
-    --glow: 152 68% 44%;
-  }
-
   /* ---- Dark (the only theme) ---- */
   :root,
   .dark {
@@ -429,14 +390,12 @@ html.lenis body {
  * SAT Prep — College Board question content.
  *
  * Question HTML comes from the College Board question bank: MathML, tiny
- * raster formula images, SVG figures, tables. It's rendered on a
- * `.theme-light` sheet (see the palette above) — the same light page the
- * real digital SAT uses — because its figures are drawn for white paper.
- * These rules only shape that foreign markup; all chrome around it is
- * ordinary LifeOS components.
+ * raster formula images, SVG figures, tables. The sheet itself is the normal
+ * dark LifeOS card — but the figures/formula images are black lines drawn on
+ * a transparent background for white paper, so each one gets its own small
+ * white backing plate instead of lightening the whole sheet.
  * ------------------------------------------------------------------ */
 .sat-sheet {
-  color-scheme: light;
   background: hsl(var(--card));
   color: hsl(var(--foreground));
 }
@@ -456,21 +415,31 @@ html.lenis body {
   font-weight: inherit;
   font-style: inherit;
 }
+.sat-content img,
+.sat-content svg {
+  max-width: 100%;
+  height: auto;
+  background: #fff;
+  border-radius: 6px;
+}
+.sat-content svg {
+  display: block;
+  margin: 0 auto;
+  padding: 8px;
+}
+.sat-content img:not(.math-img) {
+  display: block;
+  margin: 8px auto;
+  padding: 8px;
+}
 /* Inline formula images ship at ~24×16px — scale to the text around them. */
 .sat-content .math-img {
   height: 1.4em !important;
   width: auto !important;
   vertical-align: middle;
   display: inline-block;
-}
-.sat-content img,
-.sat-content svg {
-  max-width: 100%;
-  height: auto;
-}
-.sat-content svg {
-  display: block;
-  margin: 0 auto;
+  border-radius: 3px;
+  padding: 0 2px;
 }
 .sat-content figure {
   margin: 8px 0;

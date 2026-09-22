@@ -15,7 +15,6 @@ export const SAT_ROUTES = {
   home: "/sat",
   practice: "/sat/practice",
   session: "/sat/practice/session",
-  bank: "/sat/bank",
   exams: "/sat/exams",
   examRun: "/sat/exams/run",
   review: "/sat/review",

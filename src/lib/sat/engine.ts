@@ -22,7 +22,6 @@ export const defaultState = (): SatState => ({
   profile: null,
   theme: "auto",
   lastRoute: null,
-  apScores: [],
   pausedQuiz: null,
   xp: 0,
   streak: { current: 0, best: 0, lastDay: null },

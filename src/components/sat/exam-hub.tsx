@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, ClipboardList, ExternalLink, PauseCircle, Play, Trash2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, ClipboardList, ExternalLink, Library, PauseCircle, Play, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState, SectionTitle } from "@/components/ui/misc";
 import { SingleChips } from "@/components/ui/choice-chips";
+import { Modal } from "@/components/ui/modal";
 import { confirm } from "@/components/ui/confirm";
 import { toast } from "@/components/ui/toaster";
 import { commit, useSat } from "@/lib/sat/store";
@@ -21,6 +22,7 @@ export function ExamHub() {
   const { s } = useSat();
   const { busy, startExam, resumeExam } = useSatActions();
   const [libKind, setLibKind] = useState<TestKind>("sat");
+  const [libOpen, setLibOpen] = useState(false);
 
   const ex = s.exam && s.exam.phase !== "done" ? s.exam : null;
 
@@ -103,33 +105,49 @@ export function ExamHub() {
           })}
         </div>
 
-        <Card className="p-5">
-          <SectionTitle
-            right={
-              <SingleChips<TestKind>
-                label="Library test"
-                value={libKind}
-                onChange={setLibKind}
-                options={[
-                  { value: "sat", label: "SAT" },
-                  { value: "psat", label: "PSAT/NMSQT" },
-                ]}
-              />
-            }
-          >
-            Exam library
-          </SectionTitle>
-          <p className="mb-4 text-sm text-muted-foreground">
-            Numbered full-length exams built from the College Board question bank. Each always has the same questions, so you can retake it and compare.
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <Card className="flex flex-wrap items-center justify-between gap-4 p-5">
+          <div>
+            <p className="font-medium">Exam library</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Numbered full-length exams built from the College Board question bank — always the same questions, so you can retake and compare.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={() => setLibOpen(true)}>
+            <Library className="h-4 w-4" />
+            Browse library
+          </Button>
+        </Card>
+
+        <Modal
+          open={libOpen}
+          onClose={() => setLibOpen(false)}
+          title="Exam library"
+          description="Numbered full-length exams built from the College Board question bank. Each always has the same questions, so you can retake it and compare."
+          className="max-w-2xl"
+        >
+          <div className="mb-4">
+            <SingleChips<TestKind>
+              label="Library test"
+              value={libKind}
+              onChange={setLibKind}
+              options={[
+                { value: "sat", label: "SAT" },
+                { value: "psat", label: "PSAT/NMSQT" },
+              ]}
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: LIBRARY_COUNT }, (_, i) => i + 1).map((n) => {
               const inProgress = ex && ex.lib === n && ex.kind === libKind;
               return (
                 <button
                   key={n}
                   type="button"
-                  onClick={() => (inProgress ? resumeExam() : startExam(libKind, n))}
+                  onClick={() => {
+                    setLibOpen(false);
+                    if (inProgress) resumeExam();
+                    else startExam(libKind, n);
+                  }}
                   disabled={busy === `exam-${libKind}-${n}`}
                   className={cn(
                     "rounded-xl border p-3 text-left transition-colors hover:border-primary/40",
@@ -150,7 +168,7 @@ export function ExamHub() {
               );
             })}
           </div>
-        </Card>
+        </Modal>
 
         <Card className="p-5">
           <SectionTitle>Past results</SectionTitle>

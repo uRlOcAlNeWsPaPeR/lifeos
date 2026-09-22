@@ -8,7 +8,6 @@ import {
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Progress, Ring } from "@/components/ui/progress";
 import { SectionTitle } from "@/components/ui/misc";
 import { useSat } from "@/lib/sat/store";
@@ -163,22 +162,6 @@ export function SatDashboard() {
                 );
               })}
             </ul>
-          </Card>
-          <Card className="p-5">
-            <SectionTitle right={<Link href={SAT_ROUTES.settings} className="text-xs text-primary hover:underline">Edit</Link>}>
-              AP scores
-            </SectionTitle>
-            {s.apScores.length ? (
-              <div className="flex flex-wrap gap-2">
-                {s.apScores.map((a, i) => (
-                  <Badge key={`${a.subject}-${i}`} tone={a.score >= 4 ? "success" : a.score === 3 ? "primary" : "muted"}>
-                    {a.subject} · {a.score}
-                  </Badge>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No AP scores yet — add them in SAT settings.</p>
-            )}
           </Card>
         </div>
       </div>

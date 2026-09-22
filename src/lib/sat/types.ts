@@ -131,7 +131,6 @@ export interface SatState {
   /** Kept for backup compatibility; LifeOS has one theme. */
   theme: string;
   lastRoute: { route: string; arg: string | null } | null;
-  apScores: { subject: string; score: number }[];
   pausedQuiz: PausedQuiz | null;
   xp: number;
   streak: { current: number; best: number; lastDay: string | null };

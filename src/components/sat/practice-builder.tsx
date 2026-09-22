@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, PauseCircle, Play, RotateCcw, Search, Trash2 } from "lucide-react";
+import { ArrowRight, PauseCircle, Play, RotateCcw, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/input";
@@ -15,7 +14,7 @@ import { getQuestions, pickFromCatalog } from "@/lib/sat/qbank";
 import { DIFF_NAME, DOMAINS, SKILL_ORDER } from "@/lib/sat/constants";
 import type { Difficulty, Section, TestKind } from "@/lib/sat/types";
 import { SatHeader } from "./common";
-import { SAT_ROUTES, useSatActions } from "./use-sat-actions";
+import { useSatActions } from "./use-sat-actions";
 
 type SectionChoice = "mixed" | Section;
 
@@ -216,18 +215,6 @@ export function PracticeBuilder() {
                 Review my mistakes ({s.missed.length})
               </Button>
             )}
-          </Card>
-          <Card className="p-5">
-            <p className="flex items-center gap-2 font-medium">
-              <Search className="h-4 w-4 text-primary" />
-              Choose specific questions
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Browse the full bank by ID, or paste the IDs your teacher assigned.
-            </p>
-            <Link href={SAT_ROUTES.bank} className="mt-3 inline-block">
-              <Button variant="outline" size="sm">Open the question bank</Button>
-            </Link>
           </Card>
         </aside>
       </div>

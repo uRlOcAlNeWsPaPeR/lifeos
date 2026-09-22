@@ -32,16 +32,6 @@ export const DIFF_NAME: Record<Difficulty, string> = { E: "Easy", M: "Medium", H
 
 export const SECTION_NAME: Record<Section, string> = { rw: "Reading & Writing", math: "Math" };
 
-export const AP_SUBJECTS = [
-  "AP Calculus AB", "AP Calculus BC", "AP Statistics", "AP Biology", "AP Chemistry",
-  "AP Physics 1", "AP Physics 2", "AP Physics C: Mechanics", "AP Physics C: E&M",
-  "AP Computer Science A", "AP Computer Science Principles", "AP Environmental Science",
-  "AP English Language", "AP English Literature", "AP US History", "AP World History",
-  "AP European History", "AP US Government", "AP Comparative Government", "AP Psychology",
-  "AP Human Geography", "AP Economics (Micro)", "AP Economics (Macro)", "AP Spanish Language",
-  "AP French Language", "AP Art History", "AP Music Theory", "Other",
-];
-
 export interface BadgeDef {
   id: string;
   name: string;
