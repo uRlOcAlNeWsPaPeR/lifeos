@@ -31,6 +31,16 @@ export const LIFE_APPS: LifeApp[] = [
     kind: "internal",
     enterLabel: "Enter Study",
   },
+  {
+    id: "sat",
+    name: "SAT Prep",
+    tagline: "Practice questions, full-length adaptive exams and progress tracking, powered by ScoreClimb.",
+    motif: "generic",
+    hue: 168,
+    kind: "internal",
+    route: "/sat",
+    enterLabel: "Enter SAT Prep",
+  },
 ];
 
 export const STUDY_APP_INDEX = LIFE_APPS.findIndex((a) => a.id === "study");
