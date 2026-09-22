@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   BarChart3,
   BookOpen,
   Brain,
@@ -217,6 +218,67 @@ function SatNavSection({ pathname, onNavigate }: { pathname: string; onNavigate:
   );
 }
 
+/**
+ * SAT Prep is its own app, entered from a separate sphere on the Core than the
+ * rest of LifeOS. Its sidebar shows only SAT screens plus a way back — not the
+ * Home/School/Personal nav that belongs to the other sphere.
+ */
+function SatOnlyNav({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
+  const { s, ready } = useSat();
+  const examLive = ready && s.exam && s.exam.phase !== "done";
+  const badges: Record<string, React.ReactNode> = {
+    "/sat/review": ready && s.missed.length > 0 ? s.missed.length : null,
+    "/sat/exams": examLive ? "Live" : null,
+    "/sat/practice": ready && s.pausedQuiz ? "Paused" : null,
+  };
+
+  return (
+    <div className="mb-4">
+      <Link
+        href="/dashboard"
+        onClick={onNavigate}
+        className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to LifeOS
+      </Link>
+      <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+        {SAT_NAV.label}
+      </p>
+      <div className="space-y-1">
+        {SAT_NAV.items.map((item) => {
+          const active = item.exact
+            ? pathname === item.href
+            : pathname === item.href || pathname.startsWith(item.href + "/");
+          const badge = badges[item.href];
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={onNavigate}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all",
+                active
+                  ? "bg-gradient-to-r from-primary/20 via-primary/5 to-transparent text-foreground shadow-[inset_1px_0_0_hsl(var(--glow)/0.6)]"
+                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
+              )}
+            >
+              <item.icon className={cn("h-4 w-4 transition-colors", active && "text-primary")} />
+              <span className="flex-1 truncate">{item.label}</span>
+              {badge != null && (
+                <Badge tone={item.href === "/sat/review" ? "muted" : "primary"} className="px-1.5 py-0 text-[10px]">
+                  {badge}
+                </Badge>
+              )}
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Sidebar({
   user,
   plan,
@@ -241,6 +303,7 @@ export function Sidebar({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlled ? openProp : internalOpen;
   const setOpen = controlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
+  const isSat = pathname === SAT_NAV.href || pathname.startsWith(SAT_NAV.href + "/");
 
   // Lock the page behind the drawer + close it on Escape.
   useEffect(() => {
@@ -277,30 +340,36 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 scrollbar-thin">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mb-4">
-            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-              {group.label}
-            </p>
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.href}
-                  item={item}
-                  pathname={pathname}
-                  onNavigate={() => setOpen(false)}
-                />
-              ))}
-              {group.label === "School" && (
-                <SatNavSection pathname={pathname} onNavigate={() => setOpen(false)} />
-              )}
+        {isSat ? (
+          <SatOnlyNav pathname={pathname} onNavigate={() => setOpen(false)} />
+        ) : (
+          <>
+            {NAV_GROUPS.map((group) => (
+              <div key={group.label} className="mb-4">
+                <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  {group.label}
+                </p>
+                <div className="space-y-1">
+                  {group.items.map((item) => (
+                    <NavLink
+                      key={item.href}
+                      item={item}
+                      pathname={pathname}
+                      onNavigate={() => setOpen(false)}
+                    />
+                  ))}
+                  {group.label === "School" && (
+                    <SatNavSection pathname={pathname} onNavigate={() => setOpen(false)} />
+                  )}
+                </div>
+              </div>
+            ))}
+            <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
+              <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
+              <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
             </div>
-          </div>
-        ))}
-        <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
-          <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
-          <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
-        </div>
+          </>
+        )}
       </nav>
 
       <div className="pb-safe space-y-2 p-3">

@@ -70,11 +70,15 @@
     --ring: 152 65% 50%;
     --radius: 0.9rem;
 
-    --g-green: #22d67e;
-    --g-emerald: #16c98a;
-    --g-mint: #57e6a8;
-    --g-teal: #14c9b8;
-    --g-lime: #8ef0b4;
+    /* Brand gradient stops — dark, not the bright green these once resolved
+       to. Kept as real colors (not the old undefined --g-purple/etc. vars)
+       so bg-gradient-brand/bg-gradient-ai still paint something; --glow below
+       still carries the green accent via shadows/rings. */
+    --g-green: #182721;
+    --g-emerald: #1f3229;
+    --g-mint: #263c2f;
+    --g-teal: #1b2d27;
+    --g-lime: #2c4636;
 
     --glow: 152 70% 48%;
   }

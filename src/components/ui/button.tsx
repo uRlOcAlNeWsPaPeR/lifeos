@@ -6,7 +6,7 @@ type Size = "sm" | "md" | "lg" | "icon";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-gradient-brand bg-[length:180%_auto] text-white shadow-glow-sm hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-[1px] active:translate-y-0",
+    "border border-white/10 bg-gradient-brand bg-[length:180%_auto] text-white shadow-glow-sm hover:bg-[position:100%_50%] hover:shadow-glow hover:-translate-y-[1px] active:translate-y-0",
   secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/70 border border-white/5",
   subtle: "bg-accent text-accent-foreground hover:bg-accent/70",
   ghost: "text-foreground hover:bg-white/5",
