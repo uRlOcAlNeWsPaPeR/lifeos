@@ -9,7 +9,7 @@ import { EmptyState } from "@/components/ui/misc";
 import { TaskItem } from "@/components/app/task-item";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { useAppData } from "@/lib/store/app-data";
-import { fmtDate, fmtDuration, fmtTime, parseDate } from "@/lib/format";
+import { fmtDuration, parseDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskDTO } from "@/lib/types";
 
@@ -246,11 +246,6 @@ export function TasksView() {
                 onDelete={(t) => deleteTask(t.id)}
                 draggable={tab !== "completed"}
               />
-              {task.scheduledAt && (
-                <p className="mt-1 pl-1 text-xs text-muted-foreground">
-                  Planned for {fmtPlanned(task.scheduledAt)}
-                </p>
-              )}
             </div>
           ))}
         </div>
@@ -269,13 +264,6 @@ export function TasksView() {
       />
     </>
   );
-}
-
-function fmtPlanned(scheduledAt: string) {
-  const d = new Date(scheduledAt);
-  const sameDay = d.toDateString() === new Date().toDateString();
-  const time = fmtTime(d);
-  return sameDay ? `Today, ${time}` : `${fmtDate(d, { month: "short", day: "numeric" })}, ${time}`;
 }
 
 function StatChip({

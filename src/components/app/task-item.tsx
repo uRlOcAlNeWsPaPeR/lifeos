@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Badge, priorityTone } from "@/components/ui/badge";
-import { relativeDue, fmtDuration } from "@/lib/format";
+import { relativeDue, fmtDuration, fmtDate, fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import type { TaskDTO } from "@/lib/types";
@@ -28,6 +28,14 @@ export function TaskItem({
   const done = task.status === "done";
   const past = !done && Boolean(due?.past);
   const upcoming = !done && !!due && !due.past;
+
+  const scheduled = task.scheduledAt ? new Date(task.scheduledAt) : null;
+  const plannedToday = scheduled ? scheduled.toDateString() === new Date().toDateString() : false;
+  const plannedLabel = scheduled
+    ? plannedToday
+      ? `Planned today, ${fmtTime(scheduled)}`
+      : `Planned ${fmtDate(scheduled, { month: "short", day: "numeric" })}, ${fmtTime(scheduled)}`
+    : null;
 
   return (
     <div
@@ -72,7 +80,18 @@ export function TaskItem({
         >
           {task.title}
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {plannedLabel && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold",
+                plannedToday ? "bg-sky-500 text-white" : "bg-sky-500/15 text-sky-400",
+              )}
+            >
+              <CalendarClock className="h-3 w-3" />
+              {plannedLabel}
+            </span>
+          )}
           {task.source === "canvas" && <CanvasBadge />}
           {task.category && <span>{task.category}</span>}
           {task.course && (

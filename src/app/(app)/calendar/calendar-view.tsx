@@ -92,7 +92,11 @@ export function CalendarView() {
       // done locally all drop off the grid (still visible in the day drawer)
       // — and not the ones long past due.
       if (a.dueAt && a.status === "open" && !a.localDone && !isStaleOverdue(a.dueAt)) {
-        bucket(KEY(parseDate(a.dueAt))).assignments.push(a);
+        // A planned work time (from the assignment's linked planning task)
+        // wins over the due date — same rule as plain tasks: show it where
+        // you're actually going to do it, not just where it's due.
+        const when = a.linkedTask?.scheduledAt || a.dueAt;
+        bucket(KEY(parseDate(when))).assignments.push(a);
       }
     }
     return map;
@@ -404,7 +408,11 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
       (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
       (t.dueAt && KEY(parseDate(t.dueAt)) === dk),
   );
-  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(parseDate(a.dueAt)) === dk);
+  const dayAssignments = data.assignments.filter(
+    (a) =>
+      (a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === dk) ||
+      (a.dueAt && KEY(parseDate(a.dueAt)) === dk),
+  );
 
   type Bucket = "todo" | "planned" | "done";
   const taskBucket = (t: TaskDTO): Bucket =>
