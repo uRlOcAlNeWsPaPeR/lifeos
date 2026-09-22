@@ -84,7 +84,10 @@ export function CalendarView() {
       if (!when) continue;
       // hide long-abandoned open tasks (unless the user scheduled work for them)
       if (!t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
-      bucket(KEY(new Date(when))).tasks.push(t);
+      // parseDate (not `new Date`) — dueAt is a bare "YYYY-MM-DD" with no
+      // time, which `new Date()` reads as UTC midnight and can roll back a
+      // day in negative-offset timezones once converted to local time.
+      bucket(KEY(parseDate(when))).tasks.push(t);
     }
     for (const e of data.events) bucket(KEY(new Date(e.startAt))).events.push(e);
     for (const a of data.assignments) {
