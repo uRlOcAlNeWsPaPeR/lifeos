@@ -16,6 +16,7 @@ import { goalProgress } from "@/lib/analytics-derive";
 import { fmt12, hm } from "@/lib/scheduling/sleep";
 import { greeting, parseDate } from "@/lib/format";
 import { dueCount } from "@/lib/practice/srs";
+import { useSat } from "@/lib/sat/store";
 import type { Prefs } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +41,14 @@ export function CommandCenter() {
   const firstName = data.profile.name.split(" ")[0] || "there";
 
   const model = useMemo(() => buildModel(data, analytics, now), [data, analytics, now]);
+  const { s: satState, ready: satReady } = useSat();
+  const satSub = !satReady || !satState.profile
+    ? "Adaptive SAT & PSAT practice"
+    : satState.exam && satState.exam.phase !== "done"
+      ? "Exam in progress"
+      : satState.missed.length
+        ? `${satState.missed.length} mistake${satState.missed.length === 1 ? "" : "s"} to review`
+        : "Adaptive SAT & PSAT practice";
 
   const navItems: NavItem[] = [
     { href: "/tasks", label: "Tasks", icon: NAV_ICONS.tasks, sub: model.nav.tasks },
@@ -50,6 +59,7 @@ export function CommandCenter() {
     { href: "/grades", label: "Grades", icon: NAV_ICONS.grades, sub: model.nav.grades },
     { href: "/practice", label: "Practice", icon: NAV_ICONS.practice, sub: model.nav.practice },
     { href: "/podcast", label: "Podcast", icon: NAV_ICONS.podcast, sub: model.nav.podcast },
+    { href: "/sat", label: "SAT Prep", icon: NAV_ICONS.sat, sub: satSub },
     { href: "/analytics", label: "Analytics", icon: NAV_ICONS.analytics, sub: model.nav.analytics },
     { href: "/assistant", label: "AI Assistant", icon: NAV_ICONS.assistant, sub: "Ask about your work" },
   ];

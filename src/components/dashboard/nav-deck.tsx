@@ -11,6 +11,7 @@ import {
   GraduationCap,
   Headphones,
   ListChecks,
+  NotebookPen,
   Percent,
   Sparkles,
   Target,
@@ -35,6 +36,7 @@ export const NAV_ICONS = {
   grades: Percent,
   assistant: Sparkles,
   podcast: Headphones,
+  sat: NotebookPen,
 };
 
 /**

@@ -57,7 +57,9 @@ test("an exact title outranks a longer title containing it", () => {
 
 test("pages are findable by what they do, not just their name", () => {
   assert.deepEqual(titles("gpa"), ["Grades"]);
-  assert.deepEqual(titles("flashcard"), ["Practice"]);
+  assert.ok(titles("flashcard").includes("Practice"));
+  assert.ok(titles("flashcard").includes("SAT flashcards"));
+  assert.equal(titles("predicted score")[0], "SAT progress");
   assert.deepEqual(titles("bedtime"), ["Settings"]);
   // The page is named "School"; typing "courses" must still find it.
   assert.ok(titles("courses").includes("School"));

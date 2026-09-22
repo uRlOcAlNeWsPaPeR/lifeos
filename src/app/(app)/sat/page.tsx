@@ -1,5 +1,5 @@
-import { SatView } from "./sat-view";
+import { SatDashboard } from "@/components/sat/dashboard";
 
 export default function SatPage() {
-  return <SatView />;
+  return <SatDashboard />;
 }

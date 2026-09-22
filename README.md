@@ -51,6 +51,7 @@ Every key is documented inline in [.env.example](.env.example). The short versio
 | `GEMINI_API_KEY` | — | Turns on Gemini for Brain Dump, prioritization, the assistant and card generation. |
 | `ANTHROPIC_API_KEY` | — | Same, using Claude. `AI_PROVIDER=auto` prefers Anthropic > Gemini > offline. |
 | `CANVAS_*` | — | Canvas OAuth. Leave empty to hide the integration; set `CANVAS_MOCK=1` to develop against fixtures. |
+| `SCORECLIMB_ORIGIN` | — | Where SAT Prep's question bank is published. Defaults to the live ScoreClimb site. |
 
 `.env` is gitignored and never leaves your machine.
 
@@ -66,18 +67,20 @@ src/
     onboarding/         Wizard → seeds the initial dashboard
     (app)/              Authenticated shell (sidebar) — dashboard, tasks,
                         brain-dump, calendar, goals, school, grades,
-                        practice, analytics, assistant, settings
+                        practice, podcast, sat/*, analytics, assistant, settings
     api/                Route handlers (JSON, zod-validated, ID-token guarded)
   components/
     ui/                 Design system (button, card, input, modal, badge, …)
     app/                Feature components (task item/editor, charts, panels)
     dashboard/          The full-bleed dashboard experience
     canvas/             Connect / sync / course-picker UI
+    sat/                SAT Prep screens (dashboard, runners, bank, …)
     marketing/          Landing page scenes and pricing
   lib/
     ai/                 AIProvider interface, heuristic + Gemini + Claude
                         engines, NLP helpers, priority scoring, context builder
     practice/           Spaced repetition, answer grading, deck parsing
+    sat/                SAT Prep rules, exam engine, question-bank loader
     canvas/             OAuth, token crypto, API client, sync
     firebase/           Client SDK, Admin SDK, Firestore schema, auth context
     store/app-data.tsx  One real-time subscription per collection; every
@@ -136,6 +139,43 @@ The pure logic is covered by tests:
 npm test
 ```
 
+### SAT Prep (`/sat`, `src/lib/sat`)
+
+Full digital SAT and PSAT/NMSQT prep on the College Board's own question bank, built
+into LifeOS from [ScoreClimb](https://singular-klepon-be59b4.netlify.app/). It's a
+section of the sidebar (under **School → SAT Prep**) and a sphere on the dashboard orbit.
+
+| Page | What it does |
+|---|---|
+| **Overview** `/sat` | Countdown to your test date, today's goal ring and study time, SAT and PSAT score journeys (start → estimate → target), streak, question of the day for each section, badges and AP scores. Resume cards appear for a paused set or an unfinished exam. |
+| **Practice** `/sat/practice` | Build a set by test, section, domain, skill (in College Board's order), difficulty and length. Daily Mix is one click from the overview. |
+| **Practice exams** `/sat/exams` | Full-length adaptive SAT or PSAT: four timed modules, a 10-minute break, module 2 routed by module 1 (60%+ → harder), scaled score, domain breakdown and a review of every missed question. Ten numbered library exams per test always draw the same questions, so retakes are comparable. |
+| **Review mistakes** `/sat/review` | Everything you got wrong until you get it right, with what you answered. Retry one or the 15 most recent. |
+| **Question bank** `/sat/bank` | Every question with its College Board ID, filterable, in the official site's order. Paste teacher-assigned IDs, preview without answers, practise exactly your selection. |
+| **Flashcards** `/sat/flashcards` | SAT vocabulary and Latin & Greek roots on Leitner boxes. |
+| **Study guides** `/sat/guides` | The math and English guides, topic by topic. |
+| **Progress** `/sat/progress` | Predicted score range that narrows with practice, outside exams you've logged, strengths and focus areas by domain and skill, and 28 days of activity. |
+| **SAT settings** `/sat/settings` | Test dates, targets, daily goal, AP scores, outside-exam logging, backup/restore, reset, and feedback to the ScoreClimb team. |
+
+The runners work like the real test: two-panel layout, mark for review, cross-out, the
+Desmos testing calculator and reference sheet on math, pause and resume. Practice counts
+only your first attempt; leaving a set by any route saves it. Question content renders on
+a light sheet (LifeOS's own light palette, scoped) because College Board figures are black
+lines on a transparent background; everything around it is the normal dark UI.
+
+**How it fits together.** The question bank stays published by ScoreClimb, along with its
+weekly College Board sync; `next.config.mjs` proxies `/sat-data/*` to it server-side, so
+it's same-origin with no copy of the 36 MB bank in this repo. Progress lives in the
+browser under ScoreClimb's own `scoreclimb` key and schema, so **a backup from the
+standalone site restores straight into LifeOS** (SAT settings → Restore). Reviews go
+through `/api/sat/feedback` to ScoreClimb's existing Netlify form.
+
+The scoring, adaptive routing, XP, streak and badge rules are ported unchanged. Beyond the
+unit tests, `npm run test:sat-parity` runs ScoreClimb's original JavaScript side by side
+with the port on the real catalog, checking that all 20 library exams draw identical
+questions and that scores and recorded state match. It needs ScoreClimb's source on disk
+(`SCORECLIMB_DIR`) and skips otherwise.
+
 ### Canvas integration (`src/lib/canvas`)
 
 Canvas OAuth is per-institution — each school issues its own developer key. Register
@@ -166,7 +206,8 @@ mode with no charge. Swap it for a billing provider's checkout session when read
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint |
-| `npm test` | Practice logic tests |
+| `npm test` | Logic tests — practice, search, podcast, SAT |
+| `npm run test:sat-parity` | SAT port vs ScoreClimb's original code (needs its source) |
 | `npm run firebase:rules` | Deploy `firestore.rules` |
 | `npm run firebase:indexes` | Deploy `firestore.indexes.json` |
 

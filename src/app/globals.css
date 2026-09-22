@@ -3,9 +3,11 @@
 @tailwind utilities;
 
 @layer base {
-  /* ---- Light palette — retained for reference only; LifeOS is dark-only.
-         `:root` below is overridden by the dark block, so light never renders. ---- */
-  .theme-light-unused {
+  /* ---- Light palette. LifeOS itself is dark-only; this is applied only to
+         SAT question sheets, whose College Board figures are black-on-
+         transparent and vanish on a dark surface. Scoped by class, so the
+         tokens resolve light inside the sheet and dark everywhere else. ---- */
+  .theme-light {
     --background: 150 20% 99%;
     --foreground: 156 16% 8%;
     --card: 0 0% 100%;
@@ -418,3 +420,135 @@ html.lenis body {
 .bottom-safe {
   bottom: max(1rem, env(safe-area-inset-bottom));
 }
+
+/* ------------------------------------------------------------------ *
+ * SAT Prep — College Board question content.
+ *
+ * Question HTML comes from the College Board question bank: MathML, tiny
+ * raster formula images, SVG figures, tables. It's rendered on a
+ * `.theme-light` sheet (see the palette above) — the same light page the
+ * real digital SAT uses — because its figures are drawn for white paper.
+ * These rules only shape that foreign markup; all chrome around it is
+ * ordinary LifeOS components.
+ * ------------------------------------------------------------------ */
+.sat-sheet {
+  color-scheme: light;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+.sat-content {
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.sat-content p {
+  margin: 0 0 0.6em;
+}
+.sat-content p:last-child {
+  margin-bottom: 0;
+}
+/* MathML otherwise renders in the browser's own thin math font. */
+.sat-content math {
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: inherit;
+}
+/* Inline formula images ship at ~24×16px — scale to the text around them. */
+.sat-content .math-img {
+  height: 1.4em !important;
+  width: auto !important;
+  vertical-align: middle;
+  display: inline-block;
+}
+.sat-content img,
+.sat-content svg {
+  max-width: 100%;
+  height: auto;
+}
+.sat-content svg {
+  display: block;
+  margin: 0 auto;
+}
+.sat-content figure {
+  margin: 8px 0;
+  text-align: center;
+}
+.sat-content table {
+  border-collapse: collapse;
+  margin: 10px auto;
+}
+.sat-content td,
+.sat-content th {
+  border: 1px solid hsl(var(--border));
+  padding: 6px 12px;
+}
+.sat-content ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.sat-content ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.sat-content .dap_copyright {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+/* SAT study guides — plain prose and tables, shown on the normal dark cards. */
+.sat-guide {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: hsl(var(--muted-foreground));
+}
+.sat-guide h4 {
+  margin: 1.1em 0 0.35em;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.sat-guide h4:first-child {
+  margin-top: 0;
+}
+.sat-guide p {
+  margin: 0.4em 0;
+}
+.sat-guide strong {
+  color: hsl(var(--foreground));
+}
+.sat-guide ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+  margin: 0.5em 0;
+}
+.sat-guide ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+  margin: 0.5em 0;
+}
+.sat-guide li {
+  margin: 0.3em 0;
+}
+.sat-guide table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.875rem;
+}
+.sat-guide th,
+.sat-guide td {
+  border: 1px solid hsl(var(--border));
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.sat-guide th {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--accent-foreground));
+  font-weight: 600;
+}
+.sat-guide a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
