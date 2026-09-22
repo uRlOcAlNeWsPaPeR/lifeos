@@ -242,6 +242,7 @@ export function TasksView() {
               <TaskItem
                 task={task}
                 onToggle={(t) => toggleTask(t.id)}
+                onRestore={(t) => toggleTask(t.id)}
                 onEdit={setEditing}
                 onDelete={(t) => deleteTask(t.id)}
                 draggable={tab !== "completed"}

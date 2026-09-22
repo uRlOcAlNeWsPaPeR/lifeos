@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CalendarClock, Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Clock, GripVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Badge, priorityTone } from "@/components/ui/badge";
 import { relativeDue, fmtDuration, fmtDate, fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import type { TaskDTO } from "@/lib/types";
 export function TaskItem({
   task,
   onToggle,
+  onRestore,
   onEdit,
   onDelete,
   draggable,
@@ -18,6 +19,11 @@ export function TaskItem({
 }: {
   task: TaskDTO;
   onToggle: (task: TaskDTO) => void;
+  /** Completed tasks get an explicit "Restore" button instead of a
+   *  clickable checkbox — un-completing shouldn't hide behind a toggle
+   *  that looks like a selection control. Falls back to the old
+   *  click-to-toggle checkbox if omitted. */
+  onRestore?: (task: TaskDTO) => void;
   onEdit?: (task: TaskDTO) => void;
   onDelete?: (task: TaskDTO) => void;
   draggable?: boolean;
@@ -56,18 +62,27 @@ export function TaskItem({
         </button>
       )}
 
-      <button
-        onClick={() => onToggle(task)}
-        className={cn(
-          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all duration-200 active:scale-90",
-          done
-            ? "border-primary bg-gradient-brand text-primary-foreground shadow-glow-sm"
-            : "border-white/20 hover:border-primary hover:bg-primary/10",
-        )}
-        aria-label={done ? "Mark incomplete" : "Mark complete"}
-      >
-        {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
-      </button>
+      {done && onRestore ? (
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/10 text-primary"
+          aria-hidden="true"
+        >
+          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+        </span>
+      ) : (
+        <button
+          onClick={() => onToggle(task)}
+          className={cn(
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all duration-200 active:scale-90",
+            done
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-white/20 hover:border-primary hover:bg-primary/10",
+          )}
+          aria-label={done ? "Mark incomplete" : "Mark complete"}
+        >
+          {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        </button>
+      )}
 
       <div className="min-w-0 flex-1">
         <p
@@ -120,6 +135,15 @@ export function TaskItem({
         <Badge tone={priorityTone(task.priority)} className="hidden shrink-0 capitalize sm:inline-flex">
           {task.priority}
         </Badge>
+      )}
+      {done && onRestore && (
+        <button
+          onClick={() => onRestore(task)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/15 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restore
+        </button>
       )}
 
       <div className="hover-reveal flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
