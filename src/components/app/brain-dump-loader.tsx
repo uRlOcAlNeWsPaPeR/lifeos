@@ -38,7 +38,7 @@ export function BrainDumpLoader({ source = "text" }: { source?: "text" | "image"
         <span
           className="absolute inline-flex h-24 w-24 animate-spin rounded-full [animation-duration:1.2s]"
           style={{
-            background: "conic-gradient(from 0deg, transparent 55%, var(--g-purple), var(--g-cyan))",
+            background: "conic-gradient(from 0deg, transparent 55%, var(--g-green), var(--g-teal))",
             mask: "radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))",
             WebkitMask:
               "radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px))",

@@ -64,8 +64,13 @@ const config: Config = {
         "glow-sm": "0 0 14px -4px hsl(var(--glow) / 0.45)",
       },
       backgroundImage: {
-        "gradient-brand": "linear-gradient(120deg, var(--g-purple), var(--g-magenta) 55%, var(--g-pink))",
-        "gradient-ai": "linear-gradient(120deg, var(--g-purple), var(--g-blue) 50%, var(--g-cyan))",
+        // Must match the palette in globals.css. These once pointed at
+        // --g-purple/--g-magenta/--g-pink/--g-blue/--g-cyan, which were never
+        // defined — the undefined vars invalidated the gradient, and because this
+        // utility outranks the .bg-gradient-* component classes, every primary
+        // button and progress bar rendered with no fill at all.
+        "gradient-brand": "linear-gradient(120deg, var(--g-green), var(--g-emerald) 55%, var(--g-teal))",
+        "gradient-ai": "linear-gradient(120deg, var(--g-green), var(--g-teal) 55%, var(--g-mint))",
         "gradient-radial": "radial-gradient(circle at center, var(--tw-gradient-stops))",
       },
       keyframes: {

@@ -38,9 +38,9 @@ export function Ring({ value, size = 64 }: { value: number; size?: number }) {
     <svg width={size} height={size} className="-rotate-90">
       <defs>
         <linearGradient id={id} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="var(--g-purple)" />
-          <stop offset="60%" stopColor="var(--g-blue)" />
-          <stop offset="100%" stopColor="var(--g-cyan)" />
+          <stop offset="0%" stopColor="var(--g-green)" />
+          <stop offset="60%" stopColor="var(--g-emerald)" />
+          <stop offset="100%" stopColor="var(--g-teal)" />
         </linearGradient>
       </defs>
       <circle
