@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Sparkles, Check, RefreshCw, ArrowUpRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/misc";
 import { authedApi } from "@/lib/client";
 import { useAppData } from "@/lib/store/app-data";
+import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
+import type { TaskDTO } from "@/lib/types";
 
 interface Pick {
   taskId: string;
@@ -32,13 +34,25 @@ function signature(tasks: { id: string; status: string; priority: string; dueAt:
 }
 
 export function AiPriorityPanel() {
-  const { data, toggleTask } = useAppData();
+  const { data, toggleTask, updateTask } = useAppData();
   const sig = signature(data.tasks);
 
   const [loading, setLoading] = useState(!cache || cache.sig !== sig);
   const [result, setResult] = useState<Result | null>(cache?.sig === sig ? cache.result : null);
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+  const [editing, setEditing] = useState<TaskDTO | null>(null);
   const inflight = useRef<string | null>(null);
+
+  const goals = useMemo(
+    () => data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title })),
+    [data.goals],
+  );
+  const courses = useMemo(() => data.courses.map((c) => ({ id: c.id, name: c.name })), [data.courses]);
+
+  async function saveTask(draft: TaskDraft) {
+    if (!editing) return;
+    await updateTask(editing.id, draftToPayload(draft));
+  }
 
   async function load(force = false) {
     if (!force && cache?.sig === sig) {
@@ -115,10 +129,16 @@ export function AiPriorityPanel() {
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-ai text-xs font-semibold text-primary-foreground shadow-glow-sm">
                     {i + 1}
                   </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{p.title}</p>
+                  <button
+                    onClick={() => {
+                      const t = data.tasks.find((x) => x.id === p.taskId);
+                      if (t) setEditing(t);
+                    }}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="font-medium hover:text-primary">{p.title}</p>
                     <p className="mt-1 text-sm text-muted-foreground">{p.reason}</p>
-                  </div>
+                  </button>
                   <button
                     onClick={() => complete(p.taskId)}
                     disabled={doneIds.has(p.taskId)}
@@ -139,6 +159,15 @@ export function AiPriorityPanel() {
           </>
         )}
       </div>
+
+      <TaskEditor
+        open={!!editing}
+        onClose={() => setEditing(null)}
+        onSave={saveTask}
+        task={editing}
+        goals={goals}
+        courses={courses}
+      />
     </Card>
   );
 }
