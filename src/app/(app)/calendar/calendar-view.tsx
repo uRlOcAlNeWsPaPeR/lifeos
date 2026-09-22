@@ -253,6 +253,7 @@ export function CalendarView() {
                 title: t.title,
                 kind: t.status,
                 canvas: t.source === "canvas",
+                planned: Boolean(t.scheduledAt),
               })),
             ];
             // Month view only shows its own month — the trailing/leading days of
@@ -310,7 +311,9 @@ export function CalendarView() {
                         ? cn("bg-white/[0.06]", dayPast && "opacity-35", dayFuture && "font-semibold")
                         : it.type === "assignment"
                           ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
-                          : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
+                          : it.type === "task" && it.planned
+                            ? cn("bg-sky-500/15 text-sky-400", dayPast && "opacity-35", dayFuture && "font-semibold")
+                            : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
                     return (
                       <span
                         key={`${it.type}-${it.id}`}
@@ -344,6 +347,7 @@ export function CalendarView() {
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         {[
           ["Task", "bg-primary/60"],
+          ["Planned task", "bg-sky-400"],
           ["Class", "bg-primary"],
           ["Study session", "bg-[var(--g-teal)]"],
           ["Assignment", "bg-warning"],
@@ -739,6 +743,7 @@ function CalendarAgenda({
           kind: t.status,
           canvas: t.source === "canvas",
           done: t.status === "done",
+          planned: Boolean(t.scheduledAt),
         })),
       ];
       return { day, k, items };
@@ -802,7 +807,9 @@ function CalendarAgenda({
                     ? "bg-white/[0.06]"
                     : it.type === "assignment"
                       ? "bg-warning/15 text-warning"
-                      : "bg-primary/15 text-primary";
+                      : it.type === "task" && it.planned
+                        ? "bg-sky-500/15 text-sky-400"
+                        : "bg-primary/15 text-primary";
                 return (
                   <span
                     key={`${it.type}-${it.id}`}
