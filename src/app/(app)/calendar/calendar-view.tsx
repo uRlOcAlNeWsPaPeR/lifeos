@@ -641,6 +641,7 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
         task={taskModal && taskModal !== "new" ? taskModal : null}
         goals={goals}
         courses={courses}
+        defaultDueDate={dateKey}
       />
       <EventEditor
         open={eventModal}

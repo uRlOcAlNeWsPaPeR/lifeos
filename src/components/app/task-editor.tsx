@@ -36,6 +36,7 @@ export function TaskEditor({
   task,
   goals = [],
   courses = [],
+  defaultDueDate,
 }: {
   open: boolean;
   onClose: () => void;
@@ -43,6 +44,8 @@ export function TaskEditor({
   task?: TaskDTO | null;
   goals?: { id: string; title: string }[];
   courses?: { id: string; name: string }[];
+  /** New-task due date, e.g. the day clicked in the calendar. Defaults to today. */
+  defaultDueDate?: string;
 }) {
   const { data } = useAppData();
   const prefs = data.profile.prefs;
@@ -69,9 +72,9 @@ export function TaskEditor({
         courseId: task.courseId ?? "",
       });
     } else {
-      setDraft(blank(prefs.defaultSessionMin));
+      setDraft(blank(prefs.defaultSessionMin, defaultDueDate));
     }
-  }, [open, task, prefs.defaultSessionMin]);
+  }, [open, task, prefs.defaultSessionMin, defaultDueDate]);
 
   // Sleep-aware check: only when a specific work time + duration are set.
   const bedtime = useMemo(() => {
@@ -366,13 +369,16 @@ export function TaskEditor({
   );
 }
 
-function blank(defaultMin = 45): TaskDraft {
+function blank(defaultMin = 45, defaultDueDate?: string): TaskDraft {
   return {
     title: "",
     notes: "",
     priority: "medium",
     category: "",
-    dueAt: "",
+    // Defaults to today (or the caller's chosen date, e.g. the day clicked
+    // in the calendar) so a freshly created task shows up on the calendar
+    // right away instead of vanishing until you pick a date yourself.
+    dueAt: defaultDueDate ?? toInputDate(new Date()),
     dueTime: "",
     scheduledDate: "",
     scheduledTime: "",
