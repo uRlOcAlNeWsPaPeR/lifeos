@@ -92,11 +92,17 @@ export function CalendarView() {
       // done locally all drop off the grid (still visible in the day drawer)
       // — and not the ones long past due.
       if (a.dueAt && a.status === "open" && !a.localDone && !isStaleOverdue(a.dueAt)) {
+        const dueKey = KEY(parseDate(a.dueAt));
+        bucket(dueKey).assignments.push(a);
         // A planned work time (from the assignment's linked planning task)
-        // wins over the due date — same rule as plain tasks: show it where
-        // you're actually going to do it, not just where it's due.
-        const when = a.linkedTask?.scheduledAt || a.dueAt;
-        bucket(KEY(parseDate(when))).assignments.push(a);
+        // shows up too, same rule as plain tasks — where you're actually
+        // going to do it, not just where it's due — without losing the due
+        // date itself.
+        const plannedAt = a.linkedTask?.scheduledAt;
+        if (plannedAt) {
+          const plannedKey = KEY(new Date(plannedAt));
+          if (plannedKey !== dueKey) bucket(plannedKey).assignments.push(a);
+        }
       }
     }
     return map;
@@ -250,6 +256,7 @@ export function CalendarView() {
                 title: a.title,
                 kind: a.localDone ? "done" : "",
                 canvas: a.provider === "canvas",
+                planned: Boolean(a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === k),
               })),
               ...(b?.tasks ?? []).map((t) => ({
                 type: "task" as const,
@@ -313,10 +320,10 @@ export function CalendarView() {
                       ? "bg-primary/10 text-muted-foreground line-through"
                       : it.type === "event"
                         ? cn("bg-white/[0.06]", dayPast && "opacity-35", dayFuture && "font-semibold")
-                        : it.type === "assignment"
-                          ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
-                          : it.type === "task" && it.planned
-                            ? cn("bg-sky-500/15 text-sky-400", dayPast && "opacity-35", dayFuture && "font-semibold")
+                        : (it.type === "task" || it.type === "assignment") && it.planned
+                          ? cn("bg-sky-500/15 text-sky-400", dayPast && "opacity-35", dayFuture && "font-semibold")
+                          : it.type === "assignment"
+                            ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
                             : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
                     return (
                       <span
@@ -351,7 +358,7 @@ export function CalendarView() {
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         {[
           ["Task", "bg-primary/60"],
-          ["Planned task", "bg-sky-400"],
+          ["Planned", "bg-sky-400"],
           ["Class", "bg-primary"],
           ["Study session", "bg-[var(--g-teal)]"],
           ["Assignment", "bg-warning"],
@@ -744,6 +751,7 @@ function CalendarAgenda({
           kind: "",
           canvas: a.provider === "canvas",
           done: Boolean(a.localDone),
+          planned: Boolean(a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === k),
         })),
         ...(b?.tasks ?? []).map((t) => ({
           type: "task" as const,
@@ -814,10 +822,10 @@ function CalendarAgenda({
                   ? "bg-primary/10 text-muted-foreground line-through"
                   : it.type === "event"
                     ? "bg-white/[0.06]"
-                    : it.type === "assignment"
-                      ? "bg-warning/15 text-warning"
-                      : it.type === "task" && it.planned
-                        ? "bg-sky-500/15 text-sky-400"
+                    : (it.type === "task" || it.type === "assignment") && it.planned
+                      ? "bg-sky-500/15 text-sky-400"
+                      : it.type === "assignment"
+                        ? "bg-warning/15 text-warning"
                         : "bg-primary/15 text-primary";
                 return (
                   <span
