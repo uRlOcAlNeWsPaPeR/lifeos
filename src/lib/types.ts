@@ -85,6 +85,12 @@ export interface CourseDTO {
   provider: string | null;
   canvasCourseId?: string | null;
   canvasUrl?: string | null;
+  /**
+   * Grade categories for a manually-tracked (non-Canvas) course — e.g. Tests
+   * 50%, Homework 20%, Quizzes 30%. Canvas courses ignore this; Canvas already
+   * reports its own weighted `currentScore`.
+   */
+  gradeWeights?: { category: string; weight: number }[] | null;
   assignments: AssignmentDTO[];
 }
 
@@ -101,6 +107,8 @@ export interface AssignmentDTO {
   gradeValue: string | null;
   pointsEarned: number | null;
   pointsPossible: number | null;
+  /** Which of the course's `gradeWeights` categories this counts toward, if any. */
+  category?: string | null;
   provider?: string | null;
   canvasAssignmentId?: string | null;
   canvasUrl?: string | null;

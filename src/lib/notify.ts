@@ -59,18 +59,52 @@ export interface NotifyOptions {
   onClick?: () => void;
 }
 
-/** Fire a notification. Returns true if the OS notification was shown. */
-export function notify(title: string, opts: NotifyOptions = {}): boolean {
-  if (opts.sound) playChime(opts.kind);
-  if (notifyPermission() !== "granted") return false;
+// Registered once per page load, lazily. Some browsers — Android Chrome in
+// particular — refuse `new Notification()` outright and require the
+// notification to be shown through a service worker instead
+// (`registration.showNotification()`). This exists purely to make that path
+// available; it does no caching or push handling of its own.
+let swReady: Promise<ServiceWorkerRegistration | null> | null = null;
+function ensureServiceWorker(): Promise<ServiceWorkerRegistration | null> {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) return Promise.resolve(null);
+  if (!swReady) {
+    swReady = navigator.serviceWorker
+      .register("/sw.js")
+      .then(() => navigator.serviceWorker.ready)
+      .catch(() => null);
+  }
+  return swReady;
+}
+
+export interface NotifyResult {
+  /** Permission was granted, so a show was attempted. */
+  attempted: boolean;
+  /** The OS notification API call actually succeeded. */
+  shown: boolean;
+  via: "service-worker" | "window" | "none";
+  error?: string;
+}
+
+async function showNotification(title: string, opts: NotifyOptions): Promise<NotifyResult> {
+  const body: NotificationOptions = {
+    body: opts.body,
+    tag: opts.tag,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    requireInteraction: opts.kind === "alarm",
+  };
+
+  const reg = await ensureServiceWorker();
+  if (reg) {
+    try {
+      await reg.showNotification(title, body);
+      return { attempted: true, shown: true, via: "service-worker" };
+    } catch {
+      // fall through to the plain constructor
+    }
+  }
   try {
-    const n = new Notification(title, {
-      body: opts.body,
-      tag: opts.tag,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      requireInteraction: opts.kind === "alarm",
-    });
+    const n = new Notification(title, body);
     if (opts.onClick) {
       n.onclick = () => {
         window.focus();
@@ -78,10 +112,28 @@ export function notify(title: string, opts: NotifyOptions = {}): boolean {
         n.close();
       };
     }
-    return true;
-  } catch {
-    return false;
+    return { attempted: true, shown: true, via: "window" };
+  } catch (e) {
+    return { attempted: true, shown: false, via: "none", error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Fire a notification. Returns true once permission is granted and a show
+ *  was attempted — use `notifyAndReport` when you need to know it actually
+ *  displayed (e.g. a "send test notification" button). */
+export function notify(title: string, opts: NotifyOptions = {}): boolean {
+  if (opts.sound) playChime(opts.kind);
+  if (notifyPermission() !== "granted") return false;
+  void showNotification(title, opts);
+  return true;
+}
+
+/** Same as `notify`, but resolves once the notification has actually been
+ *  shown (or failed to show) instead of firing and forgetting. */
+export async function notifyAndReport(title: string, opts: NotifyOptions = {}): Promise<NotifyResult> {
+  if (opts.sound) playChime(opts.kind);
+  if (notifyPermission() !== "granted") return { attempted: false, shown: false, via: "none" };
+  return showNotification(title, opts);
 }
 
 /** Is `now` inside the quiet-hours window (handles windows crossing midnight)? */

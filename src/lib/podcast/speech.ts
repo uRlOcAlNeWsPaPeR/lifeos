@@ -47,7 +47,54 @@ export function loadVoices(timeoutMs = 2000): Promise<SpeechSynthesisVoice[]> {
   });
 }
 
-/** English voices first — most study notes are in English — then the rest. */
+/*
+ * Voice quality varies wildly within one device's own voice list — a stock
+ * OS install mixes its best voices in with legacy/novelty ones, and the Web
+ * Speech API gives no quality signal of its own. These are the naming
+ * patterns each OS actually uses for its better voices, so the picker can
+ * rank by them instead of falling back to plain alphabetical order.
+ */
+
+// macOS/iOS: Apple appends the tier to the name once a higher-quality voice
+// is downloaded (System Settings → Accessibility → Spoken Content) — a bare
+// "Ava" or "Samantha" is the default low-fi "Compact" version.
+const MACOS_BEST = /\(premium\)/i;
+const MACOS_BETTER = /\(enhanced\)/i;
+// Apple's built-in novelty/sound-effect voices — fun, never what you want
+// read a study episode in.
+const MACOS_NOVELTY = new Set([
+  "albert", "bad news", "bahh", "bells", "boing", "bubbles", "cellos",
+  "wobble", "zarvox", "trinoids", "jester", "organ", "superstar", "whisper",
+  "deranged", "hysterical", "pipe organ", "good news", "minor", "junior",
+  "kathy", "ralph", "fred",
+]);
+
+// Windows: Edge/Chrome expose Microsoft's newer cloud-quality voices
+// alongside the legacy SAPI5 ones — the good ones are marked "(Natural)".
+// Old "Desktop" voices (David, Zira, Mark) are the robotic default.
+const WINDOWS_BEST = /\(natural\)/i;
+const WINDOWS_WORSE = /\bdesktop\b/i;
+
+// Chrome (any OS) also offers Google's own network voices — solid quality,
+// not device-dependent.
+const GOOGLE_NETWORK = /^google\s/i;
+
+/**
+ * Lower = better. Used to rank voices within a device's own list — it can
+ * only ever compare voices actually installed there, so a Mac never sees
+ * "Windows voices" or vice versa; each OS's own naming convention just
+ * happens to match one of these tiers.
+ */
+function voiceQualityRank(name: string): number {
+  const bare = name.replace(/\s*\([^)]*\)\s*/g, "").trim().toLowerCase();
+  if (MACOS_NOVELTY.has(bare)) return 5;
+  if (MACOS_BEST.test(name) || WINDOWS_BEST.test(name)) return 0;
+  if (MACOS_BETTER.test(name) || GOOGLE_NETWORK.test(name)) return 1;
+  if (WINDOWS_WORSE.test(name)) return 3;
+  return 2;
+}
+
+/** Best-sounding first, then English voices — most study notes are in English. */
 export function sortVoices(voices: SpeechSynthesisVoice[]): VoiceOption[] {
   return voices
     .map((v) => ({ id: v.voiceURI, name: v.name, lang: v.lang, localService: v.localService }))
@@ -55,8 +102,50 @@ export function sortVoices(voices: SpeechSynthesisVoice[]): VoiceOption[] {
       const aEn = a.lang.startsWith("en") ? 0 : 1;
       const bEn = b.lang.startsWith("en") ? 0 : 1;
       if (aEn !== bEn) return aEn - bEn;
+      const rank = voiceQualityRank(a.name) - voiceQualityRank(b.name);
+      if (rank !== 0) return rank;
       return a.name.localeCompare(b.name);
     });
+}
+
+// A stock OS install bundles voices for dozens of languages and English
+// accents nobody asked for here — keep just the two generic ones.
+const GENERIC_ENGLISH = new Set(["en-us", "en-gb"]);
+
+/**
+ * Drop every voice except generic American/British English — every other
+ * language and every other English accent (Australian, Indian, Irish,
+ * Scottish, South African, Canadian...) is gone, not just deprioritized.
+ * Falls back to whatever English (then whatever at all) the device actually
+ * has if that filter would otherwise leave the picker empty.
+ */
+export function filterToGenericEnglish(voices: VoiceOption[]): VoiceOption[] {
+  const generic = voices.filter((v) => GENERIC_ENGLISH.has(v.lang.toLowerCase()));
+  if (generic.length) return generic;
+  const anyEnglish = voices.filter((v) => v.lang.toLowerCase().startsWith("en"));
+  return anyEnglish.length ? anyEnglish : voices;
+}
+
+/**
+ * Keep only the best quality tier this specific device actually has —
+ * Premium/Natural if any exist, hiding every Standard voice; otherwise
+ * Enhanced/Google if any exist; and so on down to Standard. A device's voice
+ * tier is entirely local to that machine (there's no way for a website to
+ * install or force a particular voice on a visitor), so "best available"
+ * has to be computed per-device rather than assumed — this is what makes
+ * every visitor get the best THEY have, without leaving someone whose
+ * device only offers Standard voices with an empty picker.
+ */
+export function filterToBestTier(voices: VoiceOption[]): VoiceOption[] {
+  if (!voices.length) return voices;
+  const ranked = voices.map((v) => ({ v, rank: voiceQualityRank(v.name) }));
+  const best = Math.min(...ranked.map((r) => r.rank));
+  return ranked.filter((r) => r.rank === best).map((r) => r.v);
+}
+
+/** True once any voice in the list is a Premium/Natural/Enhanced/Google-tier one. */
+export function hasHighQualityVoice(voices: VoiceOption[]): boolean {
+  return voices.some((v) => voiceQualityRank(v.name) <= 1);
 }
 
 /** Load the device's voices once and keep them for the session. */
@@ -68,13 +157,13 @@ export function useVoices() {
     let alive = true;
     loadVoices().then((list) => {
       if (!alive) return;
-      setVoices(sortVoices(list));
+      setVoices(filterToBestTier(filterToGenericEnglish(sortVoices(list))));
       setLoading(false);
     });
     return () => { alive = false; };
   }, []);
 
-  return { voices, loading, supported: speechSupported() };
+  return { voices, loading, supported: speechSupported(), hasHighQuality: hasHighQualityVoice(voices) };
 }
 
 /**

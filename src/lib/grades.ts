@@ -265,7 +265,7 @@ export function neededOnFinal(current: number, weight: number, target: number) {
 
 /* ----------------------------- course summary ---------------------------- */
 
-export type GradeSource = "canvas" | "computed" | "manual";
+export type GradeSource = "canvas" | "weighted" | "computed" | "manual";
 
 export interface CourseGrade {
   source: GradeSource | null;
@@ -284,11 +284,36 @@ export function gradedWithPoints(course: CourseDTO): AssignmentDTO[] {
 }
 
 /**
+ * A graded assignment's percent, real points first — otherwise a manually
+ * typed-in grade ("A-", "95%") on a assignment with no points, treated as a
+ * single 0–100 point row so it still counts toward its category's average.
+ */
+function assignmentPct(a: AssignmentDTO): PointsRow | null {
+  if (a.pointsEarned != null && a.pointsPossible != null && a.pointsPossible > 0) {
+    return { earned: a.pointsEarned, possible: a.pointsPossible };
+  }
+  const pct = parseGradeString(a.gradeValue).pct;
+  return pct != null ? { earned: pct, possible: 100 } : null;
+}
+
+/** A category's (or any assignment group's) average percent from its graded work. */
+export function categoryPct(assignments: AssignmentDTO[]): number | null {
+  return pointsPct(
+    assignments
+      .filter((a) => a.status === "graded")
+      .map(assignmentPct)
+      .filter((r): r is PointsRow => r !== null),
+  );
+}
+
+/**
  * The single grade to show for a course. Canvas's own computed score wins (it
- * knows the real weighting); otherwise we compute from graded assignments;
- * otherwise fall back to whatever the student typed in. `scale` is whichever
- * percent→letter cutoffs the student picked (Settings → School); defaults to
- * the U.S. +/- scale when they haven't chosen one.
+ * knows the real weighting); otherwise, for a course with declared grade
+ * categories (Settings → School, non-Canvas only), we weight each category's
+ * average by its declared share; otherwise we compute a flat points average
+ * from graded assignments; otherwise fall back to whatever the student typed
+ * in. `scale` is whichever percent→letter cutoffs the student picked
+ * (Settings → School); defaults to the U.S. +/- scale when they haven't chosen one.
  */
 export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTER_SCALE): CourseGrade {
   const graded = gradedWithPoints(course);
@@ -304,6 +329,24 @@ export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTE
       possible: graded.length ? possible : null,
       gradedCount: graded.length,
     };
+  }
+
+  if (course.gradeWeights?.length) {
+    const rows: WeightRow[] = course.gradeWeights
+      .map((w): WeightRow | null => {
+        const inCategory = course.assignments.filter((a) => (a.category ?? "") === w.category);
+        const pct = categoryPct(inCategory);
+        return pct != null ? { weight: w.weight, score: pct } : null;
+      })
+      .filter((r): r is WeightRow => r !== null);
+    // Only once at least one category has graded work — an all-empty course
+    // falls through to the plain "nothing graded yet" result below.
+    if (rows.length) {
+      const { pct } = weightedPct(rows);
+      if (pct != null) {
+        return { source: "weighted", pct, letter: letterFromPct(pct, scale), earned, possible, gradedCount: graded.length };
+      }
+    }
   }
 
   if (graded.length && possible > 0) {

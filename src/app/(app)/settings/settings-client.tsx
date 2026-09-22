@@ -6,6 +6,7 @@ import { Moon, BellRing } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { HelpButton } from "@/components/ui/help-button";
+import { Switch } from "@/components/ui/switch";
 import { GradeScalePicker } from "@/components/app/grade-scale-picker";
 import { useAppData } from "@/lib/store/app-data";
 import { useAuth } from "@/lib/firebase/auth-context";
@@ -13,6 +14,7 @@ import { fmt12 } from "@/lib/scheduling/sleep";
 import type { Prefs } from "@/lib/firebase/schema";
 import { toast } from "@/components/ui/toaster";
 import { cn } from "@/lib/utils";
+import { notifyAndReport, notifyPermission, requestNotifyPermission, type NotifyPermission } from "@/lib/notify";
 
 const DAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -239,6 +241,7 @@ export function NotificationSettings() {
 
   return (
     <div className="space-y-4">
+      <BrowserPermissionRow />
       <Toggle
         icon={BellRing}
         label="Alarms & reminders"
@@ -282,6 +285,78 @@ export function NotificationSettings() {
             Save
           </Button>
         </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The OS-level permission gate. This must be requested from a click — browsers
+ * refuse to prompt on page load — so it lives here rather than firing silently
+ * from wherever reminders actually get checked.
+ */
+function BrowserPermissionRow() {
+  const [perm, setPerm] = useState<NotifyPermission>("default");
+  const [sending, setSending] = useState(false);
+  useEffect(() => setPerm(notifyPermission()), []);
+
+  async function sendTest() {
+    setSending(true);
+    try {
+      const result = await notifyAndReport("LifeOS test notification", {
+        body: "If you can see this, notifications are working.",
+        tag: "lifeos-test-notification",
+        sound: true,
+        kind: "reminder",
+      });
+      if (result.shown) {
+        toast("Test notification sent — check your notification center", "success");
+      } else {
+        toast(
+          result.error
+            ? `Couldn't show it: ${result.error}`
+            : "Couldn't show it. Check your OS/browser notification settings for this site.",
+          "error",
+        );
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  if (perm === "unsupported") return null;
+
+  if (perm === "granted") {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5 text-sm">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
+          <BellRing className="h-4 w-4 text-primary" />
+          Browser notifications are on — LifeOS can alert you while a tab is open. It can&apos;t
+          notify you once the app is fully closed.
+        </span>
+        <Button size="sm" variant="secondary" onClick={sendTest} loading={sending}>
+          Send test
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5 text-sm">
+      <span className="flex items-center gap-2">
+        <BellRing className="h-4 w-4 text-primary" />
+        {perm === "denied"
+          ? "Notifications are blocked in your browser — allow them in site settings to get alerts."
+          : "Turn on browser notifications to get alerted when it's time to start something."}
+      </span>
+      {perm === "default" && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={async () => setPerm(await requestNotifyPermission())}
+        >
+          Enable
+        </Button>
       )}
     </div>
   );
@@ -350,29 +425,12 @@ function Toggle({
         small ? "p-2.5" : "p-3.5",
       )}
     >
-      <span className="flex items-center gap-2">
-        {Icon && <Icon className="h-4 w-4 text-primary" />}
-        {label}
+      <span className="flex min-w-0 items-center gap-2">
+        {Icon && <Icon className="h-4 w-4 shrink-0 text-primary" />}
+        <span className="min-w-0">{label}</span>
         {help && <HelpButton>{help}</HelpButton>}
       </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-          checked ? "bg-gradient-brand" : "bg-white/15",
-        )}
-      >
-        <span
-          className={cn(
-            "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
-            checked ? "translate-x-4" : "translate-x-0.5",
-          )}
-        />
-      </button>
+      <Switch checked={checked} onChange={onChange} label={label} />
     </div>
   );
 }

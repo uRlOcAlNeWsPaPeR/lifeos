@@ -126,6 +126,13 @@ export const brainDumpSchema = z.object({
   text: z.string().min(3, "Type at least a sentence").max(5000),
 });
 
+export const brainDumpImageSchema = z.object({
+  // base64 payload only (no data: URL prefix) — client compresses before upload,
+  // so this comfortably covers a real screenshot with room to spare.
+  image: z.string().min(100).max(8_000_000),
+  mimeType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+});
+
 export const brainDumpCommitSchema = z.object({
   brainDumpId: z.string(),
   items: z.array(

@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Clock, GripVertical, Pencil, Trash2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, Check, Clock, GripVertical, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { Badge, priorityTone } from "@/components/ui/badge";
-import { relativeDue, fmtDuration } from "@/lib/format";
+import { relativeDue, fmtDuration, fmtDate, fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import type { TaskDTO } from "@/lib/types";
@@ -10,6 +10,7 @@ import type { TaskDTO } from "@/lib/types";
 export function TaskItem({
   task,
   onToggle,
+  onRestore,
   onEdit,
   onDelete,
   draggable,
@@ -18,6 +19,11 @@ export function TaskItem({
 }: {
   task: TaskDTO;
   onToggle: (task: TaskDTO) => void;
+  /** Completed tasks get an explicit "Restore" button instead of a
+   *  clickable checkbox — un-completing shouldn't hide behind a toggle
+   *  that looks like a selection control. Falls back to the old
+   *  click-to-toggle checkbox if omitted. */
+  onRestore?: (task: TaskDTO) => void;
   onEdit?: (task: TaskDTO) => void;
   onDelete?: (task: TaskDTO) => void;
   draggable?: boolean;
@@ -29,13 +35,21 @@ export function TaskItem({
   const past = !done && Boolean(due?.past);
   const upcoming = !done && !!due && !due.past;
 
+  const scheduled = task.scheduledAt ? new Date(task.scheduledAt) : null;
+  const plannedToday = scheduled ? scheduled.toDateString() === new Date().toDateString() : false;
+  const plannedLabel = scheduled
+    ? plannedToday
+      ? `Planned today, ${fmtTime(scheduled)}`
+      : `Planned ${fmtDate(scheduled, { month: "short", day: "numeric" })}, ${fmtTime(scheduled)}`
+    : null;
+
   return (
     <div
       className={cn(
         "group flex items-center gap-3 rounded-xl border border-white/[0.07] bg-card/60 backdrop-blur-xl transition-all duration-200 hover:border-white/15",
         compact ? "px-3 py-2" : "px-4 py-3.5",
         done && "opacity-55",
-        past && "opacity-60",
+        past && "border-destructive/30",
       )}
     >
       {draggable && (
@@ -48,18 +62,27 @@ export function TaskItem({
         </button>
       )}
 
-      <button
-        onClick={() => onToggle(task)}
-        className={cn(
-          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all duration-200 active:scale-90",
-          done
-            ? "border-primary bg-gradient-brand text-primary-foreground shadow-glow-sm"
-            : "border-white/20 hover:border-primary hover:bg-primary/10",
-        )}
-        aria-label={done ? "Mark incomplete" : "Mark complete"}
-      >
-        {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
-      </button>
+      {done && onRestore ? (
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/10 text-primary"
+          aria-hidden="true"
+        >
+          <Check className="h-3.5 w-3.5" strokeWidth={3} />
+        </span>
+      ) : (
+        <button
+          onClick={() => onToggle(task)}
+          className={cn(
+            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all duration-200 active:scale-90",
+            done
+              ? "border-primary bg-primary/10 text-primary"
+              : "border-white/20 hover:border-primary hover:bg-primary/10",
+          )}
+          aria-label={done ? "Mark incomplete" : "Mark complete"}
+        >
+          {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
+        </button>
+      )}
 
       <div className="min-w-0 flex-1">
         <p
@@ -72,7 +95,18 @@ export function TaskItem({
         >
           {task.title}
         </p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {plannedLabel && (
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-semibold",
+                plannedToday ? "bg-sky-500 text-white" : "bg-sky-500/15 text-sky-400",
+              )}
+            >
+              <CalendarClock className="h-3 w-3" />
+              {plannedLabel}
+            </span>
+          )}
           {task.source === "canvas" && <CanvasBadge />}
           {task.category && <span>{task.category}</span>}
           {task.course && (
@@ -92,14 +126,24 @@ export function TaskItem({
       </div>
 
       {due && !done && (
-        <Badge tone={due.tone} className="shrink-0">
-          {due.label}
+        <Badge tone={due.past ? "destructive" : due.tone} className="shrink-0">
+          {due.past && <AlertTriangle className="h-3 w-3" />}
+          {due.past ? "Overdue" : due.label}
         </Badge>
       )}
       {!done && (
         <Badge tone={priorityTone(task.priority)} className="hidden shrink-0 capitalize sm:inline-flex">
           {task.priority}
         </Badge>
+      )}
+      {done && onRestore && (
+        <button
+          onClick={() => onRestore(task)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-white/15 px-2.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Restore
+        </button>
       )}
 
       <div className="hover-reveal flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">

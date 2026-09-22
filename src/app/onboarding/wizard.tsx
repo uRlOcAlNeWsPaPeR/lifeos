@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { HelpButton } from "@/components/ui/help-button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { completeOnboarding } from "@/lib/firebase/onboarding-seed";
 import { DEFAULT_PREFS } from "@/lib/firebase/schema";
@@ -315,10 +316,13 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
                 </div>
               </div>
 
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 text-sm">
-                <span className="flex items-center gap-2">
-                  <BellRing className="h-4 w-4 text-primary" />
-                  Turn on alarms &amp; reminders
+              {/* A plain <div>, not <label> — a <label> forwards clicks to whichever
+                  labelable descendant the browser picks, which fires the switch from
+                  clicks meant for Help (and vice versa). */}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <BellRing className="h-4 w-4 shrink-0 text-primary" />
+                  <span className="min-w-0">Turn on alarms &amp; reminders</span>
                   <HelpButton>
                     <p>
                       Study reminders, class reminders and a bedtime nudge. Browser notifications
@@ -326,24 +330,12 @@ export function OnboardingWizard({ uid, defaultName }: { uid: string; defaultNam
                     </p>
                   </HelpButton>
                 </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={alarmsEnabled}
-                  onClick={() => setAlarmsEnabled((v) => !v)}
-                  className={cn(
-                    "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-                    alarmsEnabled ? "bg-gradient-brand" : "bg-white/15",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
-                      alarmsEnabled ? "translate-x-4" : "translate-x-0.5",
-                    )}
-                  />
-                </button>
-              </label>
+                <Switch
+                  checked={alarmsEnabled}
+                  onChange={setAlarmsEnabled}
+                  label="Turn on alarms & reminders"
+                />
+              </div>
 
               <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <Moon className="h-3.5 w-3.5" />

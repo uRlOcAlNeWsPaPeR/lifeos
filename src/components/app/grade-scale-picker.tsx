@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -107,9 +107,21 @@ function CustomTable({
   rows: LetterScaleEntry[];
   onChange: (rows: LetterScaleEntry[]) => void;
 }) {
-  // Stable local ids so rows don't jump around while typing.
-  const [ids] = useState(() => rows.map(() => rid()));
-  const keyed = rows.map((r, i) => ({ ...r, id: ids[i] ?? rid() }));
+  // Stable local ids so rows (and each row's own input state below) don't
+  // get scrambled while typing. Grows/shrinks with `rows` instead of being
+  // fixed at mount, so a newly-added row gets a real, stable id too — not a
+  // fresh random one generated on every render.
+  const [ids, setIds] = useState<string[]>(() => rows.map(() => rid()));
+  useEffect(() => {
+    setIds((cur) => {
+      if (cur.length === rows.length) return cur;
+      if (cur.length < rows.length) {
+        return [...cur, ...Array.from({ length: rows.length - cur.length }, rid)];
+      }
+      return cur.slice(0, rows.length);
+    });
+  }, [rows.length]);
+  const keyed = rows.map((r, i) => ({ ...r, id: ids[i] ?? `pending-${i}` }));
 
   const set = (i: number, patch: Partial<LetterScaleEntry>) =>
     onChange(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -125,13 +137,7 @@ function CustomTable({
             value={row.letter}
             onChange={(e) => set(i, { letter: e.target.value })}
           />
-          <Input
-            className="h-8 w-20 text-center"
-            inputMode="decimal"
-            placeholder="90"
-            value={Number.isFinite(row.min) ? String(row.min) : ""}
-            onChange={(e) => set(i, { min: e.target.value === "" ? NaN : Number(e.target.value) })}
-          />
+          <MinPercentInput value={row.min} onChange={(min) => set(i, { min })} />
           <span className="text-xs text-muted-foreground">% and up</span>
           <button
             onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
@@ -150,8 +156,33 @@ function CustomTable({
         <Plus className="h-3.5 w-3.5" /> Add row
       </Button>
       <p className="text-[11px] text-muted-foreground/70">
-        Anything below your lowest row counts as an F.
+        Anything below your lowest row counts as an F. Decimals are fine (89.5).
       </p>
     </div>
+  );
+}
+
+/**
+ * The minimum-percent field, kept as its own component so its displayed text
+ * is local state rather than re-derived from the number on every keystroke.
+ * Re-deriving it (`String(Number(text))`) is what silently ate a trailing
+ * decimal point — typing "89." became the number 89, which re-rendered back
+ * to the text "89", so the "." could never actually be finished.
+ */
+function MinPercentInput({ value, onChange }: { value: number; onChange: (n: number) => void }) {
+  const [text, setText] = useState(Number.isFinite(value) ? String(value) : "");
+  return (
+    <Input
+      className="h-8 w-20 text-center"
+      inputMode="decimal"
+      placeholder="90"
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        const n = next.trim() === "" ? NaN : Number(next);
+        if (next.trim() === "" || Number.isFinite(n)) onChange(n);
+      }}
+    />
   );
 }

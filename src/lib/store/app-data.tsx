@@ -100,6 +100,9 @@ interface StoreData {
     maxDecks: number | null;
     fullAnalytics: boolean;
     googleCalendarEnabled: boolean;
+    screenshotImportEnabled: boolean;
+    screenshotImportsPerWeek: number | null;
+    screenshotImportsUsedThisWeek: number;
   };
 }
 
@@ -260,6 +263,19 @@ interface AppDataValue {
   updateCourse: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteCourse: (id: string) => Promise<void>;
   addAssignment: (input: Record<string, unknown>) => Promise<AssignmentDTO | undefined>;
+  addAssignmentsBatch: (
+    courseId: string,
+    items: {
+      title: string;
+      dueAt: string | null;
+      description: string | null;
+      pointsPossible: number | null;
+      pointsEarned: number | null;
+      gradeValue: string | null;
+      category: string | null;
+      status: string;
+    }[],
+  ) => Promise<number>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
   createTaskForAssignment: (assignmentId: string) => Promise<void>;
@@ -276,6 +292,7 @@ interface AppDataValue {
     rawText: string,
   ) => Promise<number>;
   noteBrainDumpUsed: () => void;
+  noteScreenshotImportUsed: () => void;
 
   setPlan: (plan: string) => void;
   patchProfile: (patch: Partial<StoreData["profile"]>) => void;
@@ -581,25 +598,37 @@ export function AppDataProvider({
 
     const assignments: AssignmentDTO[] = assignmentsRaw
       .filter((a) => !dup.assignments.drop.has(a.id))
-      .map((a) => ({
-        id: a.id,
-        title: (a.title as string) ?? "",
-        description: (a.description as string) ?? null,
-        courseId: (a.courseId as string) ?? null,
-        dueAt: (a.dueAt as string) ?? null,
-        status: (a.status as AssignmentDTO["status"]) ?? "open",
-        createdAt: (a.createdAt as string) ?? null,
-        gradeValue: (a.gradeValue as string) ?? null,
-        pointsEarned: (a.pointsEarned as number) ?? null,
-        pointsPossible: (a.pointsPossible as number) ?? null,
-        provider: (a.provider as string) ?? null,
-        canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
-        canvasUrl: (a.canvasUrl as string) ?? null,
-        localDone: Boolean(a.localDone),
-        course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
-        tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
-        linkedTask: null as AssignmentDTO["linkedTask"],
-      }));
+      .map((a) => {
+        const pointsEarned = (a.pointsEarned as number) ?? null;
+        const gradeValue = (a.gradeValue as string) ?? null;
+        // A real grade is stronger evidence of "graded" than whatever status
+        // happens to be stored — covers a row synced before deriveStatus()
+        // treated a score as graded on its own, or any other path that set a
+        // grade without also flipping status. Never displays or counts
+        // toward the course grade as "open" once a real score/grade exists.
+        const rawStatus = (a.status as AssignmentDTO["status"]) ?? "open";
+        const status = pointsEarned != null || gradeValue ? "graded" : rawStatus;
+        return {
+          id: a.id,
+          title: (a.title as string) ?? "",
+          description: (a.description as string) ?? null,
+          courseId: (a.courseId as string) ?? null,
+          dueAt: (a.dueAt as string) ?? null,
+          status,
+          createdAt: (a.createdAt as string) ?? null,
+          gradeValue,
+          pointsEarned,
+          pointsPossible: (a.pointsPossible as number) ?? null,
+          category: (a.category as string) ?? null,
+          provider: (a.provider as string) ?? null,
+          canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
+          canvasUrl: (a.canvasUrl as string) ?? null,
+          localDone: Boolean(a.localDone),
+          course: a.courseId ? courseLite.get(a.courseId as string) ?? null : null,
+          tasks: allTasks.filter((t) => t.assignmentId === a.id).map((t) => ({ id: t.id, status: t.status })),
+          linkedTask: null as AssignmentDTO["linkedTask"],
+        };
+      });
 
     /* --- shadow-task dedup: a task that mirrors an assignment (same name, same
        due day, or an explicit link) becomes that assignment's planning layer and
@@ -654,6 +683,7 @@ export function AppDataProvider({
       provider: (c.provider as string) ?? null,
       canvasCourseId: (c.canvasCourseId as string) ?? null,
       canvasUrl: (c.canvasUrl as string) ?? null,
+      gradeWeights: (c.gradeWeights as { category: string; weight: number }[]) ?? null,
       assignments: assignments
         .filter((a) => a.courseId === c.id)
         .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
@@ -799,6 +829,9 @@ export function AppDataProvider({
         maxDecks: orNull(planLimits.maxDecks),
         fullAnalytics: planLimits.fullAnalytics,
         googleCalendarEnabled: planLimits.googleCalendarEnabled,
+        screenshotImportEnabled: planLimits.screenshotImportEnabled,
+        screenshotImportsPerWeek: orNull(planLimits.screenshotImportsPerWeek),
+        screenshotImportsUsedThisWeek: profile?.screenshotImportUsage?.[weekKey()] ?? 0,
       },
     };
   }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, podcastsRaw, ai]);
@@ -1108,11 +1141,33 @@ export function AppDataProvider({
             gradeValue: (input.gradeValue as string) ?? null,
             pointsEarned: (input.pointsEarned as number) ?? null,
             pointsPossible: (input.pointsPossible as number) ?? null,
+            category: (input.category as string) ?? null,
             createdAt: now(),
           };
           const ref = await addDoc(col(uid, "assignments"), payload);
           return { ...(payload as unknown as AssignmentDTO), id: ref.id };
         }, "Couldn't add assignment"),
+
+      addAssignmentsBatch: (courseId, items) =>
+        guard(async () => {
+          const batch = writeBatch(db());
+          for (const it of items) {
+            batch.set(doc(col(uid, "assignments")), {
+              title: it.title.trim(),
+              description: it.description ?? null,
+              courseId,
+              dueAt: it.dueAt ?? null,
+              status: it.status,
+              gradeValue: it.gradeValue ?? null,
+              pointsEarned: it.pointsEarned ?? null,
+              pointsPossible: it.pointsPossible ?? null,
+              category: it.category ?? null,
+              createdAt: now(),
+            });
+          }
+          await batch.commit();
+          return items.length;
+        }, "Couldn't add those assignments").then((n) => n ?? 0),
 
       updateAssignment: (id, patch) =>
         guard(() => updateDoc(entityDoc(uid, "assignments", id), patch as Record<string, unknown>), "Couldn't update assignment").then(() => undefined),
@@ -1218,6 +1273,13 @@ export function AppDataProvider({
         const usage = { ...(profile?.brainDumpUsage ?? {}) };
         usage[key] = (usage[key] ?? 0) + 1;
         updateDoc(userDoc(uid), { brainDumpUsage: usage }).catch(() => {});
+      },
+
+      noteScreenshotImportUsed: () => {
+        const key = weekKey();
+        const usage = { ...(profile?.screenshotImportUsage ?? {}) };
+        usage[key] = (usage[key] ?? 0) + 1;
+        updateDoc(userDoc(uid), { screenshotImportUsage: usage }).catch(() => {});
       },
 
       setPlan: (plan) => {

@@ -84,7 +84,10 @@ export function CalendarView() {
       if (!when) continue;
       // hide long-abandoned open tasks (unless the user scheduled work for them)
       if (!t.scheduledAt && isStaleOverdue(t.dueAt)) continue;
-      bucket(KEY(new Date(when))).tasks.push(t);
+      // parseDate (not `new Date`) — dueAt is a bare "YYYY-MM-DD" with no
+      // time, which `new Date()` reads as UTC midnight and can roll back a
+      // day in negative-offset timezones once converted to local time.
+      bucket(KEY(parseDate(when))).tasks.push(t);
     }
     for (const e of data.events) bucket(KEY(new Date(e.startAt))).events.push(e);
     for (const a of data.assignments) {
@@ -92,7 +95,17 @@ export function CalendarView() {
       // done locally all drop off the grid (still visible in the day drawer)
       // — and not the ones long past due.
       if (a.dueAt && a.status === "open" && !a.localDone && !isStaleOverdue(a.dueAt)) {
-        bucket(KEY(parseDate(a.dueAt))).assignments.push(a);
+        const dueKey = KEY(parseDate(a.dueAt));
+        bucket(dueKey).assignments.push(a);
+        // A planned work time (from the assignment's linked planning task)
+        // shows up too, same rule as plain tasks — where you're actually
+        // going to do it, not just where it's due — without losing the due
+        // date itself.
+        const plannedAt = a.linkedTask?.scheduledAt;
+        if (plannedAt) {
+          const plannedKey = KEY(new Date(plannedAt));
+          if (plannedKey !== dueKey) bucket(plannedKey).assignments.push(a);
+        }
       }
     }
     return map;
@@ -246,6 +259,7 @@ export function CalendarView() {
                 title: a.title,
                 kind: a.localDone ? "done" : "",
                 canvas: a.provider === "canvas",
+                planned: Boolean(a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === k),
               })),
               ...(b?.tasks ?? []).map((t) => ({
                 type: "task" as const,
@@ -253,6 +267,7 @@ export function CalendarView() {
                 title: t.title,
                 kind: t.status,
                 canvas: t.source === "canvas",
+                planned: Boolean(t.scheduledAt),
               })),
             ];
             // Month view only shows its own month — the trailing/leading days of
@@ -308,9 +323,11 @@ export function CalendarView() {
                       ? "bg-primary/10 text-muted-foreground line-through"
                       : it.type === "event"
                         ? cn("bg-white/[0.06]", dayPast && "opacity-35", dayFuture && "font-semibold")
-                        : it.type === "assignment"
-                          ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
-                          : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
+                        : (it.type === "task" || it.type === "assignment") && it.planned
+                          ? cn("bg-sky-500/15 text-sky-400", dayPast && "opacity-35", dayFuture && "font-semibold")
+                          : it.type === "assignment"
+                            ? cn("bg-warning/15 text-warning", dayPast && "opacity-35", dayFuture && "font-semibold")
+                            : cn("bg-primary/15 text-primary", dayPast && "opacity-35", dayFuture && "font-semibold");
                     return (
                       <span
                         key={`${it.type}-${it.id}`}
@@ -344,6 +361,7 @@ export function CalendarView() {
       <div className="mt-3 flex flex-wrap gap-4 text-xs text-muted-foreground">
         {[
           ["Task", "bg-primary/60"],
+          ["Planned", "bg-sky-400"],
           ["Class", "bg-primary"],
           ["Study session", "bg-[var(--g-teal)]"],
           ["Assignment", "bg-warning"],
@@ -400,7 +418,11 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
       (t.scheduledAt && KEY(new Date(t.scheduledAt)) === dk) ||
       (t.dueAt && KEY(parseDate(t.dueAt)) === dk),
   );
-  const dayAssignments = data.assignments.filter((a) => a.dueAt && KEY(parseDate(a.dueAt)) === dk);
+  const dayAssignments = data.assignments.filter(
+    (a) =>
+      (a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === dk) ||
+      (a.dueAt && KEY(parseDate(a.dueAt)) === dk),
+  );
 
   type Bucket = "todo" | "planned" | "done";
   const taskBucket = (t: TaskDTO): Bucket =>
@@ -637,6 +659,7 @@ function DayDrawer({ dateKey, onClose }: { dateKey: string; onClose: () => void 
         task={taskModal && taskModal !== "new" ? taskModal : null}
         goals={goals}
         courses={courses}
+        defaultDueDate={dateKey}
       />
       <EventEditor
         open={eventModal}
@@ -731,6 +754,7 @@ function CalendarAgenda({
           kind: "",
           canvas: a.provider === "canvas",
           done: Boolean(a.localDone),
+          planned: Boolean(a.linkedTask?.scheduledAt && KEY(new Date(a.linkedTask.scheduledAt)) === k),
         })),
         ...(b?.tasks ?? []).map((t) => ({
           type: "task" as const,
@@ -739,6 +763,7 @@ function CalendarAgenda({
           kind: t.status,
           canvas: t.source === "canvas",
           done: t.status === "done",
+          planned: Boolean(t.scheduledAt),
         })),
       ];
       return { day, k, items };
@@ -800,9 +825,11 @@ function CalendarAgenda({
                   ? "bg-primary/10 text-muted-foreground line-through"
                   : it.type === "event"
                     ? "bg-white/[0.06]"
-                    : it.type === "assignment"
-                      ? "bg-warning/15 text-warning"
-                      : "bg-primary/15 text-primary";
+                    : (it.type === "task" || it.type === "assignment") && it.planned
+                      ? "bg-sky-500/15 text-sky-400"
+                      : it.type === "assignment"
+                        ? "bg-warning/15 text-warning"
+                        : "bg-primary/15 text-primary";
                 return (
                   <span
                     key={`${it.type}-${it.id}`}

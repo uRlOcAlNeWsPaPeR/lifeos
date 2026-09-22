@@ -4,26 +4,23 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  LogOut,
   Menu as MenuIcon,
   ArrowLeft,
   Lock,
   Pause,
   Play,
 } from "lucide-react";
-import { Modal } from "@/components/ui/modal";
 import { confirm } from "@/components/ui/confirm";
 import { AiPriorityPanel } from "@/components/app/ai-priority-panel";
 import { DeadlineList, type DeadlineItem } from "@/components/app/deadline-list";
 import { AssignmentDetail } from "@/components/app/assignment-detail";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
-import { useAuth } from "@/lib/firebase/auth-context";
 import { useAppData } from "@/lib/store/app-data";
 import { useStagePointer } from "@/hooks/use-stage-pointer";
 import { LifeosCore, type CoreState } from "./lifeos-core";
 import { AppOrbit } from "./app-orbit";
 import { QuickAdd } from "./quick-add";
-import { NAV_GROUPS, SETTINGS_NAV } from "@/components/app/sidebar";
+import { Sidebar } from "@/components/app/sidebar";
 import { LIFE_APPS, STUDY_APP_INDEX, type LifeApp } from "@/lib/apps";
 import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
@@ -31,17 +28,6 @@ import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
 import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from "@/lib/study-lock";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
-
-// Same grouping the sidebar uses, so the menu reads the same way everywhere.
-// The AI Assistant is deliberately left out — it's reachable only from the
-// actual sidebar, never from this popup or the app orbit.
-const MENU_GROUPS = [
-  ...NAV_GROUPS.map((g) => ({
-    label: g.label,
-    items: g.items.filter((i) => i.href !== "/dashboard"),
-  })),
-  { label: "Tools", items: [SETTINGS_NAV] },
-];
 
 type Phase = "home" | "boom" | "console" | "closing";
 
@@ -99,7 +85,6 @@ export function CorePortal() {
   const { data, analytics, deleteEvent } = useAppData();
   const stage = useStagePointer<HTMLDivElement>();
   const router = useRouter();
-  const { logout } = useAuth();
 
   const studyIndex = STUDY_APP_INDEX < 0 ? 0 : STUDY_APP_INDEX;
   // The immersive Core layout is the default on every screen. It's never gated
@@ -224,11 +209,6 @@ export function CorePortal() {
     return bits.join("  ·  ") || "Nothing scheduled — a clear day.";
   }, [m]);
 
-  async function doLogout() {
-    await logout();
-    router.replace("/login");
-  }
-
   const onConsole = phase === "console" || phase === "closing";
 
   const topBar = (
@@ -266,40 +246,15 @@ export function CorePortal() {
     </button>
   );
 
+  // The real sidebar, in controlled drawer mode — full nav (AI Assistant
+  // included), not the old reduced "Go to" popup.
   const menuPopup = (
-    <Modal open={menu} onClose={() => setMenu(false)} title="Go to">
-      <div className="space-y-4">
-        {MENU_GROUPS.map((group) => (
-          <div key={group.label}>
-            <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
-              {group.label}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {group.items.map((s) => {
-                const Icon = s.icon;
-                return (
-                  <Link
-                    key={s.href}
-                    href={s.href}
-                    onClick={() => setMenu(false)}
-                    className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm font-medium transition-colors hover:border-primary/40 hover:text-primary"
-                  >
-                    <Icon className="h-4 w-4 shrink-0 text-primary" />
-                    <span className="truncate">{s.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      <button
-        onClick={doLogout}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-      >
-        <LogOut className="h-4 w-4" /> Log out
-      </button>
-    </Modal>
+    <Sidebar
+      open={menu}
+      onOpenChange={setMenu}
+      user={{ name: data.profile.name, email: data.profile.email }}
+      plan={data.profile.plan}
+    />
   );
 
   const welcome = (
@@ -740,6 +695,10 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
             <ul className="space-y-1">
               {model.radarItems.map((t) => {
                 const due = relativeDue(t.dueAt);
+                const plannedTime =
+                  !due && t.scheduledAt
+                    ? new Date(t.scheduledAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                    : null;
                 return (
                   <li key={t.id}>
                     <Link
@@ -756,6 +715,9 @@ function Console({ model, constrained }: { model: Model; constrained: boolean })
                         >
                           {due.label}
                         </span>
+                      )}
+                      {plannedTime && (
+                        <span className="shrink-0 text-muted-foreground">Planned {plannedTime}</span>
                       )}
                     </Link>
                   </li>
@@ -845,7 +807,7 @@ interface Model {
     color?: string | null;
     context?: string;
   }[];
-  radarItems: { id: string; title: string; dueAt: string | null }[];
+  radarItems: { id: string; title: string; dueAt: string | null; scheduledAt: string | null }[];
   goals: { id: string; title: string; pct: number }[];
   streak: number;
   done7: number;
@@ -879,8 +841,10 @@ function buildModel(
   const radarTotal = new Set([...overdue, ...dueToday, ...high].map((t) => t.id)).size;
 
   // "To do" list for the radar panel: urgent items first (overdue → due today →
-  // high priority), then any other open task, capped at 5.
-  const urgent = [...new Map([...overdue, ...dueToday, ...high].map((t) => [t.id, t])).values()];
+  // scheduled for today → high priority), then any other open task, capped at 5.
+  const urgent = [
+    ...new Map([...overdue, ...dueToday, ...scheduledToday, ...high].map((t) => [t.id, t])).values(),
+  ];
   const urgentIds = new Set(urgent.map((t) => t.id));
   const radarItems = [
     ...urgent,
@@ -889,7 +853,7 @@ function buildModel(
       .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
   ]
     .slice(0, 5)
-    .map((t) => ({ id: t.id, title: t.title, dueAt: t.dueAt }));
+    .map((t) => ({ id: t.id, title: t.title, dueAt: t.dueAt, scheduledAt: t.scheduledAt ?? null }));
 
   const eventsToday = data.events.filter((e) => {
     const s = new Date(e.startAt);

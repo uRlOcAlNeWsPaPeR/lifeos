@@ -22,6 +22,21 @@ interface Generated {
   engine: string;
 }
 
+/** Best-effort — only used to point at the right settings page, nothing depends on it being exact. */
+function detectOS(): "mac" | "windows" | "other" {
+  if (typeof navigator === "undefined") return "other";
+  const ua = navigator.userAgent;
+  if (/Mac|iPhone|iPad|iPod/.test(ua)) return "mac";
+  if (/Win/.test(ua)) return "windows";
+  return "other";
+}
+
+const BETTER_VOICE_HINT: Record<ReturnType<typeof detectOS>, string> = {
+  mac: "Download an Enhanced or Premium voice: ⌘+Space → \"Spoken Content\" → System Voice → Manage Voices.",
+  windows: "Download a Natural voice: Settings → Time & Language → Speech — or use Microsoft Edge, which has them built in.",
+  other: "Your browser or OS may offer higher-quality voices you can install.",
+};
+
 /**
  * The studio. Notes and options in, a previewable episode out — nothing is
  * saved until the student has seen the script they're about to keep, the same
@@ -29,7 +44,8 @@ interface Generated {
  */
 export function CreateEpisode({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { data, addPodcast } = useAppData();
-  const { voices, loading: voicesLoading } = useVoices();
+  const { voices, loading: voicesLoading, hasHighQuality } = useVoices();
+  const os = useMemo(detectOS, []);
 
   const [notes, setNotes] = useState("");
   const [title, setTitle] = useState("");
@@ -258,7 +274,9 @@ export function CreateEpisode({ open, onClose }: { open: boolean; onClose: () =>
           hint={
             noVoices
               ? "This browser has no speech voices installed."
-              : "These come from your device. Hit play to hear one."
+              : hasHighQuality
+                ? "These come from your device. Hit play to hear one."
+                : `Sounds best with a Premium or Enhanced voice — you're on a standard one right now. ${BETTER_VOICE_HINT[os]}`
           }
         >
           {noVoices ? (

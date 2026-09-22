@@ -32,6 +32,8 @@ import { scoreTasks } from "./score";
 export abstract class LLMProvider implements AIProvider {
   abstract readonly name: AIEngine;
   protected fallback: AIProvider = new HeuristicProvider();
+  /** Set true by a subclass whose `complete()` actually reads `opts.image`. */
+  protected supportsVision = false;
 
   /**
    * Chain another provider ahead of the offline heuristic. `getAI()` uses this
@@ -51,7 +53,7 @@ export abstract class LLMProvider implements AIProvider {
   protected abstract complete(
     system: string,
     user: string,
-    opts?: { schema?: unknown },
+    opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<string>;
 
   protected snapshot(ctx: LifeOSContext): string {
@@ -77,7 +79,7 @@ export abstract class LLMProvider implements AIProvider {
   private async json<T>(
     system: string,
     user: string,
-    opts?: { schema?: unknown },
+    opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<T> {
     const raw = (await this.complete(system, user, opts)).trim();
     return JSON.parse(extractJsonObject(raw)) as T;
@@ -96,73 +98,14 @@ export abstract class LLMProvider implements AIProvider {
         schema: BRAIN_DUMP_SCHEMA,
       });
 
-      // ---- validate the shape (section 14) ----
       if (!parsed || !Array.isArray(parsed.items)) {
         throw new Error("model did not return an items array");
       }
 
       const textHasAnyDate = guessDueDate(text, ctx.now).explicit;
-      const floor = ctx.now.getTime() - 24 * 3600_000; // yesterday
-      const ceil = ctx.now.getTime() + 200 * 24 * 3600_000; // ~6.5 months out
-      const courseNames = ctx.courses.map((c) => c.name);
-      const PRIORITIES = new Set(["low", "medium", "high", "urgent"]);
-      const seen = new Set<string>();
-
-      const items: BrainDumpItem[] = (parsed.items as Record<string, unknown>[])
-        .map((raw): BrainDumpItem | null => {
-          const rawTitle = typeof raw?.title === "string" ? raw.title.trim() : "";
-          if (!rawTitle) return null;
-
-          const title = tightenTitle(rawTitle);
-          const key = title.toLowerCase().replace(/[^a-z0-9]+/g, "");
-          if (!key || seen.has(key)) return null; // section 15 — no dup titles
-          seen.add(key);
-
-          // Respect the model's own "was this date actually stated?" flag — that's
-          // the guard against a date being copied onto a task that never had one.
-          let suggestedDueAt =
-            typeof raw.suggestedDueAt === "string" && raw.suggestedDueAt ? raw.suggestedDueAt : null;
-          if (
-            suggestedDueAt &&
-            (raw.dueDateWasExplicit !== true ||
-              !textHasAnyDate ||
-              outOfRange(suggestedDueAt, floor, ceil))
-          ) {
-            suggestedDueAt = null;
-          }
-
-          const cat = typeof raw.category === "string" ? raw.category.trim() : "";
-          const category =
-            cat &&
-            (courseNames.some((n) => n.toLowerCase() === cat.toLowerCase()) || cat.length <= 40)
-              ? matchCourseName(cat, courseNames)
-              : null;
-
-          const p = String(raw.suggestedPriority ?? "").toLowerCase();
-
-          return {
-            title,
-            notes:
-              typeof raw.notes === "string" && raw.notes.trim()
-                ? raw.notes.trim().slice(0, 1500)
-                : null,
-            category,
-            suggestedPriority: (PRIORITIES.has(p) ? p : "medium") as BrainDumpItem["suggestedPriority"],
-            suggestedDueAt,
-            dueDateWasExplicit: Boolean(suggestedDueAt),
-            estimatedMinutes:
-              typeof raw.estimatedMinutes === "number" && raw.estimatedMinutes > 0
-                ? Math.round(raw.estimatedMinutes)
-                : null,
-            suggestedSlot:
-              typeof raw.suggestedSlot === "string" && raw.suggestedSlot.trim()
-                ? raw.suggestedSlot.trim()
-                : null,
-            reasoning: typeof raw.reasoning === "string" ? raw.reasoning : "",
-          };
-        })
-        .filter((x): x is BrainDumpItem => x !== null);
-
+      const items = buildBrainDumpItems(parsed.items as Record<string, unknown>[], ctx, {
+        trustModelDates: textHasAnyDate,
+      });
       if (!items.length) throw new Error("model returned no usable tasks");
 
       const summary =
@@ -174,6 +117,57 @@ export abstract class LLMProvider implements AIProvider {
     } catch (e) {
       console.error(`[ai:${this.name}] brain dump fell back to heuristic:`, (e as Error).message);
       return this.fallback.parseBrainDump(text, ctx);
+    }
+  }
+
+  async parseBrainDumpImage(
+    imageBase64: string,
+    mimeType: string,
+    ctx: LifeOSContext,
+  ): Promise<BrainDumpResult> {
+    // Providers whose `complete()` doesn't actually read `opts.image` would
+    // otherwise silently answer from the text prompt alone and hallucinate
+    // "tasks" — skip straight to the next link in the chain instead.
+    if (!this.supportsVision) {
+      return this.fallback.parseBrainDumpImage(imageBase64, mimeType, ctx);
+    }
+    try {
+      const system = BRAIN_DUMP_IMAGE_SYSTEM;
+      const user =
+        `Today is ${ctx.now.toDateString()}.\n\n` +
+        `Reference data (course list + weekday→date map — use ONLY for matching, never invent tasks from it):\n` +
+        `${brainDumpContext(ctx)}\n\n` +
+        `Read the attached screenshot and extract every assignment/task visible in it.`;
+
+      const parsed = await this.json<{ items?: unknown; summary?: unknown }>(system, user, {
+        schema: BRAIN_DUMP_SCHEMA,
+        image: { mimeType, data: imageBase64 },
+      });
+
+      if (!parsed || !Array.isArray(parsed.items)) {
+        throw new Error("model did not return an items array");
+      }
+
+      // No source text to cross-check against — the screenshot IS the source,
+      // so trust the model's own dueDateWasExplicit flag directly.
+      const items = buildBrainDumpItems(parsed.items as Record<string, unknown>[], ctx, {
+        trustModelDates: true,
+      });
+      // A clean read that genuinely found nothing is a real answer ("this
+      // isn't a screenshot of assignments"), not a provider failure — return
+      // it as-is instead of throwing, which would otherwise cascade through
+      // every fallback and surface as a misleading "AI unavailable" error for
+      // what's actually just a bad or irrelevant screenshot.
+
+      const summary =
+        typeof parsed.summary === "string" && parsed.summary
+          ? parsed.summary
+          : `Found ${items.length} item${items.length === 1 ? "" : "s"} in the screenshot.`;
+
+      return { engine: this.name, items, summary };
+    } catch (e) {
+      console.error(`[ai:${this.name}] image brain dump fell back:`, (e as Error).message);
+      return this.fallback.parseBrainDumpImage(imageBase64, mimeType, ctx);
     }
   }
 
@@ -437,6 +431,118 @@ const BRAIN_DUMP_SYSTEM = [
   'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning"}],"summary"}. `summary` is one sentence on what you organised.',
 ].join("\n");
 
+const BRAIN_DUMP_IMAGE_SYSTEM = [
+  "You are LifeOS's task organiser, reading a STUDENT-SUPPLIED SCREENSHOT instead of typed text — a Canvas/Google Classroom page, a planner app, a printed syllabus, a whiteboard photo, or a school portal. Turn every assignment/task visible in it into a clean JSON LIST of separate tasks.",
+  "",
+  "SPLITTING — one task object per distinct assignment/to-do shown. A course list or assignments table almost always holds SEVERAL items — extract each one separately, don't merge them. Scan the ENTIRE image top to bottom, including anything past the first screenful or below the fold — do not stop after the first one or two items just because they're the clearest.",
+  "",
+  "ONLY what's actually visible: transcribe real assignment/task names and dates from the image. NEVER invent an item that isn't shown, and ignore UI chrome that isn't a task — navigation bars, ads, unrelated sidebar content, the app's own branding.",
+  "",
+  "TITLES (`title`): 2–7 words, plain and scannable, taken from the assignment name shown (tighten a long official title down, don't just truncate it).",
+  "",
+  "NOTES (`notes`): any extra detail visible for that item — instructions, points, topics. null when nothing else is shown.",
+  "",
+  "DUE DATE (`suggestedDueAt`): only when a date is actually printed/shown for that specific item. Resolve a bare weekday via the weekday→date map; output ISO YYYY-MM-DD. Set dueDateWasExplicit=true only when you read a real date off the image for that item — never guess or copy one item's date onto another.",
+  "",
+  "SUBJECT (`category`): the course/class name shown for that item if any, matched to the `courses` list when it appears there; otherwise the plain subject word, else null.",
+  "",
+  "PRIORITY (`suggestedPriority` ∈ low|medium|high|urgent): default \"medium\" unless the image itself marks something urgent/overdue.",
+  "",
+  "GRADEBOOK LAYOUT — a Canvas-style gradebook screenshot has TWO different kinds of row, and mixing them up is the single most common mistake here: a bold CATEGORY row (e.g. \"Formative  Weight: 30\") carrying that category's own subtotal, followed by several plain ASSIGNMENT rows indented under it (icon, title, due date, and — only sometimes — a score). The category row's number belongs ONLY to the category. It is never that section's first, last, or any assignment's own grade, no matter how close together they sit or how tempting it is to fill in a blank.",
+  "",
+  "GRADE — a score belongs to one specific assignment ONLY when it's printed on that exact assignment's own row, sharing the line with its title and due date:",
+  '- A raw score like "18/20" or "45/50" on the item\'s own row: put the first number in `pointsEarned`, the second in `pointsPossible`.',
+  '- A points-possible-only value with no score yet ("20 pts", "Out of 50") on the item\'s own row: `pointsPossible` only, `pointsEarned` null — NOT graded.',
+  '- A letter or percent on the item\'s own row with no raw point score ("A-", "92%"): `gradeValue` verbatim, `pointsEarned`/`pointsPossible` null.',
+  '- The item\'s own row has no "Turned In" tag and no number on it at all: `pointsEarned`, `pointsPossible`, and `gradeValue` are ALL null. This is the normal, common case — do not fill these in from the category row above it, from a different assignment, or from anywhere else just to avoid an empty field. An unscored item staying unscored is correct, not a mistake to fix.',
+  "",
+  "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
+  "",
+  'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"summary":"..."}.',
+].join("\n");
+
+/**
+ * Shared post-processing for both the text and image brain-dump paths —
+ * dedupes by title, clamps dates to a sane window, and only lets a due date
+ * through when the caller trusts the model's own `dueDateWasExplicit` flag
+ * (text path additionally requires the raw text to contain SOME date at all,
+ * as a guard against a hallucinated deadline; the image path has no text to
+ * check against, so the screenshot itself is the source of truth).
+ */
+function buildBrainDumpItems(
+  rawItems: Record<string, unknown>[],
+  ctx: LifeOSContext,
+  opts: { trustModelDates: boolean },
+): BrainDumpItem[] {
+  const floor = ctx.now.getTime() - 24 * 3600_000; // yesterday
+  const ceil = ctx.now.getTime() + 200 * 24 * 3600_000; // ~6.5 months out
+  const courseNames = ctx.courses.map((c) => c.name);
+  const PRIORITIES = new Set(["low", "medium", "high", "urgent"]);
+  const seen = new Set<string>();
+
+  return rawItems
+    .map((raw): BrainDumpItem | null => {
+      const rawTitle = typeof raw?.title === "string" ? raw.title.trim() : "";
+      if (!rawTitle) return null;
+
+      const title = tightenTitle(rawTitle);
+      const key = title.toLowerCase().replace(/[^a-z0-9]+/g, "");
+      if (!key || seen.has(key)) return null; // no dup titles
+      seen.add(key);
+
+      // Respect the model's own "was this date actually stated?" flag — that's
+      // the guard against a date being copied onto a task that never had one.
+      let suggestedDueAt =
+        typeof raw.suggestedDueAt === "string" && raw.suggestedDueAt ? raw.suggestedDueAt : null;
+      if (
+        suggestedDueAt &&
+        (raw.dueDateWasExplicit !== true ||
+          !opts.trustModelDates ||
+          outOfRange(suggestedDueAt, floor, ceil))
+      ) {
+        suggestedDueAt = null;
+      }
+
+      const cat = typeof raw.category === "string" ? raw.category.trim() : "";
+      const category =
+        cat && (courseNames.some((n) => n.toLowerCase() === cat.toLowerCase()) || cat.length <= 40)
+          ? matchCourseName(cat, courseNames)
+          : null;
+
+      const p = String(raw.suggestedPriority ?? "").toLowerCase();
+
+      return {
+        title,
+        notes:
+          typeof raw.notes === "string" && raw.notes.trim() ? raw.notes.trim().slice(0, 1500) : null,
+        category,
+        suggestedPriority: (PRIORITIES.has(p) ? p : "medium") as BrainDumpItem["suggestedPriority"],
+        suggestedDueAt,
+        dueDateWasExplicit: Boolean(suggestedDueAt),
+        estimatedMinutes:
+          typeof raw.estimatedMinutes === "number" && raw.estimatedMinutes > 0
+            ? Math.round(raw.estimatedMinutes)
+            : null,
+        suggestedSlot:
+          typeof raw.suggestedSlot === "string" && raw.suggestedSlot.trim()
+            ? raw.suggestedSlot.trim()
+            : null,
+        reasoning: typeof raw.reasoning === "string" ? raw.reasoning : "",
+        pointsPossible:
+          typeof raw.pointsPossible === "number" && raw.pointsPossible > 0
+            ? raw.pointsPossible
+            : null,
+        pointsEarned:
+          typeof raw.pointsEarned === "number" && raw.pointsEarned >= 0 ? raw.pointsEarned : null,
+        gradeValue:
+          typeof raw.gradeValue === "string" && raw.gradeValue.trim()
+            ? raw.gradeValue.trim().slice(0, 20)
+            : null,
+      };
+    })
+    .filter((x): x is BrainDumpItem => x !== null);
+}
+
 // Kept deliberately loose — its only job is to GUARANTEE `items` is an array of
 // task objects (that's the fix for "everything in one task"). Nullability and
 // defaults are handled in the post-processing below, so no `nullable` here
@@ -458,6 +564,9 @@ const BRAIN_DUMP_SCHEMA = {
           estimatedMinutes: { type: "number" },
           suggestedSlot: { type: "string" },
           reasoning: { type: "string" },
+          pointsPossible: { type: "number" },
+          pointsEarned: { type: "number" },
+          gradeValue: { type: "string" },
         },
         required: ["title"],
         propertyOrdering: [
@@ -470,6 +579,9 @@ const BRAIN_DUMP_SCHEMA = {
           "estimatedMinutes",
           "suggestedSlot",
           "reasoning",
+          "pointsPossible",
+          "pointsEarned",
+          "gradeValue",
         ],
       },
     },

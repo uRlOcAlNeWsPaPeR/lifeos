@@ -11,6 +11,8 @@ export const PLAN_LIMITS = {
     maxDecks: 5,
     fullAnalytics: false,
     googleCalendarEnabled: false,
+    screenshotImportEnabled: false,
+    screenshotImportsPerWeek: 0,
   },
   student_plus: {
     brainDumpsPerWeek: 40,
@@ -20,6 +22,11 @@ export const PLAN_LIMITS = {
     maxDecks: 200,
     fullAnalytics: true,
     googleCalendarEnabled: true,
+    screenshotImportEnabled: true,
+    // Vision calls are the priciest AI request LifeOS makes (image tokens on
+    // top of the prompt) — its own weekly cap, separate from the Brain Dump
+    // text budget, so one big screenshot session can't eat it.
+    screenshotImportsPerWeek: 10,
   },
 } as const;
 
@@ -42,6 +49,7 @@ export const CREATOR_EMAILS = new Set([
  */
 export const COMPED_EMAILS = new Set([
   "vijey7218@mydusd.org",
+  "sid.khanuja@gmail.com",
 ]);
 
 export function isCreator(email: string | null | undefined): boolean {

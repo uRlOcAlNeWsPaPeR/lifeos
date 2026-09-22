@@ -42,6 +42,15 @@ export class HeuristicProvider implements AIProvider {
     return { engine: this.name, cards: dedupeCards(cardsFromNotes(notes)) };
   }
 
+  /** No OCR/vision offline — reading a screenshot needs a hosted AI provider. */
+  async parseBrainDumpImage(): Promise<BrainDumpResult> {
+    const err = new Error(
+      "Screenshot import needs LifeOS AI, which isn't available right now — try again in a bit, or type the tasks in instead.",
+    );
+    (err as { status?: number }).status = 503;
+    throw err;
+  }
+
   /**
    * Offline episode building. Reorganises the student's own sentences into a
    * narrated structure and never generates a factual claim of its own — see

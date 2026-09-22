@@ -5,6 +5,7 @@ import { Check, Clock, CalendarClock, CalendarPlus, Pencil, Trash2, Plus, ListCh
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Badge, priorityTone } from "@/components/ui/badge";
+import { confirm } from "@/components/ui/confirm";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
 import { useAppData } from "@/lib/store/app-data";
@@ -78,6 +79,24 @@ export function AssignmentDetail({
         courseId: payload.courseId ?? assignment.courseId ?? null,
         source: assignment.provider === "canvas" ? "canvas" : "assignment",
       });
+    }
+  }
+
+  // Finishing the plan and finishing the assignment aren't the same thing —
+  // ask, instead of assuming, and only for Canvas assignments (a manually
+  // added one has no separate "done" signal worth double-checking).
+  async function toggleLinkedTask() {
+    if (!linked || !assignment) return;
+    const completing = linked.status !== "done";
+    await toggleTask(linked.id);
+    if (completing && assignment.provider === "canvas" && !assignment.localDone) {
+      const yes = await confirm({
+        title: "Mark the assignment done too?",
+        body: `"${assignment.title}" will show as done in LifeOS. This doesn't submit or change anything on Canvas.`,
+        confirmLabel: "Mark done",
+        cancelLabel: "Not yet",
+      });
+      if (yes) await updateAssignment(assignment.id, { localDone: true });
     }
   }
 
@@ -169,7 +188,7 @@ export function AssignmentDetail({
                 <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3.5">
                   <div className="flex items-start gap-3">
                     <button
-                      onClick={() => toggleTask(linked.id)}
+                      onClick={toggleLinkedTask}
                       className={cn(
                         "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all active:scale-90",
                         linked.status === "done"
