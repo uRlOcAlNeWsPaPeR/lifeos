@@ -1,6 +1,7 @@
 import { route, ok } from "@/lib/api";
-import { requireUid, adminAuth } from "@/lib/firebase/admin";
-import { canvasConfigured, canvasEnv, canvasPersonalToken } from "@/lib/canvas/env";
+import { requireUid } from "@/lib/firebase/admin";
+import { canvasConfigured, canvasEnv } from "@/lib/canvas/env";
+import { personalTokenAllowedFor } from "@/lib/canvas/personal-token";
 import { getConnection } from "@/lib/canvas/connection";
 import { schoolNameFromHost } from "@/lib/canvas/url";
 import type { CanvasStatusDTO } from "@/lib/canvas/types";
@@ -10,9 +11,7 @@ import type { CanvasStatusDTO } from "@/lib/canvas/types";
 export const GET = route(async (req) => {
   const uid = await requireUid(req);
   const conn = canvasConfigured ? await getConnection(uid) : null;
-  const email = canvasPersonalToken.enabled
-    ? ((await adminAuth().getUser(uid).catch(() => null))?.email ?? null)
-    : null;
+  const personalTokenAllowed = await personalTokenAllowedFor(uid);
 
   const dto: CanvasStatusDTO = {
     configured: canvasConfigured,
@@ -26,7 +25,7 @@ export const GET = route(async (req) => {
       canvasEnv.allowedInstanceHosts.length === 1
         ? `https://${canvasEnv.allowedInstanceHosts[0]}`
         : null,
-    personalTokenMode: !canvasEnv.mock && canvasPersonalToken.allows(email),
+    personalTokenMode: !canvasEnv.mock && personalTokenAllowed,
     authMode: conn?.authMode ?? null,
     message:
       conn?.status === "reauth_required"

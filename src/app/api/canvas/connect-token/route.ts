@@ -1,7 +1,8 @@
 import { route, ok, readJson, ApiError } from "@/lib/api";
-import { requireUid, adminAuth } from "@/lib/firebase/admin";
+import { requireUid } from "@/lib/firebase/admin";
 import { canvasTokenConnectSchema } from "@/lib/validation";
-import { canvasEnv, canvasPersonalToken } from "@/lib/canvas/env";
+import { canvasEnv } from "@/lib/canvas/env";
+import { personalTokenAllowedFor } from "@/lib/canvas/personal-token";
 import { normalizeCanvasUrl } from "@/lib/canvas/url";
 import { savePersonalTokenConnection } from "@/lib/canvas/connection";
 
@@ -11,8 +12,7 @@ import { savePersonalTokenConnection } from "@/lib/canvas/connection";
 // for multi-user apps — OAuth is the shipping path.
 export const POST = route(async (req) => {
   const uid = await requireUid(req);
-  const email = (await adminAuth().getUser(uid).catch(() => null))?.email ?? null;
-  if (!canvasPersonalToken.allows(email)) {
+  if (!(await personalTokenAllowedFor(uid))) {
     throw new ApiError(404, "Not available.");
   }
 
