@@ -9,7 +9,6 @@ import {
   BookOpen,
   Brain,
   CalendarDays,
-  ChevronDown,
   ClipboardCheck,
   Gamepad2,
   GraduationCap,
@@ -78,8 +77,9 @@ export const NAV_GROUPS: {
 ];
 
 /**
- * SAT Prep is a section with its own sub-pages, so it gets a collapsible entry
- * rather than nine top-level links. Every item maps to a real SAT screen.
+ * SAT Prep's own screens — shown only by `SatOnlyNav` below, while inside
+ * `/sat`. It isn't part of the main app's nav (reached from the Core's SAT
+ * sphere instead), so this list doesn't appear in `NAV_GROUPS`.
  * `exact` keeps Overview from lighting up on every /sat/* page.
  */
 export const SAT_NAV: {
@@ -132,87 +132,6 @@ function NavLink({
       <item.icon className={cn("h-4 w-4 transition-colors", active && "text-primary")} />
       {item.label}
     </Link>
-  );
-}
-
-function SatNavSection({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
-  const inSat = pathname === SAT_NAV.href || pathname.startsWith(SAT_NAV.href + "/");
-  const [open, setOpen] = useState(inSat);
-  const { s, ready } = useSat();
-
-  // Arriving anywhere in SAT Prep opens the section.
-  useEffect(() => {
-    if (inSat) setOpen(true);
-  }, [inSat]);
-
-  // Only counts that tell the student something needs them.
-  const examLive = ready && s.exam && s.exam.phase !== "done";
-  const badges: Record<string, React.ReactNode> = {
-    "/sat/review": ready && s.missed.length > 0 ? s.missed.length : null,
-    "/sat/exams": examLive ? "Live" : null,
-    "/sat/practice": ready && s.pausedQuiz ? "Paused" : null,
-  };
-
-  return (
-    <div>
-      <div
-        className={cn(
-          "flex items-center rounded-xl transition-colors",
-          inSat ? "text-foreground" : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-        )}
-      >
-        <Link
-          href={SAT_NAV.href}
-          onClick={onNavigate}
-          className="flex flex-1 items-center gap-3 px-3 py-2 text-sm font-medium"
-        >
-          <SAT_NAV.icon className={cn("h-4 w-4", inSat && "text-primary")} />
-          {SAT_NAV.label}
-        </Link>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls="sat-subnav"
-          aria-label={open ? "Collapse SAT Prep" : "Expand SAT Prep"}
-          className="mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:bg-white/5 hover:text-foreground"
-        >
-          <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
-        </button>
-      </div>
-      {open && (
-        <div id="sat-subnav" className="ml-5 mt-1 space-y-0.5 border-l border-white/[0.08] pl-2">
-          {SAT_NAV.items.map((item) => {
-            const active = item.exact
-              ? pathname === item.href
-              : pathname === item.href || pathname.startsWith(item.href + "/");
-            const badge = badges[item.href];
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onNavigate}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-all",
-                  active
-                    ? "bg-gradient-to-r from-primary/20 via-primary/5 to-transparent font-medium text-foreground shadow-[inset_1px_0_0_hsl(var(--glow)/0.6)]"
-                    : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-                )}
-              >
-                <item.icon className={cn("h-3.5 w-3.5", active && "text-primary")} />
-                <span className="flex-1 truncate">{item.label}</span>
-                {badge != null && (
-                  <Badge tone={item.href === "/sat/review" ? "muted" : "primary"} className="px-1.5 py-0 text-[10px]">
-                    {badge}
-                  </Badge>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -356,9 +275,6 @@ export function Sidebar({
                       onNavigate={() => setOpen(false)}
                     />
                   ))}
-                  {group.label === "School" && (
-                    <SatNavSection pathname={pathname} onNavigate={() => setOpen(false)} />
-                  )}
                 </div>
               </div>
             ))}
