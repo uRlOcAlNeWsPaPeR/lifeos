@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
@@ -232,12 +232,15 @@ export function Sidebar({
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlled ? openProp : internalOpen;
   const setOpen = controlled ? (onOpenChange ?? (() => {})) : setInternalOpen;
+  // Latest setOpen for the Escape listener, so the effect needn't re-run every render.
+  const setOpenRef = useRef(setOpen);
+  setOpenRef.current = setOpen;
   const isSat = pathname === SAT_NAV.href || pathname.startsWith(SAT_NAV.href + "/");
 
   // Lock the page behind the drawer + close it on Escape.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpenRef.current(false);
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
     return () => {
