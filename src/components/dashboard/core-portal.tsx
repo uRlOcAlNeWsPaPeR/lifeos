@@ -137,6 +137,12 @@ export function CorePortal() {
 
   const detonate = () => {
     if (phaseRef.current !== "home") return;
+    // Clears whatever the last routed app left here (e.g. SAT, after a
+    // reform back to the orb) — Study's own boom/console never sets this,
+    // so a stale value here would tint the burst wrong and, worse, block
+    // the console from rendering at all (it's skipped while boomApp is set,
+    // since that normally means we're mid-navigation to a routed app).
+    setBoomApp(null);
     if (!cinematic) {
       setPhase("console");
       requestAnimationFrame(() =>
