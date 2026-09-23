@@ -38,6 +38,7 @@ import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { SearchTrigger } from "@/components/app/command-palette";
 import { useSat } from "@/lib/sat/store";
+import { resetCoreToHome } from "@/lib/core-phase";
 
 /**
  * Nav grouped by what the student is actually doing, rather than one flat list
@@ -153,11 +154,14 @@ function SatOnlyNav({ pathname, onNavigate }: { pathname: string; onNavigate: ()
     <div className="mb-4">
       <Link
         href="/dashboard"
-        onClick={onNavigate}
+        onClick={() => {
+          resetCoreToHome();
+          onNavigate();
+        }}
         className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to LifeOS
+        Back to Core
       </Link>
       <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
         {SAT_NAV.label}
@@ -261,6 +265,17 @@ export function Sidebar({
           <SatOnlyNav pathname={pathname} onNavigate={() => setOpen(false)} />
         ) : (
           <>
+            <Link
+              href="/dashboard"
+              onClick={() => {
+                resetCoreToHome();
+                setOpen(false);
+              }}
+              className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Core
+            </Link>
             {NAV_GROUPS.map((group) => (
               <div key={group.label} className="mb-4">
                 <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
