@@ -223,6 +223,7 @@ export function CorePortal() {
       onOpenChange={setMenu}
       user={{ name: data.profile.name, email: data.profile.email }}
       plan={data.profile.plan}
+      onBackToCore={exitToCore}
     />
   );
 

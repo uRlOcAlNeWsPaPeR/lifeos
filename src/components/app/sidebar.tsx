@@ -205,6 +205,7 @@ export function Sidebar({
   plan,
   open: openProp,
   onOpenChange,
+  onBackToCore,
 }: {
   user: { name: string; email: string };
   plan: string;
@@ -216,6 +217,13 @@ export function Sidebar({
    */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Passed only from the Core's own controlled drawer — we're already on
+   * /dashboard there, so a "Back to Core" *link* would navigate to the page
+   * it's already sitting on and do nothing. This runs the Core's own
+   * console → orb transition instead of routing anywhere.
+   */
+  onBackToCore?: () => void;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -265,17 +273,31 @@ export function Sidebar({
           <SatOnlyNav pathname={pathname} onNavigate={() => setOpen(false)} />
         ) : (
           <>
-            <Link
-              href="/dashboard"
-              onClick={() => {
-                resetCoreToHome();
-                setOpen(false);
-              }}
-              className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back to Core
-            </Link>
+            {onBackToCore ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onBackToCore();
+                  setOpen(false);
+                }}
+                className="mb-4 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Core
+              </button>
+            ) : (
+              <Link
+                href="/dashboard"
+                onClick={() => {
+                  resetCoreToHome();
+                  setOpen(false);
+                }}
+                className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Core
+              </Link>
+            )}
             {NAV_GROUPS.map((group) => (
               <div key={group.label} className="mb-4">
                 <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
