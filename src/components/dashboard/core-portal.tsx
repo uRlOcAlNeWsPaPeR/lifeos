@@ -56,6 +56,12 @@ export function CorePortal() {
   const router = useRouter();
 
   const studyIndex = STUDY_APP_INDEX < 0 ? 0 : STUDY_APP_INDEX;
+  // Read (and clear) exactly once per mount — everything below derives its
+  // initial value from this single read, since a second read would find the
+  // flag already gone.
+  const [reformAppId] = useState<string | null>(() => consumeCoreReform());
+  const reformApp = reformAppId ? (LIFE_APPS.find((a) => a.id === reformAppId) ?? null) : null;
+
   // The immersive Core layout is the default on every screen. It's never gated
   // on the motion preference — reduced-motion users get the same flow, only the
   // keyframes collapse to instant (global rule). `reduced()` shortens the
@@ -66,8 +72,9 @@ export function CorePortal() {
   // the student was last on (see @/lib/core-phase). A fresh tab starts on
   // the Core. Arriving via `flagCoreReform` (e.g. Back to Core from SAT Prep)
   // starts in "closing" instead, so the same reform animation Study's own
-  // Back button uses plays on the way back to the orb.
-  const [phase, setPhase] = useState<Phase>(() => (consumeCoreReform() ? "closing" : loadCorePhase()));
+  // Back button uses plays on the way back to the orb — tinted with, and
+  // centred back on, whichever app's own pages we're returning from.
+  const [phase, setPhase] = useState<Phase>(() => (reformApp ? "closing" : loadCorePhase()));
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
 
@@ -77,10 +84,14 @@ export function CorePortal() {
     if (phase === "home" || phase === "console") saveCorePhase(phase);
   }, [phase]);
   const [menu, setMenu] = useState(false);
-  const [appIndex, setAppIndex] = useState(studyIndex);
+  const [appIndex, setAppIndex] = useState(() => {
+    if (!reformApp) return studyIndex;
+    const idx = LIFE_APPS.indexOf(reformApp);
+    return idx < 0 ? studyIndex : idx;
+  });
   // when a non-Study app is entered we run the SAME detonation, tinted with that
   // app's hue, then navigate to its route instead of opening the Study console.
-  const [boomApp, setBoomApp] = useState<LifeApp | null>(null);
+  const [boomApp, setBoomApp] = useState<LifeApp | null>(() => reformApp);
   const now = useMemo(() => new Date(), []);
 
   // "Lock in" — a study session that's live right now. The Core doesn't block
@@ -330,7 +341,7 @@ export function CorePortal() {
         {(phase === "boom" || phase === "closing") && (
           <div className="absolute inset-0 grid place-items-center">
             {phase === "boom" && <BoomFx hue={boomApp?.hue} />}
-            {phase === "closing" && <CloseFx />}
+            {phase === "closing" && <CloseFx hue={boomApp?.hue} />}
             <div
               className="relative"
               style={{
@@ -496,21 +507,23 @@ function BoomFx({ hue = 150 }: { hue?: number }) {
 
 /* ------------------------------- close fx ------------------------------- */
 
-function CloseFx() {
+// Recoloured to whichever app is reforming — Study stays at its own 152 (the
+// values this used to hardcode).
+function CloseFx({ hue = 152 }: { hue?: number }) {
+  const h2 = hue - 2;
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
       <span
         className="absolute h-40 w-40 rounded-full"
         style={{
-          border: "2px solid hsl(152 80% 62%)",
+          border: `2px solid hsl(${hue} 80% 62%)`,
           animation: `core-shock ${TC.reform}ms cubic-bezier(0.7,0,0.5,1) ${TC.reformDelay}ms reverse both`,
         }}
       />
       <span
         className="absolute inset-0"
         style={{
-          background:
-            "radial-gradient(circle at 50% 50%, #ffffff, hsl(150 100% 70%) 22%, hsl(152 70% 44% / 0.35) 48%, transparent 72%)",
+          background: `radial-gradient(circle at 50% 50%, #ffffff, hsl(${h2} 100% 70%) 22%, hsl(${hue} 70% 44% / 0.35) 48%, transparent 72%)`,
           animation: `core-flash ${TC.flash}ms ease-in-out ${TC.implode - 80}ms forwards`,
         }}
       />

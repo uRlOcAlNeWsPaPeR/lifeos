@@ -38,24 +38,27 @@ export function resetCoreToHome() {
 
 const REFORM_KEY = "lifeos.core.reform";
 
-/** Set right before navigating back to /dashboard from another app (e.g. SAT
- *  Prep), so the Core plays its console→orb reform animation — the same one
- *  Study's own "Back" button uses — instead of silently opening on the orb. */
-export function flagCoreReform() {
+/** Set right before navigating back to /dashboard from another app's own
+ *  pages (e.g. SAT Prep), so the Core plays its console→orb reform animation
+ *  — tinted with that app's own hue, same as Study's own "Back" button —
+ *  instead of silently opening on the orb centred on whatever was last there.
+ *  `appId` is a `LifeApp["id"]` from `@/lib/apps`. */
+export function flagCoreReform(appId: string) {
   try {
-    sessionStorage.setItem(REFORM_KEY, "1");
+    sessionStorage.setItem(REFORM_KEY, appId);
   } catch {
     /* private mode */
   }
 }
 
-/** Read-once: true only the first time it's checked after `flagCoreReform`. */
-export function consumeCoreReform(): boolean {
+/** Read-once: the flagged app's id, or null if nothing was flagged. */
+export function consumeCoreReform(): string | null {
   try {
-    if (sessionStorage.getItem(REFORM_KEY) !== "1") return false;
+    const id = sessionStorage.getItem(REFORM_KEY);
+    if (!id) return null;
     sessionStorage.removeItem(REFORM_KEY);
-    return true;
+    return id;
   } catch {
-    return false;
+    return null;
   }
 }

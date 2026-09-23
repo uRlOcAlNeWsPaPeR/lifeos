@@ -53,9 +53,17 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
   if (!ready) return <FullscreenLoader label="Loading your workspace…" />;
   if (!data.profile.onboarded) return <FullscreenLoader />;
 
-  // The dashboard, AI Assistant and Brain Game are their own full-bleed
-  // experiences — no sidebar. Every other page keeps the rail.
-  if (pathname === "/dashboard" || pathname === "/assistant" || pathname === "/brain-game") {
+  // The dashboard, AI Assistant, Brain Game and SAT Prep are their own
+  // full-bleed experiences — no persistent sidebar rail. SAT Prep provides
+  // its own menu button + drawer in its own layout. Every other page keeps
+  // the rail.
+  if (
+    pathname === "/dashboard" ||
+    pathname === "/assistant" ||
+    pathname === "/brain-game" ||
+    pathname === "/sat" ||
+    pathname.startsWith("/sat/")
+  ) {
     return (
       <>
         <main className="min-h-[100svh]">{children}</main>

@@ -155,7 +155,7 @@ function SatOnlyNav({ pathname, onNavigate }: { pathname: string; onNavigate: ()
       <Link
         href="/dashboard"
         onClick={() => {
-          flagCoreReform();
+          flagCoreReform("sat");
           onNavigate();
         }}
         className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
