@@ -149,7 +149,7 @@ export function AppOrbit({
             <button
               key={app.id}
               type="button"
-              aria-label={centre ? app.enterLabel : `Bring ${app.name} to the centre`}
+              aria-label={centre ? app.enterLabel : `Bring ${app.name} to the center`}
               aria-current={centre ? "true" : undefined}
               onClick={() => {
                 if (drag.current?.moved) return;

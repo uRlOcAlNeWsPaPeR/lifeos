@@ -262,7 +262,7 @@ export function ExamRunner() {
           <li><strong className="text-foreground">Mark for review</strong> flags a question so you can find it in the question navigator.</li>
           <li>Use the letter beside a choice to cross it out. Clicking the choice itself selects it.</li>
           <li>Math modules include the Desmos calculator and a reference sheet.</li>
-          <li>Wrong answers aren&apos;t penalised — always guess.</li>
+          <li>Wrong answers aren&apos;t penalized — always guess.</li>
         </ul>
         <div className="mt-5 flex justify-end">
           <Button onClick={() => setHelpOpen(false)}>Got it</Button>

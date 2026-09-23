@@ -37,7 +37,7 @@ export function SatDashboard() {
     <>
       <SatHeader
         title="SAT Prep"
-        description={`Hey ${p.name} — real College Board questions, adaptive practice exams and a score estimate that moves as you practise.`}
+        description={`Hey ${p.name} — real College Board questions, adaptive practice exams and a score estimate that moves as you practice.`}
         action={
           <Button
             onClick={() => startSet("mix", () => pickFromCatalog(s, { test: "sat", count: 10 }), "mixed")}
@@ -86,7 +86,7 @@ export function SatDashboard() {
         </div>
 
         <section>
-          <SectionTitle>Practise</SectionTitle>
+          <SectionTitle>Practice</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SectionLink s={s} section="rw" />
             <SectionLink s={s} section="math" />
@@ -339,7 +339,7 @@ function SectionLink({ s, section }: { s: SatState; section: "rw" | "math" }) {
         <p className="mt-3 font-medium">{section === "rw" ? "Reading & Writing" : "Math"}</p>
         <Progress value={st.att ? acc : 0} className="mt-3 h-1.5" />
         <p className="mt-2 text-xs text-muted-foreground">
-          {st.att ? `${acc}% correct · ${st.att} answered` : "Not started yet — tap to practise."}
+          {st.att ? `${acc}% correct · ${st.att} answered` : "Not started yet — tap to practice."}
         </p>
       </Card>
     </Link>
@@ -386,9 +386,9 @@ function StreakCard({ s }: { s: SatState }) {
       </div>
       <p className="mt-4 text-xs text-muted-foreground">
         {doneToday
-          ? "Streak safe — you practised today."
+          ? "Streak safe — you practiced today."
           : live > 0
-            ? "Practise today to keep your streak alive."
+            ? "Practice today to keep your streak alive."
             : "Answer one question to light today's flame and start a streak."}
       </p>
     </Card>

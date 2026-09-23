@@ -191,7 +191,7 @@ export function SatOnboarding({ defaultName }: { defaultName?: string }) {
               <ArrowRight className="h-4 w-4" />
             </Button>
           ) : (
-            <Button onClick={finish}>Start practising</Button>
+            <Button onClick={finish}>Start practicing</Button>
           )}
         </div>
       </Card>

@@ -47,7 +47,7 @@ export function PracticeView() {
         <EmptyState
           icon={Layers}
           title="No decks yet"
-          description="Paste a vocab list, or let LifeOS pull the key terms out of your notes. Then practise with flashcards, matching, quizzes and Recall Rush."
+          description="Paste a vocab list, or let LifeOS pull the key terms out of your notes. Then practice with flashcards, matching, quizzes and Recall Rush."
           action={
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus className="h-4 w-4" /> New deck

@@ -362,7 +362,7 @@ function WeightedCalc({ scale }: { scale: LetterScaleEntry[] }) {
           totalWeight === 0
             ? "Enter weights and scores"
             : weightOff
-              ? `Weights add up to ${num(totalWeight)}% — normalised to what's entered`
+              ? `Weights add up to ${num(totalWeight)}% — normalized to what's entered`
               : "Weighted average"
         }
       />

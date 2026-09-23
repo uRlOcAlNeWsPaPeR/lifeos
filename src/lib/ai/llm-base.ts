@@ -111,7 +111,7 @@ export abstract class LLMProvider implements AIProvider {
       const summary =
         typeof parsed.summary === "string" && parsed.summary
           ? parsed.summary
-          : `Organised into ${items.length} task${items.length === 1 ? "" : "s"}.`;
+          : `Organized into ${items.length} task${items.length === 1 ? "" : "s"}.`;
 
       return { engine: this.name, items, summary };
     } catch (e) {
