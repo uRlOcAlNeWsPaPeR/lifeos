@@ -35,3 +35,27 @@ export function resetCoreToHome() {
     /* private mode */
   }
 }
+
+const REFORM_KEY = "lifeos.core.reform";
+
+/** Set right before navigating back to /dashboard from another app (e.g. SAT
+ *  Prep), so the Core plays its console→orb reform animation — the same one
+ *  Study's own "Back" button uses — instead of silently opening on the orb. */
+export function flagCoreReform() {
+  try {
+    sessionStorage.setItem(REFORM_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Read-once: true only the first time it's checked after `flagCoreReform`. */
+export function consumeCoreReform(): boolean {
+  try {
+    if (sessionStorage.getItem(REFORM_KEY) !== "1") return false;
+    sessionStorage.removeItem(REFORM_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

@@ -38,7 +38,7 @@ import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { SearchTrigger } from "@/components/app/command-palette";
 import { useSat } from "@/lib/sat/store";
-import { resetCoreToHome } from "@/lib/core-phase";
+import { flagCoreReform, resetCoreToHome } from "@/lib/core-phase";
 
 /**
  * Nav grouped by what the student is actually doing, rather than one flat list
@@ -155,7 +155,7 @@ function SatOnlyNav({ pathname, onNavigate }: { pathname: string; onNavigate: ()
       <Link
         href="/dashboard"
         onClick={() => {
-          resetCoreToHome();
+          flagCoreReform();
           onNavigate();
         }}
         className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"

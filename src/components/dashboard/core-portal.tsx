@@ -26,7 +26,7 @@ import { toast } from "@/components/ui/toaster";
 import { goalProgress } from "@/lib/analytics-derive";
 import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
 import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from "@/lib/study-lock";
-import { loadCorePhase, saveCorePhase } from "@/lib/core-phase";
+import { consumeCoreReform, loadCorePhase, saveCorePhase } from "@/lib/core-phase";
 import { cn } from "@/lib/utils";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
 
@@ -64,8 +64,10 @@ export function CorePortal() {
   const [cinematic] = useState(true);
   // Opens on whichever stable phase — the Core orb, or the working console —
   // the student was last on (see @/lib/core-phase). A fresh tab starts on
-  // the Core.
-  const [phase, setPhase] = useState<Phase>(loadCorePhase);
+  // the Core. Arriving via `flagCoreReform` (e.g. Back to Core from SAT Prep)
+  // starts in "closing" instead, so the same reform animation Study's own
+  // Back button uses plays on the way back to the orb.
+  const [phase, setPhase] = useState<Phase>(() => (consumeCoreReform() ? "closing" : loadCorePhase()));
   const phaseRef = useRef<Phase>(phase);
   phaseRef.current = phase;
 
@@ -168,6 +170,16 @@ export function CorePortal() {
     setPhase("closing");
     window.setTimeout(() => setPhase("home"), reduced() ? 460 : TO_HOME);
   };
+
+  // Mirrors exitToCore's second half for the case above: mounted straight
+  // into "closing" because we arrived via flagCoreReform. Empty deps — this
+  // only ever looks at the phase this component mounted with.
+  useEffect(() => {
+    if (phase !== "closing") return;
+    const t = window.setTimeout(() => setPhase("home"), reduced() ? 460 : TO_HOME);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const ambientLine = useMemo(() => {
     const bits: string[] = [];
