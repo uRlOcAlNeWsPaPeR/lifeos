@@ -36,7 +36,7 @@ export function playCorrect() {
 }
 
 // LifeOS brand greens and teals, plus a warm accent so a burst still reads as
-// celebration rather than a status colour.
+// celebration rather than a status color.
 const COLORS = ["#17b866", "#10b981", "#4bd6a0", "#0fb9a8", "#7fe6a8", "#fbbf24"];
 
 interface Particle {

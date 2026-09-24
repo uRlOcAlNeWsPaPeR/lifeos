@@ -1,5 +1,5 @@
 /**
- * SAT Prep rule checks — the behaviour ported from ScoreClimb.
+ * SAT Prep rule checks — the behavior ported from ScoreClimb.
  *
  *   npx tsx src/lib/sat/sat.test.ts
  */
@@ -173,9 +173,9 @@ test("the predicted range narrows as you answer more", () => {
   const fresh = prediction(s, "sat");
   assert.equal(fresh.hi - fresh.lo, 320);
   s.counters.answered = 300;
-  const practised = prediction(s, "sat");
-  assert.equal(practised.hi - practised.lo, 80);
-  assert.equal(practised.gap, 1400 - practised.est);
+  const practiced = prediction(s, "sat");
+  assert.equal(practiced.hi - practiced.lo, 80);
+  assert.equal(practiced.gap, 1400 - practiced.est);
 });
 
 test("suggested targets sit 150 above the start, converted across scales", () => {

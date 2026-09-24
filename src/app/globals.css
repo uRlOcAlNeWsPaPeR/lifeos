@@ -390,10 +390,12 @@ html.lenis body {
  * SAT Prep — College Board question content.
  *
  * Question HTML comes from the College Board question bank: MathML, tiny
- * raster formula images, SVG figures, tables. The sheet itself is the normal
- * dark LifeOS card — but the figures/formula images are black lines drawn on
- * a transparent background for white paper, so each one gets its own small
- * white backing plate instead of lightening the whole sheet.
+ * raster formula images, SVG figures, tables. The figures are black line art
+ * drawn for white paper, and every colour in them is black, white or grey
+ * (checked across all 709 questions that have one) — so they're inverted onto
+ * the dark sheet, black becoming white and greys staying grey. That reads as
+ * part of the page, where a white backing plate behind each figure reads as a
+ * pasted-in box. hue-rotate only guards a future coloured figure.
  * ------------------------------------------------------------------ */
 .sat-sheet {
   background: hsl(var(--card));
@@ -419,18 +421,15 @@ html.lenis body {
 .sat-content svg {
   max-width: 100%;
   height: auto;
-  background: #fff;
-  border-radius: 6px;
+  filter: invert(1) hue-rotate(180deg);
 }
 .sat-content svg {
   display: block;
   margin: 0 auto;
-  padding: 8px;
 }
 .sat-content img:not(.math-img) {
   display: block;
   margin: 8px auto;
-  padding: 8px;
 }
 /* Inline formula images ship at ~24×16px — scale to the text around them. */
 .sat-content .math-img {
@@ -438,8 +437,6 @@ html.lenis body {
   width: auto !important;
   vertical-align: middle;
   display: inline-block;
-  border-radius: 3px;
-  padding: 0 2px;
 }
 .sat-content figure {
   margin: 8px 0;

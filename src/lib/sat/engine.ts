@@ -1,4 +1,4 @@
-// SAT Prep's rules, ported from ScoreClimb with the behaviour unchanged: XP,
+// SAT Prep's rules, ported from ScoreClimb with the behavior unchanged: XP,
 // streaks, badges, answer checking, the score estimate and the strengths
 // breakdown. Everything here is pure (state in, state mutated or value out) so
 // it runs identically in the browser and in tests.
@@ -85,7 +85,7 @@ export function todayStr(offsetDays = 0, now: Date = new Date()): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/** The streak shown to the student: 0 unless they practised today or yesterday. */
+/** The streak shown to the student: 0 unless they practiced today or yesterday. */
 export function liveStreak(s: SatState, now: Date = new Date()): number {
   const { current, lastDay } = s.streak;
   if (!lastDay) return 0;
@@ -224,7 +224,7 @@ export function finishSetBadges(s: SatState, qs: Question[], correct: number): B
 
 /* ------------------------------ score model ------------------------------ */
 // SAT and PSAT share one set of practice stats, mapped onto each test's own
-// scale — practising improves both estimates at once.
+// scale — practicing improves both estimates at once.
 
 const round10 = (n: number) => Math.round(n / 10) * 10;
 

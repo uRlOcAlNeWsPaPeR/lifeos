@@ -275,7 +275,7 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
       </div>
       {showPrev && prevText && <p className="text-sm text-muted-foreground">{prevText}</p>}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Passage or problem on the left; question and choices on the right. */}
         <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
           <QuestionHtml html={q.stimulus || q.stem} />

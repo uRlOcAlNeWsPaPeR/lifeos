@@ -157,7 +157,10 @@ for (const { q, correct, given } of stream) {
 run(`Quiz.award('first')`);
 finishSetBadges(mine, [], 0);
 
-const theirs = run<SatState>("JSON.parse(JSON.stringify(state))");
+const theirs = run<SatState & { apScores?: unknown }>("JSON.parse(JSON.stringify(state))");
+// AP scores were dropped from the LifeOS port, so that field only exists on
+// ScoreClimb's side. Nothing else about the recorded state may differ.
+delete theirs.apScores;
 same(mine, theirs, "state after 400 recorded answers");
 
 /* ------------------------ estimate & breakdown on it ------------------------ */

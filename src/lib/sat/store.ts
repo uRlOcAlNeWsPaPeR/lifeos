@@ -42,7 +42,7 @@ function hydrate() {
   if (hydrated || typeof window === "undefined") return;
   state = read();
   hydrated = true;
-  // Another tab practising updates this one too.
+  // Another tab practicing updates this one too.
   window.addEventListener("storage", (e) => {
     if (e.key !== STORAGE_KEY) return;
     state = read();

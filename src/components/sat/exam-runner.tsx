@@ -384,7 +384,7 @@ function ModuleView({
       {!q ? (
         <ErrorBlock message="This question couldn't be loaded. Move on and come back — your answers are saved." />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid items-start gap-4 lg:grid-cols-2">
           <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
             <QuestionHtml html={q.stimulus || q.stem} />
           </Sheet>

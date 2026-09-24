@@ -141,7 +141,7 @@ export function BadgeIcon({ id, className }: { id: string; className?: string })
   return <Icon className={className} />;
 }
 
-/** A labelled stat — number on top, caption below. */
+/** A labeled stat — number on top, caption below. */
 export function Stat({ value, label, className }: { value: React.ReactNode; label: string; className?: string }) {
   return (
     <div className={cn("min-w-0", className)}>
