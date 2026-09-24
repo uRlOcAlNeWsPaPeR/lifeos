@@ -13,7 +13,10 @@ import { savePersonalTokenConnection } from "@/lib/canvas/connection";
 export const POST = route(async (req) => {
   const uid = await requireUid(req);
   if (!(await personalTokenAllowedFor(uid))) {
-    throw new ApiError(404, "Not available.");
+    throw new ApiError(
+      403,
+      "Canvas connect is invite-only right now, and your account isn't on the list yet.",
+    );
   }
 
   const { instanceUrl, accessToken } = canvasTokenConnectSchema.parse(await readJson(req));
