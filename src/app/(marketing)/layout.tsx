@@ -22,7 +22,6 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <a href="/#story" className="hover:text-foreground">Story</a>
             <a href="/#features" className="hover:text-foreground">Features</a>
             <a href="/#how" className="hover:text-foreground">How it works</a>
-            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
           </nav>
           <div className="flex items-center gap-2">
             {!initializing && user ? (
@@ -52,7 +51,6 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
             <span className="text-xs">· Your entire student life. Organized.</span>
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Link href="/pricing" className="hover:text-foreground">Pricing</Link>
             <Link href="/login" className="hover:text-foreground">Log in</Link>
             <Link href="/signup" className="hover:text-foreground">Sign up</Link>
             <span>© {new Date().getFullYear()} LifeOS</span>

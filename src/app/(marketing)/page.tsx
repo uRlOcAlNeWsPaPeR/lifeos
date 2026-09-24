@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { PricingTable } from "@/components/marketing/pricing-table";
 import { CursorGlow } from "@/components/marketing/cinematic/cursor-glow";
 import { DeskScene, BookshelfScene, WritingScene } from "@/components/marketing/cinematic/scenes";
 import { Reveal, RevealWords, Parallax } from "@/components/marketing/cinematic/scroll-fx";
@@ -209,26 +208,6 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-      </section>
-
-      {/* ─────────────────────── PRICING ─────────────────────── */}
-      <section id="pricing" className="mx-auto max-w-6xl px-6 py-24">
-        <Reveal>
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="text-xs font-medium uppercase tracking-[0.25em] text-primary">Pricing</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Start free. Upgrade when LifeOS runs your week.
-            </h2>
-            <p className="mt-3 text-sm text-muted-foreground">
-              Payments aren&apos;t live in this MVP — upgrading is a one-click demo.
-            </p>
-          </div>
-        </Reveal>
-        <Reveal delay={0.1}>
-          <div className="mt-14">
-            <PricingTable />
-          </div>
-        </Reveal>
       </section>
 
       {/* ─────────────────────── FINAL CTA ─────────────────────── */}
