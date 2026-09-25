@@ -36,8 +36,8 @@ export function SatDashboard() {
   return (
     <>
       <SatHeader
-        title="SAT Prep"
-        description={`Hey ${p.name} — real College Board questions, adaptive practice exams and a score estimate that moves as you practice.`}
+        title={`Hey ${p.name}`}
+        description="Your SAT at a glance — what's coming up, how you're tracking, and what to practice next."
         action={
           <Button
             onClick={() => startSet("mix", () => pickFromCatalog(s, { test: "sat", count: 10 }), "mixed")}
@@ -49,58 +49,74 @@ export function SatDashboard() {
         }
       />
 
-      <div className="space-y-6">
-        {/* Anything left mid-way comes first. */}
-        {(examLive || s.pausedQuiz) && (
-          <div className="grid gap-3 md:grid-cols-2">
-            {examLive && (
-              <ResumeCard
-                title={`${EXAM_SPECS[examLive.kind].label} exam in progress`}
-                detail={
-                  examLive.phase === "break"
-                    ? `On break — ${formatClock(examLive.breakLeft)} left, Math is next.`
-                    : `Module ${examLive.cur + 1} of 4 · ${formatClock(examLive.modules[examLive.cur].timeLeft)} left`
-                }
-                onResume={resumeExam}
-              />
-            )}
-            {s.pausedQuiz && (
-              <ResumeCard
-                title={s.pausedQuiz.name}
-                detail={`${s.pausedQuiz.idx}/${s.pausedQuiz.qids.length} answered · paused practice set`}
-                loading={busy === "resume"}
-                onResume={resumeSet}
-              />
-            )}
+      <div className="space-y-10">
+        <section className="space-y-4">
+          <SectionTitle>Today</SectionTitle>
+
+          {/* Anything left mid-way comes first. */}
+          {(examLive || s.pausedQuiz) && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {examLive && (
+                <ResumeCard
+                  title={`${EXAM_SPECS[examLive.kind].label} exam in progress`}
+                  detail={
+                    examLive.phase === "break"
+                      ? `On break — ${formatClock(examLive.breakLeft)} left, Math is next.`
+                      : `Module ${examLive.cur + 1} of 4 · ${formatClock(examLive.modules[examLive.cur].timeLeft)} left`
+                  }
+                  onResume={resumeExam}
+                />
+              )}
+              {s.pausedQuiz && (
+                <ResumeCard
+                  title={s.pausedQuiz.name}
+                  detail={`${s.pausedQuiz.idx}/${s.pausedQuiz.qids.length} answered · paused practice set`}
+                  loading={busy === "resume"}
+                  onResume={resumeSet}
+                />
+              )}
+            </div>
+          )}
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Countdown s={s} className="lg:col-span-2" />
+            <TodayCard done={today.answered} goal={p.dailyGoal} study={study} />
           </div>
-        )}
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Countdown s={s} className="lg:col-span-2" />
-          <TodayCard done={today.answered} goal={p.dailyGoal} study={study} />
-        </div>
+          <StreakCard s={s} />
+        </section>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <ScoreTrack s={s} kind="sat" />
-          <ScoreTrack s={s} kind="psat" />
-        </div>
-
-        <section>
+        <section className="space-y-4">
           <SectionTitle>Practice</SectionTitle>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <SectionLink s={s} section="rw" />
             <SectionLink s={s} section="math" />
-            <Link href={SAT_ROUTES.exams} className="block">
-              <Card interactive className="h-full p-5">
-                <IconChip icon={ClipboardCheck} />
-                <p className="mt-3 font-medium">Practice exam</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {examLive
-                    ? `${EXAM_SPECS[examLive.kind].shortLabel} in progress — pick up where you stopped.`
-                    : "Full-length adaptive SAT or PSAT with real timing."}
-                </p>
-              </Card>
-            </Link>
+
+            {/* The exam card carries its own start button, so the adaptive mock
+                isn't also a separate banner further down the page. */}
+            <Card className="flex h-full flex-col p-5">
+              <IconChip icon={ClipboardCheck} />
+              <p className="mt-3 font-medium">Practice exam</p>
+              <p className="mt-1 flex-1 text-sm text-muted-foreground">
+                {examLive
+                  ? `${EXAM_SPECS[examLive.kind].shortLabel} in progress — pick up where you stopped.`
+                  : "Full-length and adaptive: do well in Module 1 to unlock the harder Module 2 and raise your score ceiling."}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => (examLive ? resumeExam() : startExam("sat"))}
+                  loading={busy === "exam-sat-new"}
+                >
+                  {examLive ? "Resume" : "Start SAT mock"}
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Button>
+                <Link href={SAT_ROUTES.exams}>
+                  <Button size="sm" variant="ghost">All exams</Button>
+                </Link>
+              </div>
+            </Card>
+
             <Link href={SAT_ROUTES.guides} className="block">
               <Card interactive className="h-full p-5">
                 <IconChip icon={BookOpen} />
@@ -111,35 +127,22 @@ export function SatDashboard() {
           </div>
         </section>
 
-        <Card className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-medium">Adaptive digital SAT mock exam</p>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              Real multi-stage adaptation: score well in Module 1 to unlock the harder Module 2 and raise your score ceiling.
-            </p>
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => (examLive ? resumeExam() : startExam("sat"))}
-            loading={busy === "exam-sat-new"}
-          >
-            {examLive ? "Resume exam" : "Start adaptive mock"}
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </Card>
-
-        <StreakCard s={s} />
-
-        <section>
+        <section className="space-y-4">
           <SectionTitle>Question of the day</SectionTitle>
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <QuestionOfTheDay section="rw" />
             <QuestionOfTheDay section="math" />
           </div>
         </section>
 
-        <div className="grid gap-4 lg:grid-cols-3">
-          <Card className="p-5 lg:col-span-2">
+        <section className="space-y-4">
+          <SectionTitle>Progress</SectionTitle>
+          <div className="grid gap-4 md:grid-cols-2">
+            <ScoreTrack s={s} kind="sat" />
+            <ScoreTrack s={s} kind="psat" />
+          </div>
+
+          <Card className="p-5">
             <SectionTitle right={<span className="text-xs text-muted-foreground">{s.badges.length}/{BADGES.length}</span>}>
               Badges
             </SectionTitle>
@@ -163,7 +166,7 @@ export function SatDashboard() {
               })}
             </ul>
           </Card>
-        </div>
+        </section>
       </div>
     </>
   );

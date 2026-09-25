@@ -30,7 +30,7 @@ export function SatStatus() {
   );
 }
 
-/** Page header for SAT screens: LifeOS's header, with streak and XP beside it. */
+/** Page header for SAT screens. Streak and XP live in the SAT top bar. */
 export function SatHeader({
   title,
   description,
@@ -44,12 +44,7 @@ export function SatHeader({
     <PageHeader
       title={title}
       description={description}
-      action={
-        <div className="flex flex-wrap items-center gap-2">
-          <SatStatus />
-          {action}
-        </div>
-      }
+      action={action}
     />
   );
 }

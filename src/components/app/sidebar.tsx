@@ -78,32 +78,10 @@ export const NAV_GROUPS: {
 ];
 
 /**
- * SAT Prep's own screens — shown only by `SatOnlyNav` below, while inside
  * `/sat`. It isn't part of the main app's nav (reached from the Core's SAT
  * sphere instead), so this list doesn't appear in `NAV_GROUPS`.
  * `exact` keeps Overview from lighting up on every /sat/* page.
  */
-export const SAT_NAV: {
-  href: string;
-  label: string;
-  icon: typeof LayoutDashboard;
-  items: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[];
-} = {
-  href: "/sat",
-  label: "SAT Prep",
-  icon: NotebookPen,
-  items: [
-    { href: "/sat", label: "Overview", icon: LayoutGrid, exact: true },
-    { href: "/sat/practice", label: "Practice", icon: PenLine },
-    { href: "/sat/exams", label: "Practice exams", icon: ClipboardCheck },
-    { href: "/sat/review", label: "Review mistakes", icon: RotateCcw },
-    { href: "/sat/flashcards", label: "Flashcards", icon: Layers },
-    { href: "/sat/guides", label: "Study guides", icon: BookOpen },
-    { href: "/sat/progress", label: "Progress", icon: TrendingUp },
-    { href: "/sat/settings", label: "SAT settings", icon: SlidersHorizontal },
-  ],
-};
-
 export const ASSISTANT = { href: "/assistant", label: "AI Assistant", icon: Sparkles };
 export const BRAIN_GAME = { href: "/brain-game", label: "Brain Game", icon: Puzzle };
 export const SETTINGS_NAV = { href: "/settings", label: "Settings", icon: Settings };
@@ -141,65 +119,6 @@ function NavLink({
  * rest of LifeOS. Its sidebar shows only SAT screens plus a way back — not the
  * Home/School/Personal nav that belongs to the other sphere.
  */
-function SatOnlyNav({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
-  const { s, ready } = useSat();
-  const examLive = ready && s.exam && s.exam.phase !== "done";
-  const badges: Record<string, React.ReactNode> = {
-    "/sat/review": ready && s.missed.length > 0 ? s.missed.length : null,
-    "/sat/exams": examLive ? "Live" : null,
-    "/sat/practice": ready && s.pausedQuiz ? "Paused" : null,
-  };
-
-  return (
-    <div className="mb-4">
-      <Link
-        href="/dashboard"
-        onClick={() => {
-          flagCoreReform("sat");
-          onNavigate();
-        }}
-        className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Core
-      </Link>
-      <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-        {SAT_NAV.label}
-      </p>
-      <div className="space-y-1">
-        {SAT_NAV.items.map((item) => {
-          const active = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(item.href + "/");
-          const badge = badges[item.href];
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "group relative flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all",
-                active
-                  ? "bg-gradient-to-r from-primary/20 via-primary/5 to-transparent text-foreground shadow-[inset_1px_0_0_hsl(var(--glow)/0.6)]"
-                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-              )}
-            >
-              <item.icon className={cn("h-4 w-4 transition-colors", active && "text-primary")} />
-              <span className="flex-1 truncate">{item.label}</span>
-              {badge != null && (
-                <Badge tone={item.href === "/sat/review" ? "muted" : "primary"} className="px-1.5 py-0 text-[10px]">
-                  {badge}
-                </Badge>
-              )}
-            </Link>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 export function Sidebar({
   user,
   plan,
@@ -235,7 +154,6 @@ export function Sidebar({
   // Latest setOpen for the Escape listener, so the effect needn't re-run every render.
   const setOpenRef = useRef(setOpen);
   setOpenRef.current = setOpen;
-  const isSat = pathname === SAT_NAV.href || pathname.startsWith(SAT_NAV.href + "/");
 
   // Lock the page behind the drawer + close it on Escape.
   useEffect(() => {
@@ -272,58 +190,52 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 overflow-y-auto px-3 scrollbar-thin">
-        {isSat ? (
-          <SatOnlyNav pathname={pathname} onNavigate={() => setOpen(false)} />
+        {onBackToCore ? (
+          <button
+            type="button"
+            onClick={() => {
+              onBackToCore();
+              setOpen(false);
+            }}
+            className="mb-4 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Core
+          </button>
         ) : (
-          <>
-            {onBackToCore ? (
-              <button
-                type="button"
-                onClick={() => {
-                  onBackToCore();
-                  setOpen(false);
-                }}
-                className="mb-4 flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to Core
-              </button>
-            ) : (
-              <Link
-                href="/dashboard"
-                onClick={() => {
-                  resetCoreToHome();
-                  setOpen(false);
-                }}
-                className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back to Core
-              </Link>
-            )}
-            {NAV_GROUPS.map((group) => (
-              <div key={group.label} className="mb-4">
-                <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-                  {group.label}
-                </p>
-                <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <NavLink
-                      key={item.href}
-                      item={item}
-                      pathname={pathname}
-                      onNavigate={() => setOpen(false)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-            <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
-              <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
-              <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
-            </div>
-          </>
+          <Link
+            href="/dashboard"
+            onClick={() => {
+              resetCoreToHome();
+              setOpen(false);
+            }}
+            className="mb-4 flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Core
+          </Link>
         )}
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="mb-4">
+            <p className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+              {group.label}
+            </p>
+            <div className="space-y-1">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  onNavigate={() => setOpen(false)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="mt-1 space-y-1 border-t border-white/[0.06] pt-3">
+          <NavLink item={ASSISTANT} pathname={pathname} onNavigate={() => setOpen(false)} />
+          <NavLink item={BRAIN_GAME} pathname={pathname} onNavigate={() => setOpen(false)} />
+        </div>
       </nav>
 
       <div className="pb-safe space-y-2 p-3">
