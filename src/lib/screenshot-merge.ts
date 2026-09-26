@@ -105,3 +105,90 @@ export function canonicalCategory(raw: string | null | undefined, known: string[
   if (!name) return "";
   return known.find((k) => k.trim().toLowerCase() === name.toLowerCase())?.trim() ?? name;
 }
+
+/* -------------------------------------------------------------------------- *
+ * Organizing by category
+ * -------------------------------------------------------------------------- */
+
+export interface CategoryGroup {
+  /** Lower-cased category name — "" for items with no category. */
+  key: string;
+  label: string;
+  /** Percent of the grade, or null when none is known for this category. */
+  weight: number | null;
+  /** Items in the order the screenshots showed them, with their index in the full list. */
+  entries: { item: ScreenshotDraft; index: number }[];
+}
+
+/**
+ * Arrange reviewed items the way the gradebook screenshot lays them out: one
+ * section per category, in the order the screenshot listed them, each carrying
+ * its weight, with the assignments beneath in the order they appeared.
+ *
+ * Order of sections:
+ *  1. the categories read off the screenshot (its own order),
+ *  2. then any the course already declared that the screenshot didn't show,
+ *  3. then any category an item is tagged with but nothing gave a weight,
+ *  4. and "No category" last, only if something is in it.
+ *
+ * A category with no items still gets its section — a gradebook lists an empty
+ * "Labs 30%" row, and seeing it is how the student knows it wasn't missed.
+ * Matching is case-insensitive, so "formative" and "Formative" are one group.
+ */
+export function groupByCategory(
+  items: ScreenshotDraft[],
+  fromScreenshot: { category: string; weight: number | null }[],
+  declared: { category: string; weight: number }[] = [],
+): CategoryGroup[] {
+  const groups: CategoryGroup[] = [];
+  const byKey = new Map<string, CategoryGroup>();
+  const add = (name: string, weight: number | null) => {
+    const label = name.trim();
+    const key = label.toLowerCase();
+    if (!key) return;
+    const have = byKey.get(key);
+    if (have) {
+      // Keep the first spelling, but pick up a weight a later source knows.
+      if (have.weight == null && weight != null) have.weight = weight;
+      return;
+    }
+    const g: CategoryGroup = { key, label, weight, entries: [] };
+    byKey.set(key, g);
+    groups.push(g);
+  };
+
+  for (const c of fromScreenshot) add(c.category, c.weight);
+  for (const w of declared) add(w.category, w.weight);
+  for (const it of items) add(it.category, null);
+
+  const none: CategoryGroup = { key: "", label: "No category", weight: null, entries: [] };
+  items.forEach((item, index) => {
+    const key = item.category.trim().toLowerCase();
+    (byKey.get(key) ?? none).entries.push({ item, index });
+  });
+  return none.entries.length ? [...groups, none] : groups;
+}
+
+/**
+ * Fold weights read from a screenshot into the course's existing weights.
+ *
+ * The screenshot wins on a weight it shows (the student has just checked it
+ * against their gradebook), and a category the course already had keeps its
+ * own spelling. Categories the screenshot didn't show are left alone, so a
+ * partial screenshot can't wipe out weights entered earlier. Rows without a
+ * usable weight are skipped — there's nothing to save for them yet.
+ */
+export function mergeCourseWeights(
+  existing: { category: string; weight: number }[],
+  incoming: { category: string; weight: number }[],
+): { category: string; weight: number }[] {
+  const out = existing.map((w) => ({ ...w }));
+  for (const inc of incoming) {
+    const name = inc.category.trim();
+    if (!name || !(inc.weight > 0)) continue;
+    const hit = out.find((w) => w.category.trim().toLowerCase() === name.toLowerCase());
+    if (hit) hit.weight = inc.weight;
+    else out.push({ category: name, weight: inc.weight });
+  }
+  return out;
+}

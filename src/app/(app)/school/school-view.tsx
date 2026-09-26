@@ -44,6 +44,8 @@ import { cn } from "@/lib/utils";
 import { compressImage } from "@/lib/image";
 import {
   canonicalCategory,
+  groupByCategory,
+  mergeCourseWeights,
   mergeItems,
   mergeWeights,
   type ScreenshotDraft,
@@ -1210,6 +1212,14 @@ function AssignmentScreenshotImporter({
     return out;
   })();
 
+  // The review laid out the way the gradebook is: a section per category, in
+  // the screenshot's order, each with its weight.
+  const groups = groupByCategory(
+    items,
+    weightDrafts.map((d) => ({ category: d.category, weight: parseNum(d.weight) })),
+    course?.gradeWeights ?? [],
+  );
+
   const weightTotal = weightDrafts.reduce((n, r) => n + (parseNum(r.weight) ?? 0), 0);
 
   // Kept rows with no category — they won't count toward any weighted bucket.
@@ -1431,6 +1441,25 @@ function AssignmentScreenshotImporter({
       return;
     }
     setImporting(true);
+    // Make the course's weights match the screenshot's table so the assignments
+    // land in real categories on the course page. A failed save must not lose
+    // the import, so it's best-effort.
+    const shown = weightDrafts
+      .map((r) => ({ category: r.category.trim(), weight: parseNum(r.weight) ?? 0 }))
+      .filter((r) => r.category && r.weight > 0);
+    const declared = course.gradeWeights ?? [];
+    const merged = mergeCourseWeights(declared, shown);
+    const changed =
+      merged.length !== declared.length ||
+      merged.some((w, k) => w.weight !== declared[k]?.weight || w.category !== declared[k]?.category);
+    if (changed) {
+      try {
+        await onSaveWeights(course.id, merged);
+      } catch {
+        /* keep going — the assignments matter more */
+      }
+    }
+    const known = merged.map((w) => w.category);
     const count = await onImport(
       course.id,
       kept.map((i) => {
@@ -1443,7 +1472,8 @@ function AssignmentScreenshotImporter({
           pointsPossible: i.pointsPossible ? Number(i.pointsPossible) : null,
           pointsEarned,
           gradeValue,
-          category: i.category || null,
+          // Same spelling as the saved weight, so it groups on the course page.
+          category: canonicalCategory(i.category, known) || null,
           // A captured score/grade means the screenshot already shows this as
           // graded — matches how a grade is treated everywhere else in the app.
           status: pointsEarned != null || gradeValue ? "graded" : "open",
@@ -1566,11 +1596,21 @@ function AssignmentScreenshotImporter({
                     <li key={i} className="flex items-center gap-2">
                       <Input
                         value={w.category}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          const prev = w.category.trim().toLowerCase();
                           setWeightDrafts((cur) =>
-                            cur.map((r, idx) => (idx === i ? { ...r, category: e.target.value } : r)),
-                          )
-                        }
+                            cur.map((r, idx) => (idx === i ? { ...r, category: next } : r)),
+                          );
+                          // Renaming a category carries its assignments with it.
+                          if (prev && next.trim()) {
+                            setItems((cur) =>
+                              cur.map((it) =>
+                                it.category.trim().toLowerCase() === prev ? { ...it, category: next } : it,
+                              ),
+                            );
+                          }
+                        }}
                         aria-label="Category name"
                         className="h-9 flex-1"
                       />
@@ -1642,7 +1682,23 @@ function AssignmentScreenshotImporter({
               </div>
             )}
             <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
-              {items.map((it, i) => (
+              {groups.map((g) => (
+                <section key={g.key || "none"} className="space-y-2">
+                  <div className="sticky top-0 z-10 flex items-baseline justify-between gap-2 rounded-md bg-background/95 px-1 py-1.5 backdrop-blur">
+                    <h4 className="text-sm font-semibold">
+                      {g.label}
+                      {g.weight != null && (
+                        <span className="ml-1.5 font-normal text-muted-foreground">· {g.weight}%</span>
+                      )}
+                    </h4>
+                    <span className="text-xs text-muted-foreground">
+                      {g.entries.length === 0
+                        ? "nothing read yet"
+                        : `${g.entries.length} assignment${g.entries.length === 1 ? "" : "s"}`}
+                      {g.key && g.weight == null ? " · no weight" : ""}
+                    </span>
+                  </div>
+                  {g.entries.map(({ item: it, index: i }) => (
                 <div
                   key={i}
                   className={cn(
@@ -1722,6 +1778,8 @@ function AssignmentScreenshotImporter({
                     </div>
                   </div>
                 </div>
+                  ))}
+                </section>
               ))}
             </div>
           </fieldset>

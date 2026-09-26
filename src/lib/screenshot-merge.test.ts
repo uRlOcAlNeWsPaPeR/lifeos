@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { test, report } from "@/lib/test-harness";
 import {
   canonicalCategory,
+  groupByCategory,
+  mergeCourseWeights,
   mergeItems,
   mergeWeights,
   titleKey,
@@ -141,6 +143,116 @@ test("an unknown label is kept as read, and no label is empty", () => {
   assert.equal(canonicalCategory("Labs", ["Formative"]), "Labs");
   assert.equal(canonicalCategory(null, ["Formative"]), "");
   assert.equal(canonicalCategory("   ", ["Formative"]), "");
+});
+
+/* ------------------------------- grouping -------------------------------- */
+
+const labels = (gs: ReturnType<typeof groupByCategory>) => gs.map((g) => g.label);
+
+test("sections follow the screenshot's category order, not alphabetical or by weight", () => {
+  const groups = groupByCategory(
+    [item("Test 1", { category: "Summative" }), item("Quiz 1", { category: "Formative" })],
+    [{ category: "Summative", weight: 70 }, { category: "Formative", weight: 30 }],
+  );
+  assert.deepEqual(labels(groups), ["Summative", "Formative"]);
+});
+
+test("each section carries its weight, and items keep the order they appeared in", () => {
+  const groups = groupByCategory(
+    [
+      item("Quiz 1", { category: "Formative" }),
+      item("Test 1", { category: "Summative" }),
+      item("Quiz 2", { category: "Formative" }),
+    ],
+    [{ category: "Formative", weight: 30 }, { category: "Summative", weight: 70 }],
+  );
+  assert.equal(groups[0].weight, 30);
+  assert.deepEqual(groups[0].entries.map((e) => e.item.title), ["Quiz 1", "Quiz 2"]);
+  assert.deepEqual(groups[0].entries.map((e) => e.index), [0, 2], "indexes point back into the full list");
+  assert.equal(groups[1].weight, 70);
+});
+
+test("a category with nothing in it still gets its section", () => {
+  const groups = groupByCategory([item("Quiz", { category: "Formative" })], [
+    { category: "Formative", weight: 30 },
+    { category: "Labs", weight: 70 },
+  ]);
+  assert.deepEqual(labels(groups), ["Formative", "Labs"]);
+  assert.equal(groups[1].entries.length, 0);
+});
+
+test("uncategorized items collect in a final section, only when there are some", () => {
+  const withNone = groupByCategory([item("Loose", { category: "" })], [{ category: "Tests", weight: 100 }]);
+  assert.deepEqual(labels(withNone), ["Tests", "No category"]);
+  const without = groupByCategory([item("Test", { category: "Tests" })], [{ category: "Tests", weight: 100 }]);
+  assert.deepEqual(labels(without), ["Tests"]);
+});
+
+test("category matching ignores case, keeping the screenshot's spelling", () => {
+  const groups = groupByCategory([item("Quiz", { category: "formative" })], [{ category: "Formative", weight: 30 }]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].label, "Formative");
+  assert.equal(groups[0].entries.length, 1);
+});
+
+test("course categories the screenshot didn't show follow the ones it did", () => {
+  const groups = groupByCategory([], [{ category: "Tests", weight: 60 }], [
+    { category: "Homework", weight: 40 },
+    { category: "tests", weight: 60 },
+  ]);
+  assert.deepEqual(labels(groups), ["Tests", "Homework"]);
+});
+
+test("a tagged category nobody gave a weight to is kept, flagged with no weight", () => {
+  const groups = groupByCategory([item("Lab 1", { category: "Labs" })], []);
+  assert.equal(groups[0].label, "Labs");
+  assert.equal(groups[0].weight, null);
+});
+
+test("a weight known from a later source fills in a category's missing weight", () => {
+  const groups = groupByCategory([], [{ category: "Tests", weight: null }], [{ category: "Tests", weight: 50 }]);
+  assert.equal(groups[0].weight, 50);
+});
+
+test("a plain assignment list with no categories has no sections at all beyond the one", () => {
+  const groups = groupByCategory([item("A"), item("B")], []);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].key, "");
+});
+
+/* ---------------------------- course weights ---------------------------- */
+
+test("screenshot weights are added to a course that had none", () => {
+  const r = mergeCourseWeights([], [{ category: "Formative", weight: 30 }, { category: "Summative", weight: 70 }]);
+  assert.deepEqual(r, [{ category: "Formative", weight: 30 }, { category: "Summative", weight: 70 }]);
+});
+
+test("a weight the screenshot shows replaces the course's, keeping the course's spelling", () => {
+  const r = mergeCourseWeights([{ category: "tests", weight: 40 }], [{ category: "Tests", weight: 50 }]);
+  assert.deepEqual(r, [{ category: "tests", weight: 50 }]);
+});
+
+test("categories the screenshot didn't show survive — a partial shot can't wipe the rest", () => {
+  const r = mergeCourseWeights(
+    [{ category: "Homework", weight: 20 }, { category: "Tests", weight: 80 }],
+    [{ category: "Tests", weight: 70 }],
+  );
+  assert.deepEqual(r, [{ category: "Homework", weight: 20 }, { category: "Tests", weight: 70 }]);
+});
+
+test("rows with no usable weight or name are skipped", () => {
+  const r = mergeCourseWeights([], [
+    { category: "Labs", weight: 0 },
+    { category: "  ", weight: 10 },
+    { category: "Quizzes", weight: NaN },
+  ]);
+  assert.deepEqual(r, []);
+});
+
+test("merging weights never mutates the course's own list", () => {
+  const existing = [{ category: "Tests", weight: 40 }];
+  mergeCourseWeights(existing, [{ category: "Tests", weight: 90 }]);
+  assert.equal(existing[0].weight, 40);
 });
 
 report("screenshot-merge");
