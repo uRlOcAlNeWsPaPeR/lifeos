@@ -11,7 +11,14 @@ const IMAGE_STEPS = ["Reading the screenshot", "Finding the assignments", "Sorti
  * (sidebar included), uses the LifeOS primary palette, and never reads as an
  * error or a separate page.
  */
-export function BrainDumpLoader({ source = "text" }: { source?: "text" | "image" }) {
+export function BrainDumpLoader({
+  source = "text",
+  detail,
+}: {
+  source?: "text" | "image";
+  /** Optional second line — e.g. which of several screenshots is being read. */
+  detail?: string;
+}) {
   const [step, setStep] = useState(0);
   const steps = source === "image" ? IMAGE_STEPS : STEPS;
 
@@ -55,6 +62,7 @@ export function BrainDumpLoader({ source = "text" }: { source?: "text" | "image"
       <p key={step} className="relative mt-8 animate-fade-in text-sm font-medium text-muted-foreground">
         {steps[step]}…
       </p>
+      {detail && <p className="relative mt-1.5 text-xs text-muted-foreground/70">{detail}</p>}
 
       <div className="relative mt-5 h-1 w-40 overflow-hidden rounded-full bg-white/10">
         <div className="h-full w-1/3 animate-indeterminate rounded-full bg-gradient-ai" />

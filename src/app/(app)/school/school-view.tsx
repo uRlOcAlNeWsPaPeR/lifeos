@@ -19,6 +19,7 @@ import {
   Lock,
   Scale,
   ListChecks,
+  ImagePlus,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -41,6 +42,12 @@ import {
 } from "@/lib/grades";
 import { cn } from "@/lib/utils";
 import { compressImage } from "@/lib/image";
+import {
+  canonicalCategory,
+  mergeItems,
+  mergeWeights,
+  type ScreenshotDraft,
+} from "@/lib/screenshot-merge";
 import { authedApi } from "@/lib/client";
 import { toast } from "@/components/ui/toaster";
 import { CanvasBadge, OpenInCanvas } from "@/components/canvas/canvas-badge";
@@ -71,7 +78,6 @@ export function SchoolView() {
     addAssignmentsBatch,
     updateAssignment,
     deleteAssignment,
-    noteScreenshotImportUsed,
   } = useAppData();
   const [courseModal, setCourseModal] = useState(false);
   const [assignFor, setAssignFor] = useState<CourseDTO | null>(null);
@@ -163,7 +169,6 @@ export function SchoolView() {
         course={screenshotFor}
         onClose={() => setScreenshotFor(null)}
         onImport={addAssignmentsBatch}
-        onUsed={noteScreenshotImportUsed}
         onSaveWeights={(courseId, rows) =>
           updateCourse(courseId, { gradeWeights: rows.length ? rows : null })
         }
@@ -173,6 +178,7 @@ export function SchoolView() {
           data.limits.screenshotImportsUsedThisWeek >= data.limits.screenshotImportsPerWeek
         }
         weeklyLimit={data.limits.screenshotImportsPerWeek}
+        usedThisWeek={data.limits.screenshotImportsUsedThisWeek}
       />
       <AssignmentDetail assignment={detailAssignment} onClose={() => setDetailFor(null)} />
     </>
@@ -1054,17 +1060,6 @@ function GradeWeightsEditor({
   );
 }
 
-interface ScreenshotDraft {
-  title: string;
-  dueAt: string;
-  notes: string;
-  pointsPossible: string;
-  pointsEarned: string;
-  gradeValue: string;
-  category: string;
-  keep: boolean;
-}
-
 interface ScreenshotAiItem {
   title: string;
   notes: string | null;
@@ -1093,11 +1088,11 @@ function AssignmentScreenshotImporter({
   course,
   onClose,
   onImport,
-  onUsed,
   onSaveWeights,
   enabled,
   atLimit,
   weeklyLimit,
+  usedThisWeek,
 }: {
   course: CourseDTO | null;
   onClose: () => void;
@@ -1114,12 +1109,13 @@ function AssignmentScreenshotImporter({
       status: string;
     }[],
   ) => Promise<number>;
-  onUsed: () => void;
   /** Saves the weight table read off the screenshot onto the course. */
   onSaveWeights: (courseId: string, rows: { category: string; weight: number }[]) => Promise<void>;
   enabled: boolean;
   atLimit: boolean;
   weeklyLimit: number | null;
+  /** Screenshot imports already used this week — each screenshot read counts. */
+  usedThisWeek: number;
 }) {
   const [phase, setPhase] = useState<"pick" | "loading" | "review">("pick");
   const [error, setError] = useState<string | null>(null);
@@ -1129,16 +1125,34 @@ function AssignmentScreenshotImporter({
   const [savingWeights, setSavingWeights] = useState(false);
   const [weightsApplied, setWeightsApplied] = useState(false);
   const [importing, setImporting] = useState(false);
+  // While extra screenshots are being read from the review screen: which one.
+  const [adding, setAdding] = useState<{ done: number; total: number } | null>(null);
+  // How many screenshots have contributed to this review.
+  const [shots, setShots] = useState(0);
+  // A non-error heads-up after reading — merged repeats, skipped files.
+  const [notice, setNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
+  // The latest lists, so a batch merges into what the student sees now rather
+  // than into the copy this closure was created with.
+  const itemsRef = useRef<ScreenshotDraft[]>([]);
+  const weightDraftsRef = useRef<WeightDraft[]>([]);
+  itemsRef.current = items;
+  weightDraftsRef.current = weightDrafts;
+
+  // Screenshots this week's allowance still covers.
+  const remaining = weeklyLimit === null ? Infinity : Math.max(0, weeklyLimit - usedThisWeek);
 
   function reset() {
     setPhase("pick");
     setError(null);
     setItems([]);
     setImporting(false);
-      setWeightDrafts([]);
+    setWeightDrafts([]);
     setWeightsApplied(false);
+    setAdding(null);
+    setShots(0);
+    setNotice(null);
   }
 
   function close() {
@@ -1169,6 +1183,14 @@ function AssignmentScreenshotImporter({
 
   const weightTotal = weightDrafts.reduce((n, r) => n + (parseNum(r.weight) ?? 0), 0);
 
+  // Kept rows with no category — they won't count toward any weighted bucket.
+  const untaggedCount = items.filter((i) => i.keep && !i.category).length;
+
+  function tagUntagged(category: string) {
+    if (!category) return;
+    setItems((cur) => cur.map((it) => (it.keep && !it.category ? { ...it, category } : it)));
+  }
+
   async function applyWeights() {
     if (!course || savingWeights) return;
     const rows = weightDrafts
@@ -1185,50 +1207,64 @@ function AssignmentScreenshotImporter({
     setItems((cur) => cur.map((it, idx) => (idx === i ? { ...it, ...p } : it)));
   }
 
-  async function onFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
+  /**
+   * Read one or more screenshots and fold them into the review.
+   *
+   * They're read one at a time, in the order chosen, because a long page
+   * screenshotted in pieces only makes sense top to bottom. Each screenshot is
+   * its own billed AI call, so a batch is cut to what this week's allowance
+   * still covers — the student is told, rather than surprised by an error
+   * halfway through. Whatever was read before a failure is kept.
+   */
+  async function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (!file || !course || inFlight.current) return;
+    if (!files.length || !course || inFlight.current) return;
     inFlight.current = true;
     setError(null);
-    setPhase("loading");
+    setNotice(null);
+
+    const inReview = phase === "review";
+    const batch = files.slice(0, Math.min(files.length, remaining));
+    const overQuota = files.length - batch.length;
+    if (!inReview) setPhase("loading");
+
+    const weights = course.gradeWeights ?? [];
+    let addedTotal = 0;
+    let mergedTotal = 0;
+    let read = 0;
+    let empty = 0;
+    let failure: string | null = null;
+
     try {
-      const { data: image, mimeType } = await compressImage(file);
-      const res = await authedApi<{ items: ScreenshotAiItem[]; categories?: ScreenshotAiCategory[] }>(
-        "/api/brain-dump/image",
-        { method: "POST", body: { image, mimeType } },
-      );
-      // Counts against the daily quota either way — it was a real, billed AI
-      // call regardless of what it found.
-      onUsed();
-      if (!res.items?.length) {
-        setPhase("pick");
-        setError(
-          "That doesn't look like a valid screenshot of assignments — no titles or due dates found. Try a clearer photo that shows a Canvas page, syllabus, or planner.",
-        );
-        return;
-      }
-      // Pre-select a category when the screenshot's own label matches one of
-      // this course's declared weight categories (case-insensitive) — a
-      // gradebook screenshot often already shows "Formative"/"Homework"/etc.
-      // right next to each item. Otherwise left blank: an assignment with no
-      // category doesn't count toward ANY weighted bucket, so a captured
-      // grade silently wouldn't move the course grade at all until tagged.
-      const detected = res.categories ?? [];
-      const weights = course?.gradeWeights ?? [];
-      // Prefer the course's own spelling of a category so the tag matches what
-      // the grade math looks for; otherwise keep the screenshot's own label,
-      // which the weight table below can turn into a real category.
-      const matchCategory = (raw: string | null) => {
-        const name = raw?.trim();
-        if (!name) return "";
-        const declared = weights.find((w) => w.category.toLowerCase() === name.toLowerCase());
-        if (declared) return declared.category;
-        const seen = detected.find((c) => c.name.toLowerCase() === name.toLowerCase());
-        return seen?.name ?? name;
-      };
-      setItems(
-        res.items.map((it) => ({
+      for (let i = 0; i < batch.length; i++) {
+        setAdding({ done: i, total: batch.length });
+        let res: { items: ScreenshotAiItem[]; categories?: ScreenshotAiCategory[] };
+        try {
+          const { data: image, mimeType } = await compressImage(batch[i]);
+          res = await authedApi("/api/brain-dump/image", { method: "POST", body: { image, mimeType } });
+        } catch (err) {
+          // A failed screenshot stops the batch (a rate limit or outage would
+          // fail the rest too) but keeps everything already read.
+          failure = err instanceof Error ? err.message : "Couldn't read that image. Please try again.";
+          break;
+        }
+        if (!res.items?.length) {
+          empty++;
+          continue;
+        }
+        read++;
+
+        // Categories this screenshot showed, plus every one already known — so
+        // "formative" here lands in the same bucket as "Formative" from the
+        // first shot, and the course's own spelling always wins.
+        const detected = res.categories ?? [];
+        const known = [
+          ...weights.map((w) => w.category),
+          ...weightDraftsRef.current.map((d) => d.category),
+          ...detected.map((c) => c.name),
+        ];
+        const incoming: ScreenshotDraft[] = res.items.map((it) => ({
           title: it.title,
           dueAt: toInputDate(it.suggestedDueAt),
           notes: it.notes ?? "",
@@ -1237,21 +1273,64 @@ function AssignmentScreenshotImporter({
           gradeValue: it.gradeValue ?? "",
           // The gradebook category is the one grade weights use; the plain
           // `category` is the course name, which isn't a weight bucket.
-          category: matchCategory(it.gradeCategory ?? null),
+          category: canonicalCategory(it.gradeCategory, known),
           keep: true,
-        })),
-      );
-      setWeightDrafts(
-        detected.map((c) => ({ category: c.name, weight: c.weight != null ? String(c.weight) : "" })),
-      );
-      setWeightsApplied(false);
-      setPhase("review");
-    } catch (err) {
-      setPhase("pick");
-      setError(err instanceof Error ? err.message : "Couldn't read that image. Please try again.");
+        }));
+
+        const merged = mergeItems(itemsRef.current, incoming);
+        itemsRef.current = merged.items;
+        setItems(merged.items);
+        addedTotal += merged.added;
+        mergedTotal += merged.merged;
+
+        const nextWeights = mergeWeights(
+          weightDraftsRef.current,
+          detected.map((c) => ({ category: c.name, weight: c.weight != null ? String(c.weight) : "" })),
+        );
+        weightDraftsRef.current = nextWeights;
+        setWeightDrafts(nextWeights);
+        // New categories or weights mean what was saved to the course is stale.
+        setWeightsApplied(false);
+      }
     } finally {
+      setAdding(null);
       inFlight.current = false;
     }
+
+    if (read === 0 && !inReview) {
+      // Nothing usable from any of them — back to the picker with the reason.
+      setPhase("pick");
+      setError(
+        failure ??
+          "That doesn't look like a valid screenshot of assignments — no titles or due dates found. Try a clearer photo that shows a Canvas page, syllabus, or planner.",
+      );
+      return;
+    }
+
+    setShots((n) => n + read);
+    setPhase("review");
+    if (failure) setError(failure);
+
+    const notes: string[] = [];
+    if (mergedTotal) {
+      notes.push(
+        `${mergedTotal} repeated assignment${mergedTotal === 1 ? "" : "s"} where the screenshots overlapped ${
+          mergedTotal === 1 ? "was" : "were"
+        } combined.`,
+      );
+    }
+    if (empty) {
+      notes.push(`${empty} screenshot${empty === 1 ? "" : "s"} had no assignments in ${empty === 1 ? "it" : "them"}.`);
+    }
+    if (overQuota > 0) {
+      notes.push(
+        `Only ${batch.length} of ${files.length} were read — that's all the screenshot imports left this week.`,
+      );
+    }
+    if (inReview && read > 0 && addedTotal > 0 && !notes.length) {
+      notes.push(`Added ${addedTotal} more.`);
+    }
+    setNotice(notes.length ? notes.join(" ") : null);
   }
 
   async function confirmImport() {
@@ -1286,7 +1365,14 @@ function AssignmentScreenshotImporter({
     close();
   }
 
-  if (course && phase === "loading") return <BrainDumpLoader source="image" />;
+  if (course && phase === "loading") {
+    return (
+      <BrainDumpLoader
+        source="image"
+        detail={adding && adding.total > 1 ? `Screenshot ${adding.done + 1} of ${adding.total}` : undefined}
+      />
+    );
+  }
 
   return (
     <Modal
@@ -1294,6 +1380,18 @@ function AssignmentScreenshotImporter({
       onClose={close}
       title={course ? `Import from screenshot · ${course.name}` : "Import from screenshot"}
     >
+      {/* One input for every screen — the picker's button and the review
+          screen's "add more" both open it. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={onFilesChosen}
+        aria-hidden
+        tabIndex={-1}
+      />
       {!enabled ? (
         <div className="flex items-start gap-2.5 rounded-lg border border-warning/40 bg-warning/10 p-3.5 text-sm">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
@@ -1308,176 +1406,240 @@ function AssignmentScreenshotImporter({
       ) : phase === "review" ? (
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Found {items.length} item{items.length === 1 ? "" : "s"} — uncheck anything that isn&apos;t a real
+            Found {items.length} item{items.length === 1 ? "" : "s"}
+            {shots > 1 ? ` across ${shots} screenshots` : ""} — uncheck anything that isn&apos;t a real
             assignment, then import.
           </p>
 
-          {weightDrafts.length > 0 && (
-            <div className="rounded-lg border border-primary/30 bg-primary/[0.06] p-3.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium">
-                  Category weights found{weightsApplied ? "" : " in this screenshot"}
-                </p>
-                <span
-                  className={cn(
-                    "text-xs tabular-nums",
-                    Math.round(weightTotal) === 100 ? "text-muted-foreground" : "text-warning",
-                  )}
-                >
-                  {weightTotal}% total
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Check these against your gradebook — fill in anything blank, then save them to{" "}
-                {course?.name ?? "this course"} so each category counts for the right amount.
-              </p>
-              <ul className="mt-3 space-y-2">
-                {weightDrafts.map((w, i) => (
-                  <li key={i} className="flex items-center gap-2">
-                    <Input
-                      value={w.category}
-                      onChange={(e) =>
-                        setWeightDrafts((cur) =>
-                          cur.map((r, idx) => (idx === i ? { ...r, category: e.target.value } : r)),
-                        )
-                      }
-                      aria-label="Category name"
-                      className="h-9 flex-1"
-                    />
-                    <div className="flex items-center gap-1">
-                      <Input
-                        inputMode="decimal"
-                        placeholder="—"
-                        value={w.weight}
-                        onChange={(e) =>
-                          setWeightDrafts((cur) =>
-                            cur.map((r, idx) => (idx === i ? { ...r, weight: e.target.value } : r)),
-                          )
-                        }
-                        aria-label={`Weight for ${w.category || "category"}`}
-                        className="h-9 w-20 text-right"
-                      />
-                      <span className="text-sm text-muted-foreground">%</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="h-9 w-9 shrink-0"
-                      aria-label={`Remove ${w.category || "category"}`}
-                      onClick={() => setWeightDrafts((cur) => cur.filter((_, idx) => idx !== i))}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <Button size="sm" onClick={applyWeights} loading={savingWeights}>
-                  {weightsApplied ? "Save again" : "Save weights to course"}
-                </Button>
-                {weightsApplied && (
-                  <span className="flex items-center gap-1.5 text-xs text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Saved
-                  </span>
-                )}
-                {Math.round(weightTotal) !== 100 && (
-                  <span className="text-xs text-muted-foreground">
-                    These don&apos;t add up to 100% — that&apos;s fine if the screenshot only showed some.
-                  </span>
-                )}
-              </div>
+          {notice && (
+            <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-muted-foreground">
+              {notice}
+            </p>
+          )}
+          {error && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
+              <p className="flex-1 text-muted-foreground">{error}</p>
+              <button onClick={() => setError(null)} aria-label="Dismiss" className="text-muted-foreground hover:text-foreground">
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
-          <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
-            {items.map((it, i) => (
-              <div
-                key={i}
-                className={cn(
-                  "rounded-lg border p-3 transition-colors",
-                  it.keep ? "border-border" : "border-border/50 opacity-50",
-                )}
-              >
-                <div className="flex items-start gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={it.keep}
-                    onChange={(e) => patch(i, { keep: e.target.checked })}
-                    className="mt-1 h-4 w-4 shrink-0 accent-primary"
-                  />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <Input
-                        value={it.title}
-                        onChange={(e) => patch(i, { title: e.target.value })}
-                        placeholder="Assignment title"
-                        className="h-9"
-                      />
-                      {(it.pointsEarned || it.gradeValue) && (
-                        <Badge tone="success" className="shrink-0">
-                          Graded
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="date"
-                        value={it.dueAt}
-                        onChange={(e) => patch(i, { dueAt: e.target.value })}
-                        className="h-9"
-                      />
-                      <Input
-                        inputMode="decimal"
-                        placeholder="Points possible"
-                        value={it.pointsPossible}
-                        onChange={(e) => patch(i, { pointsPossible: e.target.value })}
-                        className="h-9"
-                      />
-                    </div>
-                    {categoryOptions.length > 0 && (
-                      <Select
-                        className="h-9"
-                        value={it.category}
-                        onChange={(e) => patch(i, { category: e.target.value })}
-                        aria-label="Grade category"
-                      >
-                        <option value="">No category — won&apos;t count toward the weighted grade</option>
-                        {categoryOptions.map((c) => (
-                          <option key={c.category} value={c.category}>
-                            {c.category}
-                            {c.weight != null ? ` (${c.weight}%)` : ""}
-                          </option>
-                        ))}
-                      </Select>
+
+          {/* A long page rarely fits one screenshot — add the next piece here and
+              the two are combined, with the overlap merged. */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!!adding || remaining === 0}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-white/20 disabled:hover:text-muted-foreground"
+          >
+            <ImagePlus className="h-4 w-4" />
+            {adding
+              ? `Reading screenshot ${adding.done + 1} of ${adding.total}…`
+              : "Add more screenshots"}
+          </button>
+          <p className="-mt-2 text-center text-[11px] text-muted-foreground/70">
+            {remaining === 0
+              ? `You've used your ${weeklyLimit} screenshot import${weeklyLimit === 1 ? "" : "s"} for this week.`
+              : weeklyLimit === null
+                ? "Pick as many as you need — overlapping assignments are merged."
+                : `Pick as many as you need — overlaps are merged. ${remaining} of ${weeklyLimit} screenshot import${
+                    weeklyLimit === 1 ? "" : "s"
+                  } left this week.`}
+          </p>
+
+          {/* Frozen while another screenshot is being read, so an edit can't
+              collide with the merge that's about to land. */}
+          <fieldset disabled={!!adding} className="m-0 min-w-0 space-y-4 border-0 p-0">
+            {weightDrafts.length > 0 && (
+              <div className="rounded-lg border border-primary/30 bg-primary/[0.06] p-3.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    Category weights found{weightsApplied ? "" : " in this screenshot"}
+                  </p>
+                  <span
+                    className={cn(
+                      "text-xs tabular-nums",
+                      Math.round(weightTotal) === 100 ? "text-muted-foreground" : "text-warning",
                     )}
-                    {(it.pointsEarned || it.gradeValue) && (
-                      <div className="grid grid-cols-2 gap-2">
+                  >
+                    {weightTotal}% total
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Check these against your gradebook — fill in anything blank, then save them to{" "}
+                  {course?.name ?? "this course"} so each category counts for the right amount.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {weightDrafts.map((w, i) => (
+                    <li key={i} className="flex items-center gap-2">
+                      <Input
+                        value={w.category}
+                        onChange={(e) =>
+                          setWeightDrafts((cur) =>
+                            cur.map((r, idx) => (idx === i ? { ...r, category: e.target.value } : r)),
+                          )
+                        }
+                        aria-label="Category name"
+                        className="h-9 flex-1"
+                      />
+                      <div className="flex items-center gap-1">
                         <Input
                           inputMode="decimal"
-                          placeholder="Score earned"
-                          value={it.pointsEarned}
-                          onChange={(e) => patch(i, { pointsEarned: e.target.value })}
+                          placeholder="—"
+                          value={w.weight}
+                          onChange={(e) =>
+                            setWeightDrafts((cur) =>
+                              cur.map((r, idx) => (idx === i ? { ...r, weight: e.target.value } : r)),
+                            )
+                          }
+                          aria-label={`Weight for ${w.category || "category"}`}
+                          className="h-9 w-20 text-right"
+                        />
+                        <span className="text-sm text-muted-foreground">%</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 shrink-0"
+                        aria-label={`Remove ${w.category || "category"}`}
+                        onClick={() => setWeightDrafts((cur) => cur.filter((_, idx) => idx !== i))}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={applyWeights} loading={savingWeights}>
+                    {weightsApplied ? "Save again" : "Save weights to course"}
+                  </Button>
+                  {weightsApplied && (
+                    <span className="flex items-center gap-1.5 text-xs text-success">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Saved
+                    </span>
+                  )}
+                  {Math.round(weightTotal) !== 100 && (
+                    <span className="text-xs text-muted-foreground">
+                      These don&apos;t add up to 100% — that&apos;s fine if the screenshot only showed some.
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {categoryOptions.length > 0 && untaggedCount > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                <span className="text-xs text-muted-foreground">
+                  {untaggedCount} without a category
+                  {shots > 1 ? " — a screenshot that starts mid-list often loses its heading" : ""}
+                </span>
+                <Select
+                  className="h-8 w-auto py-0 text-xs"
+                  value=""
+                  onChange={(e) => tagUntagged(e.target.value)}
+                  aria-label="Set a category for every untagged item"
+                >
+                  <option value="">Set all to…</option>
+                  {categoryOptions.map((c) => (
+                    <option key={c.category} value={c.category}>
+                      {c.category}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
+              {items.map((it, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    "rounded-lg border p-3 transition-colors",
+                    it.keep ? "border-border" : "border-border/50 opacity-50",
+                  )}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      checked={it.keep}
+                      onChange={(e) => patch(i, { keep: e.target.checked })}
+                      className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                    />
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <Input
+                          value={it.title}
+                          onChange={(e) => patch(i, { title: e.target.value })}
+                          placeholder="Assignment title"
+                          className="h-9"
+                        />
+                        {(it.pointsEarned || it.gradeValue) && (
+                          <Badge tone="success" className="shrink-0">
+                            Graded
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="date"
+                          value={it.dueAt}
+                          onChange={(e) => patch(i, { dueAt: e.target.value })}
                           className="h-9"
                         />
                         <Input
-                          placeholder="Grade (A-, 95%)"
-                          value={it.gradeValue}
-                          onChange={(e) => patch(i, { gradeValue: e.target.value })}
+                          inputMode="decimal"
+                          placeholder="Points possible"
+                          value={it.pointsPossible}
+                          onChange={(e) => patch(i, { pointsPossible: e.target.value })}
                           className="h-9"
                         />
                       </div>
-                    )}
+                      {categoryOptions.length > 0 && (
+                        <Select
+                          className="h-9"
+                          value={it.category}
+                          onChange={(e) => patch(i, { category: e.target.value })}
+                          aria-label="Grade category"
+                        >
+                          <option value="">No category — won&apos;t count toward the weighted grade</option>
+                          {categoryOptions.map((c) => (
+                            <option key={c.category} value={c.category}>
+                              {c.category}
+                              {c.weight != null ? ` (${c.weight}%)` : ""}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                      {(it.pointsEarned || it.gradeValue) && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            inputMode="decimal"
+                            placeholder="Score earned"
+                            value={it.pointsEarned}
+                            onChange={(e) => patch(i, { pointsEarned: e.target.value })}
+                            className="h-9"
+                          />
+                          <Input
+                            placeholder="Grade (A-, 95%)"
+                            value={it.gradeValue}
+                            onChange={(e) => patch(i, { gradeValue: e.target.value })}
+                            className="h-9"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </fieldset>
           <div className="flex justify-end gap-2">
             <Button type="button" variant="ghost" onClick={close}>
               Cancel
             </Button>
-            <Button onClick={confirmImport} loading={importing}>
+            <Button onClick={confirmImport} loading={importing} disabled={!!adding}>
               Import {items.filter((i) => i.keep).length || ""} assignment
               {items.filter((i) => i.keep).length === 1 ? "" : "s"}
             </Button>
@@ -1501,13 +1663,16 @@ function AssignmentScreenshotImporter({
             Pulls in titles, due dates, and points possible — and if a score or grade is already showing
             for something, that comes in too and it's marked graded automatically.
           </p>
-          <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={onFileChosen} />
+          <p className="text-xs text-muted-foreground/70">
+            A long page? Pick several screenshots — or add more after the first — and they&apos;re read in
+            order and combined, with any overlap merged.
+          </p>
           <Button
             className="w-full"
             onClick={() => fileInputRef.current?.click()}
             disabled={atLimit}
           >
-            <Camera className="h-4 w-4" /> Choose a screenshot
+            <Camera className="h-4 w-4" /> Choose screenshots
           </Button>
           {atLimit && (
             <p className="text-center text-xs text-muted-foreground">

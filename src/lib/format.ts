@@ -67,6 +67,10 @@ export function fmtDuration(minutes: number | null | undefined) {
 
 export function toInputDate(d: string | Date | null | undefined) {
   if (!d) return "";
+  // A bare calendar date ("2026-09-08" — what the AI returns) already IS the
+  // day for a date input. `new Date()` would read it as UTC midnight, which is
+  // the previous evening anywhere west of Greenwich, so it'd show a day early.
+  if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
   const date = new Date(d);
   const off = date.getTimezoneOffset();
   return new Date(date.getTime() - off * 60000).toISOString().slice(0, 10);

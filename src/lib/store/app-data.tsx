@@ -292,7 +292,6 @@ interface AppDataValue {
     rawText: string,
   ) => Promise<number>;
   noteBrainDumpUsed: () => void;
-  noteScreenshotImportUsed: () => void;
 
   setPlan: (plan: string) => void;
   patchProfile: (patch: Partial<StoreData["profile"]>) => void;
@@ -1274,13 +1273,6 @@ export function AppDataProvider({
         const usage = { ...(profile?.brainDumpUsage ?? {}) };
         usage[key] = (usage[key] ?? 0) + 1;
         updateDoc(userDoc(uid), { brainDumpUsage: usage }).catch(() => {});
-      },
-
-      noteScreenshotImportUsed: () => {
-        const key = weekKey();
-        const usage = { ...(profile?.screenshotImportUsage ?? {}) };
-        usage[key] = (usage[key] ?? 0) + 1;
-        updateDoc(userDoc(uid), { screenshotImportUsage: usage }).catch(() => {});
       },
 
       setPlan: (plan) => {
