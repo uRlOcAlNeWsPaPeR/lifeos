@@ -21,7 +21,7 @@ async function pickQotd(section: Section): Promise<Question | null> {
   return null;
 }
 
-export function QuestionOfTheDay({ section }: { section: Section }) {
+export function QuestionOfTheDay({ section, hideHeading = false }: { section: Section; hideHeading?: boolean }) {
   const { s } = useSat();
   const [q, setQ] = useState<Question | null>(null);
   const [error, setError] = useState(false);
@@ -54,7 +54,7 @@ export function QuestionOfTheDay({ section }: { section: Section }) {
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-medium text-muted-foreground">{SECTION_NAME[section]}</h3>
+      {!hideHeading && <h3 className="mb-3 text-sm font-medium text-muted-foreground">{SECTION_NAME[section]}</h3>}
       {error ? (
         <ErrorBlock message="Couldn't load today's question — check your connection." onRetry={() => setAttempt((n) => n + 1)} />
       ) : !q ? (

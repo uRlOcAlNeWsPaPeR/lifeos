@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Compass, Plus } from "lucide-react";
+import { Compass, Lock, Plus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,9 +10,9 @@ import { useSat } from "@/lib/sat/store";
 import { useCatalog } from "@/lib/sat/hooks";
 import { catalogRows } from "@/lib/sat/qbank";
 import { domainBreakdown, prediction, skillRows, todayStr } from "@/lib/sat/engine";
-import { EXAM_SPECS, SECTION_NAME } from "@/lib/sat/constants";
+import { BADGES, EXAM_SPECS, SECTION_NAME } from "@/lib/sat/constants";
 import { cn } from "@/lib/utils";
-import { AccuracyRows, LoadingBlock, SatHeader } from "./common";
+import { AccuracyRows, BadgeIcon, LoadingBlock, SatHeader } from "./common";
 import { LogExamDialog } from "./log-exam";
 
 export function SatProgress() {
@@ -122,6 +122,31 @@ export function SatProgress() {
             </div>
           )}
         </section>
+
+        <Card className="p-5">
+          <SectionTitle right={<span className="text-xs text-muted-foreground">{s.badges.length}/{BADGES.length}</span>}>
+            Badges
+          </SectionTitle>
+          <ul className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {BADGES.map((b) => {
+              const got = s.badges.includes(b.id);
+              return (
+                <li
+                  key={b.id}
+                  title={b.desc}
+                  className={cn(
+                    "flex flex-col items-center gap-1.5 rounded-xl border p-3 text-center",
+                    got ? "border-primary/30 bg-primary/[0.06]" : "border-white/[0.06] opacity-50",
+                  )}
+                >
+                  {got ? <BadgeIcon id={b.id} className="h-5 w-5 text-primary" /> : <Lock className="h-5 w-5 text-muted-foreground" />}
+                  <span className="text-xs font-medium">{b.name}</span>
+                  <span className="sr-only">{got ? "Earned" : "Locked"} — {b.desc}</span>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
 
         <Card className="p-5">
           <SectionTitle>Activity — last 4 weeks</SectionTitle>
