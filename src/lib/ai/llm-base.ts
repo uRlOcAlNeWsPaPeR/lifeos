@@ -175,7 +175,9 @@ export abstract class LLMProvider implements AIProvider {
       const summary =
         typeof parsed.summary === "string" && parsed.summary
           ? parsed.summary
-          : `Found ${items.length} item${items.length === 1 ? "" : "s"} in the screenshot.`;
+          : `Found ${items.length} item${items.length === 1 ? "" : "s"}${
+              categories.length ? ` and ${categories.length} grade categor${categories.length === 1 ? "y" : "ies"}` : ""
+            } in the screenshot.`;
 
       return { engine: this.name, items, summary, categories };
     } catch (e) {
@@ -471,11 +473,11 @@ const BRAIN_DUMP_IMAGE_SYSTEM = [
   "",
   "GRADE CATEGORY (`gradeCategory`) — which bold category row an assignment sits under in a gradebook (\"Formative\", \"Homework\", \"Tests\", \"Labs\"). Every assignment indented beneath a category row belongs to it, so carry that label down onto each one until the next category row starts. This is NOT the course name — the course goes in `category`. null when the screenshot isn't a gradebook or shows no category rows.",
   "",
-  "WEIGHT TABLE (`categories`) — the same gradebook usually states what each category is worth, either on the category row itself (\"Formative  Weight: 30\", \"Tests 50%\") or in a separate breakdown table. List every category shown ONCE with its percent in `weight` (the number only: 30, not \"30%\"). A category you can see but whose weight isn't printed gets weight null — never guess or split the remainder. Return [] when no categories are visible at all. A category's own subtotal score is NOT its weight: \"Formative 88% Weight: 30\" means weight 30, not 88.",
+  "WEIGHT TABLE (`categories`) — the same gradebook usually states what each category is worth, either on the category row itself (\"Formative  Weight: 30\", \"Tests 50%\") or in a separate breakdown table. List every category shown ONCE with its percent in `weight` (the number only: 30, not \"30%\"). A category you can see but whose weight isn't printed gets weight null — never guess or split the remainder. Return [] when no categories are visible at all. The weight table is often the ONLY thing in the screenshot — Canvas shows it in a separate \"Assignment Groups\" box, and a syllabus prints it as a grading breakdown (\"Tests 40% · Homework 20% · Labs 40%\") — and that is a complete, valid read: return `items` as [] and fill in `categories`. Never return an empty result just because there are no individual assignments when a weight table is showing. A category's own subtotal score is NOT its weight: \"Formative 88% Weight: 30\" means weight 30, not 88.",
   "",
   "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
   "",
-  'Output ONLY minified JSON: {"items":[{"title","notes","category","gradeCategory","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"categories":[{"name","weight"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"categories":[],"summary":"..."}.',
+  'Output ONLY minified JSON: {"items":[{"title","notes","category","gradeCategory","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"categories":[{"name","weight"}],"summary"}. `summary` is one plain sentence on what the image actually is and what you found (e.g. \"A Canvas grades page with 3 assignments and 2 weighted categories\" or \"A photo of a whiteboard with no assignments\") — the student reads it when nothing usable comes back, so say what you SAW, not just that you found nothing. If the image has neither readable assignments nor a weight table, return {"items":[],"categories":[],"summary":"..."}.',
 ].join("\n");
 
 /**

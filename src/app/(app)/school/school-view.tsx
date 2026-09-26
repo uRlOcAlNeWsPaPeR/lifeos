@@ -1073,6 +1073,17 @@ interface ScreenshotAiItem {
   gradeCategory: string | null;
 }
 
+/** A screenshot chosen but not yet read — held until the student hits "Read". */
+interface StagedShot {
+  key: string;
+  file: File;
+  /** Object URL for the thumbnail; revoked when the shot is removed. */
+  url: string;
+}
+
+/** Most screenshots held at once — bounds the thumbnails kept in memory. */
+const MAX_STAGED = 20;
+
 /** A row of the gradebook's weight table, as read off the screenshot. */
 interface ScreenshotAiCategory {
   name: string;
@@ -1131,6 +1142,11 @@ function AssignmentScreenshotImporter({
   const [shots, setShots] = useState(0);
   // A non-error heads-up after reading — merged repeats, skipped files.
   const [notice, setNotice] = useState<string | null>(null);
+  // Chosen but not yet read. Nothing is sent to the AI until "Read" is pressed,
+  // so a long page can be assembled from several shots first.
+  const [staged, setStaged] = useState<StagedShot[]>([]);
+  const stagedRef = useRef<StagedShot[]>([]);
+  stagedRef.current = staged;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
   // The latest lists, so a batch merges into what the student sees now rather
@@ -1142,6 +1158,15 @@ function AssignmentScreenshotImporter({
 
   // Screenshots this week's allowance still covers.
   const remaining = weeklyLimit === null ? Infinity : Math.max(0, weeklyLimit - usedThisWeek);
+  // How many can be lined up: the allowance, and never more than MAX_STAGED.
+  const stagingRoom = Math.max(0, Math.min(remaining, MAX_STAGED) - staged.length);
+
+  useEffect(
+    () => () => {
+      for (const st of stagedRef.current) URL.revokeObjectURL(st.url);
+    },
+    [],
+  );
 
   function reset() {
     setPhase("pick");
@@ -1153,6 +1178,10 @@ function AssignmentScreenshotImporter({
     setAdding(null);
     setShots(0);
     setNotice(null);
+    setStaged((cur) => {
+      for (const st of cur) URL.revokeObjectURL(st.url);
+      return [];
+    });
   }
 
   function close() {
@@ -1207,41 +1236,81 @@ function AssignmentScreenshotImporter({
     setItems((cur) => cur.map((it, idx) => (idx === i ? { ...it, ...p } : it)));
   }
 
-  /**
-   * Read one or more screenshots and fold them into the review.
-   *
-   * They're read one at a time, in the order chosen, because a long page
-   * screenshotted in pieces only makes sense top to bottom. Each screenshot is
-   * its own billed AI call, so a batch is cut to what this week's allowance
-   * still covers — the student is told, rather than surprised by an error
-   * halfway through. Whatever was read before a failure is kept.
-   */
-  async function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
+  /** Line up screenshots without reading them — that waits for "Read". */
+  function onFilesChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []).filter((f) => f.type.startsWith("image/"));
     e.target.value = "";
-    if (!files.length || !course || inFlight.current) return;
+    if (!files.length) return;
+    setError(null);
+    setNotice(null);
+
+    const have = new Set(stagedRef.current.map((x) => x.key));
+    const fresh: StagedShot[] = [];
+    for (const file of files) {
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (have.has(key)) continue; // the same file picked twice
+      have.add(key);
+      fresh.push({ key, file, url: URL.createObjectURL(file) });
+    }
+    const room = stagingRoom;
+    const accepted = fresh.slice(0, room);
+    for (const dropped of fresh.slice(room)) URL.revokeObjectURL(dropped.url);
+    if (fresh.length > accepted.length) {
+      setNotice(
+        remaining <= MAX_STAGED && remaining !== Infinity
+          ? `That's all the screenshots this week's allowance covers — ${accepted.length} added, the rest were left out.`
+          : `You can line up ${MAX_STAGED} at a time — ${accepted.length} added, the rest were left out.`,
+      );
+    }
+    if (accepted.length) setStaged((cur) => [...cur, ...accepted]);
+  }
+
+  function removeStaged(key: string) {
+    setStaged((cur) => {
+      const gone = cur.find((x) => x.key === key);
+      if (gone) URL.revokeObjectURL(gone.url);
+      return cur.filter((x) => x.key !== key);
+    });
+  }
+
+  /**
+   * Read everything lined up and fold it into the review.
+   *
+   * They're read one at a time, in the order added, because a page shot in
+   * pieces only makes sense top to bottom. Each screenshot is its own billed AI
+   * call, so the batch is cut to what this week's allowance still covers.
+   * Screenshots that were read (even if they held nothing) are cleared from the
+   * line-up; one that failed stays, with everything after it, so a retry
+   * doesn't mean picking them again. Whatever was read before a failure is kept.
+   */
+  async function readStaged() {
+    const queue = stagedRef.current;
+    if (!queue.length || !course || inFlight.current) return;
     inFlight.current = true;
     setError(null);
     setNotice(null);
 
-    const inReview = phase === "review";
-    const batch = files.slice(0, Math.min(files.length, remaining));
-    const overQuota = files.length - batch.length;
-    if (!inReview) setPhase("loading");
+    const hadReview = itemsRef.current.length > 0 || weightDraftsRef.current.length > 0;
+    const batch = queue.slice(0, Math.min(queue.length, remaining));
+    const overQuota = queue.length - batch.length;
+    setPhase("loading");
 
     const weights = course.gradeWeights ?? [];
     let addedTotal = 0;
     let mergedTotal = 0;
-    let read = 0;
+    let useful = 0;
+    let categoriesOnly = 0;
     let empty = 0;
+    let consumed = 0;
     let failure: string | null = null;
+    let whatItSaw: string | null = null;
 
     try {
       for (let i = 0; i < batch.length; i++) {
         setAdding({ done: i, total: batch.length });
-        let res: { items: ScreenshotAiItem[]; categories?: ScreenshotAiCategory[] };
+        let res: { items: ScreenshotAiItem[]; categories?: ScreenshotAiCategory[]; summary?: string };
         try {
-          const { data: image, mimeType } = await compressImage(batch[i]);
+          const { data: image, mimeType } = await compressImage(batch[i].file);
           res = await authedApi("/api/brain-dump/image", { method: "POST", body: { image, mimeType } });
         } catch (err) {
           // A failed screenshot stops the batch (a rate limit or outage would
@@ -1249,22 +1318,29 @@ function AssignmentScreenshotImporter({
           failure = err instanceof Error ? err.message : "Couldn't read that image. Please try again.";
           break;
         }
-        if (!res.items?.length) {
+        consumed++;
+        const detected = res.categories ?? [];
+        const gotItems = (res.items?.length ?? 0) > 0;
+        // A screenshot of just the weight table has no assignments but is still
+        // a complete, useful read — it's how Canvas shows "Assignment Groups".
+        if (!gotItems && !detected.length) {
           empty++;
+          const said = res.summary?.trim();
+          if (said && !/^Found 0 /i.test(said)) whatItSaw = said;
           continue;
         }
-        read++;
+        useful++;
+        if (!gotItems) categoriesOnly++;
 
         // Categories this screenshot showed, plus every one already known — so
         // "formative" here lands in the same bucket as "Formative" from the
         // first shot, and the course's own spelling always wins.
-        const detected = res.categories ?? [];
         const known = [
           ...weights.map((w) => w.category),
           ...weightDraftsRef.current.map((d) => d.category),
           ...detected.map((c) => c.name),
         ];
-        const incoming: ScreenshotDraft[] = res.items.map((it) => ({
+        const incoming: ScreenshotDraft[] = (res.items ?? []).map((it) => ({
           title: it.title,
           dueAt: toInputDate(it.suggestedDueAt),
           notes: it.notes ?? "",
@@ -1297,21 +1373,36 @@ function AssignmentScreenshotImporter({
       inFlight.current = false;
     }
 
-    if (read === 0 && !inReview) {
-      // Nothing usable from any of them — back to the picker with the reason.
+    // Read ones leave the line-up; a failed one and everything after stays.
+    const done = new Set(batch.slice(0, consumed).map((x) => x.key));
+    setStaged((cur) => {
+      for (const st of cur) if (done.has(st.key)) URL.revokeObjectURL(st.url);
+      return cur.filter((x) => !done.has(x.key));
+    });
+    setShots((n) => n + useful);
+
+    // Nothing usable, and nothing already on screen to fall back to: go back to
+    // the line-up with the reason, so the student can swap a shot and retry.
+    if (useful === 0 && !hadReview) {
       setPhase("pick");
       setError(
         failure ??
-          "That doesn't look like a valid screenshot of assignments — no titles or due dates found. Try a clearer photo that shows a Canvas page, syllabus, or planner.",
+          `That doesn't look like a screenshot of assignments or a grade breakdown${
+            whatItSaw ? ` — LifeOS read it as: “${whatItSaw}”` : ""
+          }. Try a clearer screenshot of a Canvas grades page, a syllabus, or a planner.`,
       );
       return;
     }
 
-    setShots((n) => n + read);
-    setPhase("review");
+    setPhase(useful > 0 || hadReview ? "review" : "pick");
     if (failure) setError(failure);
 
     const notes: string[] = [];
+    if (categoriesOnly && addedTotal === 0 && mergedTotal === 0) {
+      notes.push(
+        "That screenshot showed the grade weights but no assignments — check them below, or add a screenshot of the assignment list.",
+      );
+    }
     if (mergedTotal) {
       notes.push(
         `${mergedTotal} repeated assignment${mergedTotal === 1 ? "" : "s"} where the screenshots overlapped ${
@@ -1320,15 +1411,14 @@ function AssignmentScreenshotImporter({
       );
     }
     if (empty) {
-      notes.push(`${empty} screenshot${empty === 1 ? "" : "s"} had no assignments in ${empty === 1 ? "it" : "them"}.`);
-    }
-    if (overQuota > 0) {
       notes.push(
-        `Only ${batch.length} of ${files.length} were read — that's all the screenshot imports left this week.`,
+        `${empty} screenshot${empty === 1 ? "" : "s"} had nothing to read${
+          whatItSaw ? ` (LifeOS saw: “${whatItSaw}”)` : ""
+        }.`,
       );
     }
-    if (inReview && read > 0 && addedTotal > 0 && !notes.length) {
-      notes.push(`Added ${addedTotal} more.`);
+    if (overQuota > 0) {
+      notes.push(`Only ${batch.length} of ${queue.length} were read — that's all the screenshot imports left this week.`);
     }
     setNotice(notes.length ? notes.join(" ") : null);
   }
@@ -1406,9 +1496,11 @@ function AssignmentScreenshotImporter({
       ) : phase === "review" ? (
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Found {items.length} item{items.length === 1 ? "" : "s"}
-            {shots > 1 ? ` across ${shots} screenshots` : ""} — uncheck anything that isn&apos;t a real
-            assignment, then import.
+            {items.length === 0
+              ? "No assignments yet — save the weights below, then add a screenshot of the assignment list."
+              : `Found ${items.length} item${items.length === 1 ? "" : "s"}${
+                  shots > 1 ? ` across ${shots} screenshots` : ""
+                } — uncheck anything that isn't a real assignment, then import.`}
           </p>
 
           {notice && (
@@ -1430,21 +1522,19 @@ function AssignmentScreenshotImporter({
               the two are combined, with the overlap merged. */}
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setPhase("pick")}
             disabled={!!adding || remaining === 0}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-white/20 px-3 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:border-white/20 disabled:hover:text-muted-foreground"
           >
             <ImagePlus className="h-4 w-4" />
-            {adding
-              ? `Reading screenshot ${adding.done + 1} of ${adding.total}…`
-              : "Add more screenshots"}
+            Add more screenshots
           </button>
           <p className="-mt-2 text-center text-[11px] text-muted-foreground/70">
             {remaining === 0
               ? `You've used your ${weeklyLimit} screenshot import${weeklyLimit === 1 ? "" : "s"} for this week.`
               : weeklyLimit === null
-                ? "Pick as many as you need — overlapping assignments are merged."
-                : `Pick as many as you need — overlaps are merged. ${remaining} of ${weeklyLimit} screenshot import${
+                ? "Add as many as you need — they're read together, and overlapping assignments are merged."
+                : `Add as many as you need — they're read together, and overlaps are merged. ${remaining} of ${weeklyLimit} screenshot import${
                     weeklyLimit === 1 ? "" : "s"
                   } left this week.`}
           </p>
@@ -1640,8 +1730,11 @@ function AssignmentScreenshotImporter({
               Cancel
             </Button>
             <Button onClick={confirmImport} loading={importing} disabled={!!adding}>
-              Import {items.filter((i) => i.keep).length || ""} assignment
-              {items.filter((i) => i.keep).length === 1 ? "" : "s"}
+              {items.filter((i) => i.keep).length
+                ? `Import ${items.filter((i) => i.keep).length} assignment${
+                    items.filter((i) => i.keep).length === 1 ? "" : "s"
+                  }`
+                : "Done"}
             </Button>
           </div>
         </div>
@@ -1656,25 +1749,100 @@ function AssignmentScreenshotImporter({
               </button>
             </div>
           )}
-          <p className="text-sm text-muted-foreground">
-            A photo of a Canvas assignments page, a syllabus, or a planner — LifeOS reads every assignment off it.
-          </p>
-          <p className="text-xs text-muted-foreground/70">
-            Pulls in titles, due dates, and points possible — and if a score or grade is already showing
-            for something, that comes in too and it's marked graded automatically.
-          </p>
-          <p className="text-xs text-muted-foreground/70">
-            A long page? Pick several screenshots — or add more after the first — and they&apos;re read in
-            order and combined, with any overlap merged.
-          </p>
-          <Button
-            className="w-full"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={atLimit}
-          >
-            <Camera className="h-4 w-4" /> Choose screenshots
-          </Button>
-          {atLimit && (
+          {notice && (
+            <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-muted-foreground">
+              {notice}
+            </p>
+          )}
+
+          {staged.length === 0 && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Screenshots of a Canvas grades page, a syllabus, or a planner — LifeOS reads every
+                assignment off them, along with each category&apos;s weight.
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                Pulls in titles, due dates, points, and the grade weights — and if a score or grade is
+                already showing for something, that comes in too and it&apos;s marked graded automatically.
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                A long page? Add as many screenshots as it takes, then press Read — nothing is sent until
+                you do, and they&apos;re combined with any overlap merged.
+              </p>
+            </>
+          )}
+
+          {staged.length === 0 ? (
+            <Button
+              className="w-full"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={stagingRoom === 0}
+            >
+              <Camera className="h-4 w-4" /> Choose screenshots
+            </Button>
+          ) : (
+            <>
+              <p className="text-sm font-medium">
+                {staged.length} screenshot{staged.length === 1 ? "" : "s"} ready
+              </p>
+              <ul className="grid grid-cols-3 gap-2.5 sm:grid-cols-4" aria-label="Screenshots to read">
+                {staged.map((st, i) => (
+                  <li
+                    key={st.key}
+                    className="group relative aspect-[3/4] overflow-hidden rounded-lg border border-white/10 bg-white/[0.03]"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a local blob preview, not a hosted image */}
+                    <img
+                      src={st.url}
+                      alt={`Screenshot ${i + 1}`}
+                      className="h-full w-full object-cover object-top"
+                    />
+                    <span className="absolute bottom-1.5 left-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-black/70 px-1.5 text-[11px] font-medium tabular-nums">
+                      {i + 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeStaged(st.key)}
+                      aria-label={`Remove screenshot ${i + 1}`}
+                      className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white/90 transition-colors hover:bg-destructive"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+                {stagingRoom > 0 && (
+                  <li className="aspect-[3/4]">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      aria-label="Add another screenshot"
+                      className="flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/20 text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+                    >
+                      <Plus className="h-5 w-5" />
+                      <span className="text-xs">Add more</span>
+                    </button>
+                  </li>
+                )}
+              </ul>
+              <p className="text-[11px] text-muted-foreground/70">
+                Numbered in the order they&apos;re read — top of the page first.
+                {weeklyLimit !== null &&
+                  ` Each one uses a screenshot import; you have ${remaining} of ${weeklyLimit} left this week.`}
+              </p>
+              <Button className="w-full" onClick={readStaged} disabled={remaining === 0}>
+                Read {staged.length} screenshot{staged.length === 1 ? "" : "s"}
+              </Button>
+            </>
+          )}
+
+          {/* Came here from a review to add more — the review is still there. */}
+          {(items.length > 0 || weightDrafts.length > 0) && (
+            <Button variant="ghost" className="w-full" onClick={() => setPhase("review")}>
+              Back to your review ({items.length} item{items.length === 1 ? "" : "s"})
+            </Button>
+          )}
+
+          {remaining === 0 && staged.length === 0 && (
             <p className="text-center text-xs text-muted-foreground">
               You&apos;ve used your {weeklyLimit} screenshot import{weeklyLimit === 1 ? "" : "s"} for this
               week.
