@@ -23,5 +23,11 @@ export const POST = route(async (req) => {
   const ctx = await buildContext(uid);
   const result = await getAIFor(plan).parseBrainDumpImage(image, mimeType, ctx);
 
-  return ok({ items: result.items, summary: result.summary, engine: result.engine });
+  return ok({
+    items: result.items,
+    // The gradebook's own weight table, when the screenshot showed one.
+    categories: result.categories ?? [],
+    summary: result.summary,
+    engine: result.engine,
+  });
 });

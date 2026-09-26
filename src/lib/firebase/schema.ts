@@ -5,7 +5,8 @@ import {
   type DocumentReference,
 } from "firebase/firestore";
 import { db } from "./client";
-import type { GradeScalePref } from "@/lib/grades";
+import { DEFAULT_GPA_LEVELS } from "@/lib/grades";
+import type { GpaLevel, GradeScalePref } from "@/lib/grades";
 
 /**
  * Firestore layout — everything scoped under the signed-in user so the
@@ -83,6 +84,7 @@ export interface AlarmDoc {
 }
 
 /** Scheduling + study preferences. All times are "HH:MM" 24h strings. */
+export type { GpaLevel };
 export interface Prefs {
   schoolStart: string;
   schoolEnd: string;
@@ -104,6 +106,10 @@ export interface Prefs {
   };
   /** Which percent→letter cutoffs to grade against. `presetId: null` = not chosen yet. */
   gradeScale: GradeScalePref;
+  /** Show the weighted GPA (AP/honors bonuses) rather than the plain 4.0 one. */
+  gpaWeighted: boolean;
+  /** What each course level adds on top of 4.0 — the student's own school's rules. */
+  gpaLevels: GpaLevel[];
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -126,6 +132,8 @@ export const DEFAULT_PREFS: Prefs = {
     studyReminders: true,
   },
   gradeScale: { presetId: null },
+  gpaWeighted: false,
+  gpaLevels: DEFAULT_GPA_LEVELS,
 };
 
 /** Merge a stored (possibly partial / legacy) prefs blob with the defaults. */
@@ -135,6 +143,8 @@ export function withPrefs(raw: Partial<Prefs> | undefined | null): Prefs {
     ...(raw ?? {}),
     reminders: { ...DEFAULT_PREFS.reminders, ...(raw?.reminders ?? {}) },
     gradeScale: raw?.gradeScale ?? DEFAULT_PREFS.gradeScale,
+    // A stored empty list would leave a student with no levels to pick from.
+    gpaLevels: raw?.gpaLevels?.length ? raw.gpaLevels : DEFAULT_PREFS.gpaLevels,
   };
 }
 

@@ -85,11 +85,26 @@ export interface BrainDumpItem {
   pointsPossible?: number | null;
   pointsEarned?: number | null;
   gradeValue?: string | null;
+  /**
+   * Which gradebook category the item sits under ("Formative", "Tests") —
+   * distinct from `category`, which is the course. Screenshot path only.
+   */
+  gradeCategory?: string | null;
+}
+
+/** A gradebook's weight table row, e.g. "Formative · 30%". */
+export interface GradeCategory {
+  name: string;
+  /** Percent of the course grade, or null when the screenshot shows a
+   *  category but no weight beside it. */
+  weight: number | null;
 }
 
 export interface BrainDumpResult {
   engine: AIEngine;
   items: BrainDumpItem[];
+  /** Grade categories and weights read off a gradebook screenshot. */
+  categories?: GradeCategory[];
   summary: string;
 }
 

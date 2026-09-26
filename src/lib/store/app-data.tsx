@@ -684,6 +684,7 @@ export function AppDataProvider({
       canvasCourseId: (c.canvasCourseId as string) ?? null,
       canvasUrl: (c.canvasUrl as string) ?? null,
       gradeWeights: (c.gradeWeights as { category: string; weight: number }[]) ?? null,
+      gpaLevel: (c.gpaLevel as string) ?? null,
       assignments: assignments
         .filter((a) => a.courseId === c.id)
         .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),

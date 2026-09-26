@@ -9,6 +9,7 @@ import type {
   BrainDumpResult,
   GenerateCardsResult,
   GeneratePodcastResult,
+  GradeCategory,
   LifeOSContext,
   PrioritizeResult,
 } from "./types";
@@ -139,10 +140,11 @@ export abstract class LLMProvider implements AIProvider {
         `${brainDumpContext(ctx)}\n\n` +
         `Read the attached screenshot and extract every assignment/task visible in it.`;
 
-      const parsed = await this.json<{ items?: unknown; summary?: unknown }>(system, user, {
-        schema: BRAIN_DUMP_SCHEMA,
-        image: { mimeType, data: imageBase64 },
-      });
+      const parsed = await this.json<{ items?: unknown; categories?: unknown; summary?: unknown }>(
+        system,
+        user,
+        { schema: BRAIN_DUMP_IMAGE_SCHEMA, image: { mimeType, data: imageBase64 } },
+      );
 
       if (!parsed || !Array.isArray(parsed.items)) {
         throw new Error("model did not return an items array");
@@ -150,9 +152,20 @@ export abstract class LLMProvider implements AIProvider {
 
       // No source text to cross-check against — the screenshot IS the source,
       // so trust the model's own dueDateWasExplicit flag directly.
-      const items = buildBrainDumpItems(parsed.items as Record<string, unknown>[], ctx, {
-        trustModelDates: true,
-      });
+      const raw = parsed.items as Record<string, unknown>[];
+      const items = buildBrainDumpItems(raw, ctx, { trustModelDates: true });
+      // Carry each item's gradebook category across — `buildBrainDumpItems` is
+      // shared with the text path, which has no such thing.
+      const gradeCategoryByTitle = new Map<string, string>();
+      for (const r of raw) {
+        const t = typeof r?.title === "string" ? tightenTitle(r.title.trim()) : "";
+        const g = typeof r?.gradeCategory === "string" ? r.gradeCategory.trim() : "";
+        if (t && g) gradeCategoryByTitle.set(t, g.slice(0, 60));
+      }
+      for (const item of items) {
+        item.gradeCategory = gradeCategoryByTitle.get(item.title) ?? null;
+      }
+      const categories = sanitizeGradeCategories(parsed.categories);
       // A clean read that genuinely found nothing is a real answer ("this
       // isn't a screenshot of assignments"), not a provider failure — return
       // it as-is instead of throwing, which would otherwise cascade through
@@ -164,7 +177,7 @@ export abstract class LLMProvider implements AIProvider {
           ? parsed.summary
           : `Found ${items.length} item${items.length === 1 ? "" : "s"} in the screenshot.`;
 
-      return { engine: this.name, items, summary };
+      return { engine: this.name, items, summary, categories };
     } catch (e) {
       console.error(`[ai:${this.name}] image brain dump fell back:`, (e as Error).message);
       return this.fallback.parseBrainDumpImage(imageBase64, mimeType, ctx);
@@ -456,10 +469,36 @@ const BRAIN_DUMP_IMAGE_SYSTEM = [
   '- A letter or percent on the item\'s own row with no raw point score ("A-", "92%"): `gradeValue` verbatim, `pointsEarned`/`pointsPossible` null.',
   '- The item\'s own row has no "Turned In" tag and no number on it at all: `pointsEarned`, `pointsPossible`, and `gradeValue` are ALL null. This is the normal, common case — do not fill these in from the category row above it, from a different assignment, or from anywhere else just to avoid an empty field. An unscored item staying unscored is correct, not a mistake to fix.',
   "",
+  "GRADE CATEGORY (`gradeCategory`) — which bold category row an assignment sits under in a gradebook (\"Formative\", \"Homework\", \"Tests\", \"Labs\"). Every assignment indented beneath a category row belongs to it, so carry that label down onto each one until the next category row starts. This is NOT the course name — the course goes in `category`. null when the screenshot isn't a gradebook or shows no category rows.",
+  "",
+  "WEIGHT TABLE (`categories`) — the same gradebook usually states what each category is worth, either on the category row itself (\"Formative  Weight: 30\", \"Tests 50%\") or in a separate breakdown table. List every category shown ONCE with its percent in `weight` (the number only: 30, not \"30%\"). A category you can see but whose weight isn't printed gets weight null — never guess or split the remainder. Return [] when no categories are visible at all. A category's own subtotal score is NOT its weight: \"Formative 88% Weight: 30\" means weight 30, not 88.",
+  "",
   "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
   "",
-  'Output ONLY minified JSON: {"items":[{"title","notes","category","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"summary":"..."}.',
+  'Output ONLY minified JSON: {"items":[{"title","notes","category","gradeCategory","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"categories":[{"name","weight"}],"summary"}. `summary` is one sentence on what you found. If the image has no readable assignments/tasks, return {"items":[],"categories":[],"summary":"..."}.',
 ].join("\n");
+
+/**
+ * Clean the weight table off a gradebook screenshot: drop unnamed rows and
+ * duplicates, keep a weight only when it's a sane percent. A category with no
+ * printed weight is kept with `weight: null` — it's still a real category to
+ * tag assignments with, the student just fills the percent in themselves.
+ */
+function sanitizeGradeCategories(raw: unknown): GradeCategory[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const out: GradeCategory[] = [];
+  for (const row of raw as Record<string, unknown>[]) {
+    const name = typeof row?.name === "string" ? row.name.trim().slice(0, 60) : "";
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const n = typeof row?.weight === "number" ? row.weight : Number(row?.weight);
+    out.push({ name, weight: Number.isFinite(n) && n > 0 && n <= 100 ? Math.round(n * 10) / 10 : null });
+  }
+  return out.slice(0, 20);
+}
 
 /**
  * Shared post-processing for both the text and image brain-dump paths —
@@ -583,6 +622,39 @@ const BRAIN_DUMP_SCHEMA = {
           "pointsEarned",
           "gradeValue",
         ],
+      },
+    },
+    summary: { type: "string" },
+  },
+  required: ["items"],
+} as const;
+
+/**
+ * The image path returns everything the text path does, plus what only a
+ * gradebook screenshot can show: which category each assignment sits under,
+ * and the weight table those categories are worth.
+ */
+const BRAIN_DUMP_IMAGE_SCHEMA = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          ...BRAIN_DUMP_SCHEMA.properties.items.items.properties,
+          gradeCategory: { type: "string" },
+        },
+        required: ["title"],
+      },
+    },
+    categories: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: { name: { type: "string" }, weight: { type: "number" } },
+        required: ["name"],
+        propertyOrdering: ["name", "weight"],
       },
     },
     summary: { type: "string" },

@@ -91,6 +91,8 @@ export interface CourseDTO {
    * reports its own weighted `currentScore`.
    */
   gradeWeights?: { category: string; weight: number }[] | null;
+  /** Which GPA level this class counts as — see `GpaLevel`. null = regular. */
+  gpaLevel?: string | null;
   assignments: AssignmentDTO[];
 }
 

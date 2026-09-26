@@ -1,14 +1,14 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Percent, GraduationCap, ChevronDown, BookOpen, Calculator } from "lucide-react";
+import { Percent, GraduationCap, ChevronDown, BookOpen, Calculator, Scale, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
+import { Input, Select } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/misc";
 import { CanvasBadge } from "@/components/canvas/canvas-badge";
@@ -20,10 +20,14 @@ import { cn } from "@/lib/utils";
 import {
   assignmentGradeLabel,
   courseGrade,
+  DEFAULT_GPA_LEVELS,
   estimateGpa,
+  findGpaLevel,
+  REGULAR_LEVEL_ID,
   fmtPct,
   gradedWithPoints,
   resolveGradeScale,
+  type GpaLevel,
   type GradeSource,
   type GradeScalePref,
   type LetterScaleEntry,
@@ -53,12 +57,16 @@ export function GradesView() {
     () => data.profile.prefs.gradeScale.presetId === null,
   );
   const [calcOpen, setCalcOpen] = useState(false);
+  const [levelsOpen, setLevelsOpen] = useState(false);
 
   const graded = courses
     .map((c) => ({ course: c, grade: courseGrade(c, scale) }))
     .filter((x) => x.grade.pct != null || x.grade.letter);
 
-  const { gpa, counted } = estimateGpa(courses, scale);
+  const levels = data.profile.prefs.gpaLevels?.length ? data.profile.prefs.gpaLevels : DEFAULT_GPA_LEVELS;
+  const weighted = data.profile.prefs.gpaWeighted;
+  const { unweighted, weighted: weightedGpa, counted } = estimateGpa(courses, scale, levels);
+  const gpa = weighted ? weightedGpa : unweighted;
   const pcts = graded.map((g) => g.grade.pct).filter((p): p is number => p != null);
   const avg = pcts.length
     ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 10) / 10
@@ -90,7 +98,15 @@ export function GradesView() {
       ) : (
         <div className="space-y-8">
           <div className="grid gap-4 sm:grid-cols-3">
-            <Stat label="Estimated GPA" value={gpa == null ? "—" : gpa.toFixed(2)} sub={`${counted} of ${courses.length} classes · 4.0 scale`} />
+            <GpaStat
+              gpa={gpa}
+              other={weighted ? unweighted : weightedGpa}
+              weighted={weighted}
+              counted={counted}
+              total={courses.length}
+              onToggle={(v) => updatePrefs({ gpaWeighted: v })}
+              onEditLevels={() => setLevelsOpen(true)}
+            />
             <Stat label="Average grade" value={avg == null ? "—" : fmtPct(avg)} sub={`${graded.length} class${graded.length === 1 ? "" : "es"} with a grade`} />
             <Stat label="Classes tracked" value={courses.length} sub={`${courses.filter((c) => c.provider === "canvas").length} from Canvas`} />
           </div>
@@ -101,7 +117,10 @@ export function GradesView() {
                 key={c.id}
                 course={c}
                 scale={scale}
+                levels={levels}
+                weighted={weighted}
                 onSetGrade={(v) => updateCourse(c.id, { currentGrade: v })}
+                onSetLevel={(id) => updateCourse(c.id, { gpaLevel: id })}
               />
             ))}
           </div>
@@ -116,6 +135,13 @@ export function GradesView() {
       >
         <GradeCalculators courses={courses} scale={scale} />
       </Modal>
+
+      <GpaLevelsModal
+        open={levelsOpen}
+        onClose={() => setLevelsOpen(false)}
+        value={levels}
+        onSave={(gpaLevels) => updatePrefs({ gpaLevels })}
+      />
 
       <GradeScalePromptModal
         open={scalePromptOpen}
@@ -166,6 +192,187 @@ function GradeScalePromptModal({
   );
 }
 
+/**
+ * GPA with the weighted/unweighted switch on it. Both numbers are always
+ * computed, so the one you aren't showing sits underneath as a reference
+ * rather than making the student toggle back and forth to compare.
+ */
+function GpaStat({
+  gpa,
+  other,
+  weighted,
+  counted,
+  total,
+  onToggle,
+  onEditLevels,
+}: {
+  gpa: number | null;
+  other: number | null;
+  weighted: boolean;
+  counted: number;
+  total: number;
+  onToggle: (weighted: boolean) => void;
+  onEditLevels: () => void;
+}) {
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-muted-foreground">
+          {weighted ? "Weighted GPA" : "Unweighted GPA"}
+        </span>
+        <div className="flex rounded-lg border border-white/10 p-0.5" role="group" aria-label="GPA type">
+          {[
+            { on: false, label: "4.0" },
+            { on: true, label: "Weighted" },
+          ].map((opt) => (
+            <button
+              key={opt.label}
+              type="button"
+              aria-pressed={weighted === opt.on}
+              onClick={() => onToggle(opt.on)}
+              className={cn(
+                "rounded-md px-2 py-1 text-xs transition-colors",
+                weighted === opt.on ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="mt-3 text-3xl font-semibold tracking-tight">{gpa == null ? "—" : gpa.toFixed(2)}</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        {counted} of {total} class{total === 1 ? "" : "es"}
+        {other != null && ` · ${weighted ? "4.0 scale" : "weighted"} ${other.toFixed(2)}`}
+      </p>
+      <button
+        type="button"
+        onClick={onEditLevels}
+        className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+      >
+        <Scale className="h-3.5 w-3.5" />
+        {weighted ? "Edit course levels" : "Set up weighted GPA"}
+      </button>
+    </Card>
+  );
+}
+
+interface LevelDraft {
+  id: string;
+  name: string;
+  bonus: string;
+}
+
+/**
+ * Schools weight GPA differently — most add a point for AP and half for
+ * honors, but plenty don't — so the levels themselves are the student's to
+ * define. Ids are kept stable across edits so renaming a level doesn't
+ * detach the classes already tagged with it.
+ */
+function GpaLevelsModal({
+  open,
+  onClose,
+  value,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  value: GpaLevel[];
+  onSave: (levels: GpaLevel[]) => void;
+}) {
+  const [rows, setRows] = useState<LevelDraft[]>([]);
+
+  useEffect(() => {
+    if (open) setRows(value.map((l) => ({ id: l.id, name: l.name, bonus: String(l.bonus) })));
+  }, [open, value]);
+
+  function patch(i: number, p: Partial<LevelDraft>) {
+    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const clean = rows
+      .map((r) => ({ id: r.id, name: r.name.trim(), bonus: Number(r.bonus) }))
+      .filter((r) => r.name && Number.isFinite(r.bonus) && r.bonus >= 0 && r.bonus <= 3);
+    if (clean.length) onSave(clean);
+    onClose();
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Weighted GPA levels"
+      description="What each kind of class adds on top of the 4.0 scale at your school."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <div className="space-y-2">
+          {rows.map((r, i) => (
+            <div key={r.id} className="flex items-center gap-2">
+              <Input
+                value={r.name}
+                onChange={(e) => patch(i, { name: e.target.value })}
+                placeholder="Level name"
+                aria-label="Level name"
+                className="h-9 flex-1"
+              />
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-muted-foreground">+</span>
+                <Input
+                  inputMode="decimal"
+                  value={r.bonus}
+                  onChange={(e) => patch(i, { bonus: e.target.value })}
+                  aria-label={`Bonus for ${r.name || "level"}`}
+                  className="h-9 w-16 text-right"
+                />
+              </div>
+              <span className="w-20 shrink-0 text-xs text-muted-foreground">
+                A = {(4 + (Number(r.bonus) || 0)).toFixed(1)}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0"
+                aria-label={`Remove ${r.name || "level"}`}
+                disabled={r.id === REGULAR_LEVEL_ID}
+                title={r.id === REGULAR_LEVEL_ID ? "Every school has regular classes" : undefined}
+                onClick={() => setRows((cur) => cur.filter((_, idx) => idx !== i))}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() =>
+            setRows((cur) => [...cur, { id: `level-${Date.now().toString(36)}`, name: "", bonus: "0.5" }])
+          }
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add a level
+        </Button>
+
+        <p className="text-xs text-muted-foreground">
+          Tag each class with its level on the cards below. A failing grade never earns the bonus.
+        </p>
+
+        <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-4">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit">Save levels</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
   return (
     <Card className="p-5">
@@ -184,11 +391,17 @@ function Stat({ label, value, sub }: { label: string; value: React.ReactNode; su
 function CourseGradeCard({
   course,
   scale,
+  levels,
+  weighted,
   onSetGrade,
+  onSetLevel,
 }: {
   course: CourseDTO;
   scale: LetterScaleEntry[];
+  levels: GpaLevel[];
+  weighted: boolean;
   onSetGrade: (grade: string | null) => void;
+  onSetLevel: (levelId: string | null) => void;
 }) {
   const g = courseGrade(course, scale);
   const graded = gradedWithPoints(course);
@@ -243,6 +456,32 @@ function CourseGradeCard({
           value={g.pct}
           tone={g.pct >= 90 ? "success" : g.pct >= 70 ? "primary" : "warning"}
         />
+      )}
+
+      {levels.length > 1 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">Counts as</span>
+          <Select
+            value={course.gpaLevel ?? REGULAR_LEVEL_ID}
+            onChange={(e) =>
+              onSetLevel(e.target.value === REGULAR_LEVEL_ID ? null : e.target.value)
+            }
+            aria-label={`GPA level for ${course.name}`}
+            className="h-8 w-auto py-0 text-xs"
+          >
+            {levels.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+                {l.bonus > 0 ? ` (+${l.bonus})` : ""}
+              </option>
+            ))}
+          </Select>
+          <span className="text-xs text-muted-foreground">
+            {weighted
+              ? `A = ${(4 + (findGpaLevel(levels, course.gpaLevel)?.bonus ?? 0)).toFixed(1)}`
+              : "for weighted GPA"}
+          </span>
+        </div>
       )}
 
       {graded.length > 0 && (

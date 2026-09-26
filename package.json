@@ -12,7 +12,7 @@
     "lint": "next lint",
     "firebase:rules": "firebase deploy --only firestore:rules",
     "firebase:indexes": "firebase deploy --only firestore:indexes",
-    "test": "tsx src/lib/practice/practice.test.ts && tsx src/lib/search.test.ts && tsx src/lib/podcast/podcast.test.ts && tsx src/lib/sat/sat.test.ts",
+    "test": "tsx src/lib/practice/practice.test.ts && tsx src/lib/search.test.ts && tsx src/lib/podcast/podcast.test.ts && tsx src/lib/sat/sat.test.ts && tsx src/lib/grades.test.ts",
     "test:sat-parity": "tsx scripts/sat-parity.ts"
   },
   "dependencies": {

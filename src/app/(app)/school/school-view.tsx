@@ -164,6 +164,9 @@ export function SchoolView() {
         onClose={() => setScreenshotFor(null)}
         onImport={addAssignmentsBatch}
         onUsed={noteScreenshotImportUsed}
+        onSaveWeights={(courseId, rows) =>
+          updateCourse(courseId, { gradeWeights: rows.length ? rows : null })
+        }
         enabled={data.limits.screenshotImportEnabled}
         atLimit={
           data.limits.screenshotImportsPerWeek !== null &&
@@ -1069,7 +1072,16 @@ interface ScreenshotAiItem {
   pointsPossible: number | null;
   pointsEarned: number | null;
   gradeValue: string | null;
+  /** The course the item belongs to, as printed. */
   category: string | null;
+  /** The gradebook category it sits under — "Formative", "Tests". */
+  gradeCategory: string | null;
+}
+
+/** A row of the gradebook's weight table, as read off the screenshot. */
+interface ScreenshotAiCategory {
+  name: string;
+  weight: number | null;
 }
 
 /**
@@ -1082,6 +1094,7 @@ function AssignmentScreenshotImporter({
   onClose,
   onImport,
   onUsed,
+  onSaveWeights,
   enabled,
   atLimit,
   weeklyLimit,
@@ -1102,6 +1115,8 @@ function AssignmentScreenshotImporter({
     }[],
   ) => Promise<number>;
   onUsed: () => void;
+  /** Saves the weight table read off the screenshot onto the course. */
+  onSaveWeights: (courseId: string, rows: { category: string; weight: number }[]) => Promise<void>;
   enabled: boolean;
   atLimit: boolean;
   weeklyLimit: number | null;
@@ -1109,6 +1124,10 @@ function AssignmentScreenshotImporter({
   const [phase, setPhase] = useState<"pick" | "loading" | "review">("pick");
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<ScreenshotDraft[]>([]);
+  // The weight table read off the screenshot, editable before it's applied.
+  const [weightDrafts, setWeightDrafts] = useState<WeightDraft[]>([]);
+  const [savingWeights, setSavingWeights] = useState(false);
+  const [weightsApplied, setWeightsApplied] = useState(false);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
@@ -1118,11 +1137,48 @@ function AssignmentScreenshotImporter({
     setError(null);
     setItems([]);
     setImporting(false);
+      setWeightDrafts([]);
+    setWeightsApplied(false);
   }
 
   function close() {
     reset();
     onClose();
+  }
+
+  /**
+   * Categories offered per row: the course's declared weights first (those are
+   * what the weighted grade actually reads), then anything new the screenshot
+   * showed, matched case-insensitively so one category can't appear twice.
+   */
+  const categoryOptions = (() => {
+    const out: { category: string; weight: number | null }[] = [];
+    const seen = new Set<string>();
+    for (const w of byWeightDesc(course?.gradeWeights ?? [])) {
+      seen.add(w.category.toLowerCase());
+      out.push({ category: w.category, weight: w.weight });
+    }
+    for (const d of weightDrafts) {
+      const name = d.category.trim();
+      if (!name || seen.has(name.toLowerCase())) continue;
+      seen.add(name.toLowerCase());
+      out.push({ category: name, weight: parseNum(d.weight) });
+    }
+    return out;
+  })();
+
+  const weightTotal = weightDrafts.reduce((n, r) => n + (parseNum(r.weight) ?? 0), 0);
+
+  async function applyWeights() {
+    if (!course || savingWeights) return;
+    const rows = weightDrafts
+      .map((r) => ({ category: r.category.trim(), weight: parseNum(r.weight) ?? 0 }))
+      .filter((r) => r.category && r.weight > 0);
+    if (!rows.length) return;
+    setSavingWeights(true);
+    await onSaveWeights(course.id, rows);
+    setSavingWeights(false);
+    setWeightsApplied(true);
   }
 
   function patch(i: number, p: Partial<ScreenshotDraft>) {
@@ -1138,10 +1194,10 @@ function AssignmentScreenshotImporter({
     setPhase("loading");
     try {
       const { data: image, mimeType } = await compressImage(file);
-      const res = await authedApi<{ items: ScreenshotAiItem[] }>("/api/brain-dump/image", {
-        method: "POST",
-        body: { image, mimeType },
-      });
+      const res = await authedApi<{ items: ScreenshotAiItem[]; categories?: ScreenshotAiCategory[] }>(
+        "/api/brain-dump/image",
+        { method: "POST", body: { image, mimeType } },
+      );
       // Counts against the daily quota either way — it was a real, billed AI
       // call regardless of what it found.
       onUsed();
@@ -1158,11 +1214,18 @@ function AssignmentScreenshotImporter({
       // right next to each item. Otherwise left blank: an assignment with no
       // category doesn't count toward ANY weighted bucket, so a captured
       // grade silently wouldn't move the course grade at all until tagged.
+      const detected = res.categories ?? [];
       const weights = course?.gradeWeights ?? [];
+      // Prefer the course's own spelling of a category so the tag matches what
+      // the grade math looks for; otherwise keep the screenshot's own label,
+      // which the weight table below can turn into a real category.
       const matchCategory = (raw: string | null) => {
-        if (!raw) return "";
-        const hit = weights.find((w) => w.category.toLowerCase() === raw.trim().toLowerCase());
-        return hit?.category ?? "";
+        const name = raw?.trim();
+        if (!name) return "";
+        const declared = weights.find((w) => w.category.toLowerCase() === name.toLowerCase());
+        if (declared) return declared.category;
+        const seen = detected.find((c) => c.name.toLowerCase() === name.toLowerCase());
+        return seen?.name ?? name;
       };
       setItems(
         res.items.map((it) => ({
@@ -1172,10 +1235,16 @@ function AssignmentScreenshotImporter({
           pointsPossible: it.pointsPossible != null ? String(it.pointsPossible) : "",
           pointsEarned: it.pointsEarned != null ? String(it.pointsEarned) : "",
           gradeValue: it.gradeValue ?? "",
-          category: matchCategory(it.category),
+          // The gradebook category is the one grade weights use; the plain
+          // `category` is the course name, which isn't a weight bucket.
+          category: matchCategory(it.gradeCategory ?? null),
           keep: true,
         })),
       );
+      setWeightDrafts(
+        detected.map((c) => ({ category: c.name, weight: c.weight != null ? String(c.weight) : "" })),
+      );
+      setWeightsApplied(false);
       setPhase("review");
     } catch (err) {
       setPhase("pick");
@@ -1242,6 +1311,85 @@ function AssignmentScreenshotImporter({
             Found {items.length} item{items.length === 1 ? "" : "s"} — uncheck anything that isn&apos;t a real
             assignment, then import.
           </p>
+
+          {weightDrafts.length > 0 && (
+            <div className="rounded-lg border border-primary/30 bg-primary/[0.06] p-3.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium">
+                  Category weights found{weightsApplied ? "" : " in this screenshot"}
+                </p>
+                <span
+                  className={cn(
+                    "text-xs tabular-nums",
+                    Math.round(weightTotal) === 100 ? "text-muted-foreground" : "text-warning",
+                  )}
+                >
+                  {weightTotal}% total
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Check these against your gradebook — fill in anything blank, then save them to{" "}
+                {course?.name ?? "this course"} so each category counts for the right amount.
+              </p>
+              <ul className="mt-3 space-y-2">
+                {weightDrafts.map((w, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <Input
+                      value={w.category}
+                      onChange={(e) =>
+                        setWeightDrafts((cur) =>
+                          cur.map((r, idx) => (idx === i ? { ...r, category: e.target.value } : r)),
+                        )
+                      }
+                      aria-label="Category name"
+                      className="h-9 flex-1"
+                    />
+                    <div className="flex items-center gap-1">
+                      <Input
+                        inputMode="decimal"
+                        placeholder="—"
+                        value={w.weight}
+                        onChange={(e) =>
+                          setWeightDrafts((cur) =>
+                            cur.map((r, idx) => (idx === i ? { ...r, weight: e.target.value } : r)),
+                          )
+                        }
+                        aria-label={`Weight for ${w.category || "category"}`}
+                        className="h-9 w-20 text-right"
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      aria-label={`Remove ${w.category || "category"}`}
+                      onClick={() => setWeightDrafts((cur) => cur.filter((_, idx) => idx !== i))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={applyWeights} loading={savingWeights}>
+                  {weightsApplied ? "Save again" : "Save weights to course"}
+                </Button>
+                {weightsApplied && (
+                  <span className="flex items-center gap-1.5 text-xs text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Saved
+                  </span>
+                )}
+                {Math.round(weightTotal) !== 100 && (
+                  <span className="text-xs text-muted-foreground">
+                    These don&apos;t add up to 100% — that&apos;s fine if the screenshot only showed some.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           <div className="max-h-[50vh] space-y-3 overflow-y-auto pr-1">
             {items.map((it, i) => (
               <div
@@ -1287,7 +1435,7 @@ function AssignmentScreenshotImporter({
                         className="h-9"
                       />
                     </div>
-                    {course?.gradeWeights && course.gradeWeights.length > 0 && (
+                    {categoryOptions.length > 0 && (
                       <Select
                         className="h-9"
                         value={it.category}
@@ -1295,9 +1443,10 @@ function AssignmentScreenshotImporter({
                         aria-label="Grade category"
                       >
                         <option value="">No category — won&apos;t count toward the weighted grade</option>
-                        {byWeightDesc(course.gradeWeights).map((w) => (
-                          <option key={w.category} value={w.category}>
-                            {w.category} ({w.weight}%)
+                        {categoryOptions.map((c) => (
+                          <option key={c.category} value={c.category}>
+                            {c.category}
+                            {c.weight != null ? ` (${c.weight}%)` : ""}
                           </option>
                         ))}
                       </Select>

@@ -370,19 +370,62 @@ export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTE
 }
 
 /** Mean GPA across courses that have a resolvable letter grade. */
+/**
+ * How much a course level adds on top of the normal 4.0 letter points — the
+ * usual US convention, where an A is 4.0 in a regular class and 5.0 in an AP.
+ * Schools differ, so these are only defaults a student can edit.
+ */
+export interface GpaLevel {
+  /** Stored on the course; renaming a level keeps its courses attached. */
+  id: string;
+  name: string;
+  bonus: number;
+}
+
+export const DEFAULT_GPA_LEVELS: GpaLevel[] = [
+  { id: "regular", name: "Regular", bonus: 0 },
+  { id: "honors", name: "Honors", bonus: 0.5 },
+  { id: "ap", name: "AP / IB", bonus: 1 },
+];
+
+export const REGULAR_LEVEL_ID = "regular";
+
+export function findGpaLevel(levels: GpaLevel[], id: string | null | undefined): GpaLevel | null {
+  if (!id) return null;
+  return levels.find((l) => l.id === id) ?? null;
+}
+
+export interface GpaEstimate {
+  /** The plain 4.0-scale average — every class counted the same. */
+  unweighted: number | null;
+  /** The same average with each course's level bonus added. */
+  weighted: number | null;
+  counted: number;
+}
+
+/**
+ * Both GPAs in one pass, so a student can switch between them without the
+ * numbers disagreeing. A course with no level set counts as regular.
+ *
+ * The bonus only applies to a passing grade: failing an AP earns 0.0, not the
+ * bonus, which is how schools award weighted credit.
+ */
 export function estimateGpa(
   courses: CourseDTO[],
   scale: LetterScaleEntry[] = LETTER_SCALE,
-): { gpa: number | null; counted: number } {
-  const points: number[] = [];
+  levels: GpaLevel[] = DEFAULT_GPA_LEVELS,
+): GpaEstimate {
+  const plain: number[] = [];
+  const bumped: number[] = [];
   for (const c of courses) {
     const g = courseGrade(c, scale);
     const p = gpaFromLetter(g.letter);
-    if (p != null) points.push(p);
+    if (p == null) continue;
+    plain.push(p);
+    const bonus = p > 0 ? (findGpaLevel(levels, c.gpaLevel)?.bonus ?? 0) : 0;
+    bumped.push(p + bonus);
   }
-  if (!points.length) return { gpa: null, counted: 0 };
-  return {
-    gpa: Math.round((points.reduce((a, b) => a + b, 0) / points.length) * 100) / 100,
-    counted: points.length,
-  };
+  if (!plain.length) return { unweighted: null, weighted: null, counted: 0 };
+  const mean = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100;
+  return { unweighted: mean(plain), weighted: mean(bumped), counted: plain.length };
 }
