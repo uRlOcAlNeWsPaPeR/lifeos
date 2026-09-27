@@ -7,6 +7,9 @@ import assert from "node:assert/strict";
 import { test, report } from "@/lib/test-harness";
 import {
   DEFAULT_GPA_LEVELS,
+  DEFAULT_GPA_POINTS,
+  GPA_POINT_PRESETS,
+  gpaFromLetter,
   estimateGpa,
   findGpaLevel,
   REGULAR_LEVEL_ID,
@@ -88,6 +91,36 @@ test("findGpaLevel resolves an id, and treats unset as no level", () => {
   assert.equal(findGpaLevel(DEFAULT_GPA_LEVELS, "ap")?.bonus, 1);
   assert.equal(findGpaLevel(DEFAULT_GPA_LEVELS, null), null);
   assert.equal(findGpaLevel(DEFAULT_GPA_LEVELS, "nope"), null);
+});
+
+test("a school's own letter points change the unweighted GPA", () => {
+  const noMinus = { ...DEFAULT_GPA_POINTS, "A-": 4.0 };
+  const r = estimateGpa([course("A-")], undefined, DEFAULT_GPA_LEVELS, noMinus);
+  assert.equal(r.unweighted, 4);
+  assert.equal(estimateGpa([course("A-")], undefined, DEFAULT_GPA_LEVELS).unweighted, 3.7);
+});
+
+test("the custom points carry into the weighted GPA too", () => {
+  const pts = { ...DEFAULT_GPA_POINTS, "B+": 3.5 };
+  assert.equal(estimateGpa([course("B+", "ap")], undefined, DEFAULT_GPA_LEVELS, pts).weighted, 4.5);
+});
+
+test("a letter missing from a custom scale falls back to the standard value", () => {
+  assert.equal(gpaFromLetter("C", {}), 2);
+  assert.equal(gpaFromLetter("Z", {}), null);
+});
+
+test("an A+ can be worth more than 4.0 on a 4.3 scale", () => {
+  const p = GPA_POINT_PRESETS.find((x) => x.id === "four-three")!.points;
+  assert.equal(estimateGpa([course("A+")], undefined, DEFAULT_GPA_LEVELS, p).unweighted, 4.3);
+});
+
+test("every preset defines every letter", () => {
+  for (const preset of GPA_POINT_PRESETS) {
+    for (const l of Object.keys(DEFAULT_GPA_POINTS)) {
+      assert.equal(typeof preset.points[l], "number", `${preset.id} lacks ${l}`);
+    }
+  }
 });
 
 report("grades");

@@ -5,8 +5,8 @@ import {
   type DocumentReference,
 } from "firebase/firestore";
 import { db } from "./client";
-import { DEFAULT_GPA_LEVELS } from "@/lib/grades";
-import type { GpaLevel, GradeScalePref } from "@/lib/grades";
+import { DEFAULT_GPA_LEVELS, DEFAULT_GPA_POINTS } from "@/lib/grades";
+import type { GpaLevel, GpaPoints, GradeScalePref } from "@/lib/grades";
 
 /**
  * Firestore layout — everything scoped under the signed-in user so the
@@ -110,6 +110,8 @@ export interface Prefs {
   gpaWeighted: boolean;
   /** What each course level adds on top of 4.0 — the student's own school's rules. */
   gpaLevels: GpaLevel[];
+  /** Points per letter for the unweighted GPA — schools don't all use the same 4.0 scale. */
+  gpaPoints: GpaPoints;
 }
 
 export const DEFAULT_PREFS: Prefs = {
@@ -134,6 +136,7 @@ export const DEFAULT_PREFS: Prefs = {
   gradeScale: { presetId: null },
   gpaWeighted: false,
   gpaLevels: DEFAULT_GPA_LEVELS,
+  gpaPoints: DEFAULT_GPA_POINTS,
 };
 
 /** Merge a stored (possibly partial / legacy) prefs blob with the defaults. */
@@ -145,6 +148,8 @@ export function withPrefs(raw: Partial<Prefs> | undefined | null): Prefs {
     gradeScale: raw?.gradeScale ?? DEFAULT_PREFS.gradeScale,
     // A stored empty list would leave a student with no levels to pick from.
     gpaLevels: raw?.gpaLevels?.length ? raw.gpaLevels : DEFAULT_PREFS.gpaLevels,
+    // Any letter a stored scale lacks falls back to the standard value.
+    gpaPoints: { ...DEFAULT_GPA_POINTS, ...(raw?.gpaPoints ?? {}) },
   };
 }
 

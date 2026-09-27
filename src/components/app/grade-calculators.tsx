@@ -12,6 +12,7 @@ import {
   courseGrade,
   fmtPct,
   gpaFromLetter,
+  type GpaPoints,
   gradedWithPoints,
   letterFromPct,
   neededOnFinal,
@@ -35,10 +36,13 @@ const TABS: { id: Tab; label: string }[] = [
 export function GradeCalculators({
   courses,
   scale = LETTER_SCALE,
+  gpaPoints,
 }: {
   courses: CourseDTO[];
   /** The student's chosen percent→letter cutoffs (Settings → School). */
   scale?: LetterScaleEntry[];
+  /** The student's own points-per-letter for the GPA calculator. */
+  gpaPoints?: GpaPoints;
 }) {
   const [tab, setTab] = useState<Tab>("predict");
 
@@ -70,7 +74,7 @@ export function GradeCalculators({
         {tab === "weighted" && <WeightedCalc scale={scale} />}
         {tab === "points" && <PointsCalc courses={courses} scale={scale} />}
         {tab === "final" && <FinalCalc courses={courses} scale={scale} />}
-        {tab === "gpa" && <GpaCalc courses={courses} />}
+        {tab === "gpa" && <GpaCalc courses={courses} points={gpaPoints} />}
       </div>
     </div>
   );
@@ -554,7 +558,7 @@ interface GRow {
   letter: string;
 }
 
-function GpaCalc({ courses }: { courses: CourseDTO[] }) {
+function GpaCalc({ courses, points }: { courses: CourseDTO[]; points?: GpaPoints }) {
   const seeded = useMemo<GRow[]>(() => {
     if (courses.length === 0) return [{ id: rid(), name: "", credits: "1", letter: "A" }];
     return courses.map((c) => ({
@@ -573,7 +577,7 @@ function GpaCalc({ courses }: { courses: CourseDTO[] }) {
   let qp = 0;
   let cr = 0;
   for (const row of rows) {
-    const pts = gpaFromLetter(row.letter);
+    const pts = gpaFromLetter(row.letter, points);
     const credits = n(row.credits);
     if (pts == null || !(credits > 0)) continue;
     qp += pts * credits;

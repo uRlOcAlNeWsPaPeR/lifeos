@@ -131,8 +131,11 @@ export function letterFromPct(
   return scale.find((s) => pct >= s.min)?.letter ?? scale[scale.length - 1]?.letter ?? "F";
 }
 
-/** Unweighted 4.0 GPA points for a letter grade. */
-const GPA_POINTS: Record<string, number> = {
+/** GPA points for each letter — what a school's unweighted scale is made of. */
+export type GpaPoints = Record<string, number>;
+
+/** The common US 4.0 scale: A+ and A are 4.0, minuses drop by 0.3. */
+export const DEFAULT_GPA_POINTS: GpaPoints = {
   "A+": 4.0, A: 4.0, "A-": 3.7,
   "B+": 3.3, B: 3.0, "B-": 2.7,
   "C+": 2.3, C: 2.0, "C-": 1.7,
@@ -140,11 +143,64 @@ const GPA_POINTS: Record<string, number> = {
   F: 0.0,
 };
 
-export const GPA_LETTERS = Object.keys(GPA_POINTS);
+export const GPA_LETTERS = Object.keys(DEFAULT_GPA_POINTS);
 
-export function gpaFromLetter(letter: string | null | undefined): number | null {
+/** Ready-made unweighted scales; schools vary, so any can be edited after. */
+export const GPA_POINT_PRESETS: { id: string; name: string; note: string; points: GpaPoints }[] = [
+  {
+    id: "standard",
+    name: "Standard 4.0",
+    note: "A+ and A = 4.0, A- = 3.7",
+    points: DEFAULT_GPA_POINTS,
+  },
+  {
+    id: "plus-minus-4",
+    name: "4.0, no minus penalty",
+    note: "A- = 4.0, B+ = 3.5 … (each letter is worth its band)",
+    points: {
+      "A+": 4.0, A: 4.0, "A-": 4.0,
+      "B+": 3.5, B: 3.0, "B-": 3.0,
+      "C+": 2.5, C: 2.0, "C-": 2.0,
+      "D+": 1.5, D: 1.0, "D-": 1.0,
+      F: 0.0,
+    },
+  },
+  {
+    id: "letters-only",
+    name: "Whole letters only",
+    note: "+ and - ignored: A = 4, B = 3, C = 2, D = 1",
+    points: {
+      "A+": 4, A: 4, "A-": 4,
+      "B+": 3, B: 3, "B-": 3,
+      "C+": 2, C: 2, "C-": 2,
+      "D+": 1, D: 1, "D-": 1,
+      F: 0,
+    },
+  },
+  {
+    id: "four-three",
+    name: "4.3 scale",
+    note: "A+ = 4.3, A = 4.0, A- = 3.7",
+    points: {
+      "A+": 4.3, A: 4.0, "A-": 3.7,
+      "B+": 3.3, B: 3.0, "B-": 2.7,
+      "C+": 2.3, C: 2.0, "C-": 1.7,
+      "D+": 1.3, D: 1.0, "D-": 0.7,
+      F: 0.0,
+    },
+  },
+];
+
+/** Points for a letter on the given scale; a letter the scale lacks falls back to the standard one. */
+export function gpaFromLetter(
+  letter: string | null | undefined,
+  points: GpaPoints = DEFAULT_GPA_POINTS,
+): number | null {
   if (!letter) return null;
-  return GPA_POINTS[letter.trim().toUpperCase()] ?? null;
+  const key = letter.trim().toUpperCase();
+  const own = points[key];
+  if (typeof own === "number" && Number.isFinite(own)) return own;
+  return DEFAULT_GPA_POINTS[key] ?? null;
 }
 
 /** Pull a letter out of a free-text grade string like "A- / 91%" or "92%". */
@@ -414,12 +470,13 @@ export function estimateGpa(
   courses: CourseDTO[],
   scale: LetterScaleEntry[] = LETTER_SCALE,
   levels: GpaLevel[] = DEFAULT_GPA_LEVELS,
+  points: GpaPoints = DEFAULT_GPA_POINTS,
 ): GpaEstimate {
   const plain: number[] = [];
   const bumped: number[] = [];
   for (const c of courses) {
     const g = courseGrade(c, scale);
-    const p = gpaFromLetter(g.letter);
+    const p = gpaFromLetter(g.letter, points);
     if (p == null) continue;
     plain.push(p);
     const bonus = p > 0 ? (findGpaLevel(levels, c.gpaLevel)?.bonus ?? 0) : 0;

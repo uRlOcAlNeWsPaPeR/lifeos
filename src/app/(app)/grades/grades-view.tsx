@@ -21,6 +21,9 @@ import {
   assignmentGradeLabel,
   courseGrade,
   DEFAULT_GPA_LEVELS,
+  DEFAULT_GPA_POINTS,
+  GPA_LETTERS,
+  GPA_POINT_PRESETS,
   estimateGpa,
   findGpaLevel,
   REGULAR_LEVEL_ID,
@@ -28,6 +31,7 @@ import {
   gradedWithPoints,
   resolveGradeScale,
   type GpaLevel,
+  type GpaPoints,
   type GradeSource,
   type GradeScalePref,
   type LetterScaleEntry,
@@ -58,6 +62,7 @@ export function GradesView() {
   );
   const [calcOpen, setCalcOpen] = useState(false);
   const [levelsOpen, setLevelsOpen] = useState(false);
+  const [pointsOpen, setPointsOpen] = useState(false);
 
   const graded = courses
     .map((c) => ({ course: c, grade: courseGrade(c, scale) }))
@@ -65,7 +70,8 @@ export function GradesView() {
 
   const levels = data.profile.prefs.gpaLevels?.length ? data.profile.prefs.gpaLevels : DEFAULT_GPA_LEVELS;
   const weighted = data.profile.prefs.gpaWeighted;
-  const { unweighted, weighted: weightedGpa, counted } = estimateGpa(courses, scale, levels);
+  const points = data.profile.prefs.gpaPoints ?? DEFAULT_GPA_POINTS;
+  const { unweighted, weighted: weightedGpa, counted } = estimateGpa(courses, scale, levels, points);
   const gpa = weighted ? weightedGpa : unweighted;
   const pcts = graded.map((g) => g.grade.pct).filter((p): p is number => p != null);
   const avg = pcts.length
@@ -106,6 +112,7 @@ export function GradesView() {
               total={courses.length}
               onToggle={(v) => updatePrefs({ gpaWeighted: v })}
               onEditLevels={() => setLevelsOpen(true)}
+              onEditPoints={() => setPointsOpen(true)}
             />
             <Stat label="Average grade" value={avg == null ? "—" : fmtPct(avg)} sub={`${graded.length} class${graded.length === 1 ? "" : "es"} with a grade`} />
             <Stat label="Classes tracked" value={courses.length} sub={`${courses.filter((c) => c.provider === "canvas").length} from Canvas`} />
@@ -133,8 +140,15 @@ export function GradesView() {
         title="Grade calculators"
         className="max-w-2xl"
       >
-        <GradeCalculators courses={courses} scale={scale} />
+        <GradeCalculators courses={courses} scale={scale} gpaPoints={points} />
       </Modal>
+
+      <GpaPointsModal
+        open={pointsOpen}
+        onClose={() => setPointsOpen(false)}
+        value={points}
+        onSave={(gpaPoints) => updatePrefs({ gpaPoints })}
+      />
 
       <GpaLevelsModal
         open={levelsOpen}
@@ -205,6 +219,7 @@ function GpaStat({
   total,
   onToggle,
   onEditLevels,
+  onEditPoints,
 }: {
   gpa: number | null;
   other: number | null;
@@ -213,6 +228,7 @@ function GpaStat({
   total: number;
   onToggle: (weighted: boolean) => void;
   onEditLevels: () => void;
+  onEditPoints: () => void;
 }) {
   return (
     <Card className="p-5">
@@ -245,15 +261,118 @@ function GpaStat({
         {counted} of {total} class{total === 1 ? "" : "es"}
         {other != null && ` · ${weighted ? "4.0 scale" : "weighted"} ${other.toFixed(2)}`}
       </p>
-      <button
-        type="button"
-        onClick={onEditLevels}
-        className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
-      >
-        <Scale className="h-3.5 w-3.5" />
-        {weighted ? "Edit course levels" : "Set up weighted GPA"}
-      </button>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+        <button
+          type="button"
+          onClick={onEditPoints}
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          <Scale className="h-3.5 w-3.5" />
+          Unweighted GPA settings
+        </button>
+        <button
+          type="button"
+          onClick={onEditLevels}
+          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+        >
+          <Scale className="h-3.5 w-3.5" />
+          {weighted ? "Edit course levels" : "Set up weighted GPA"}
+        </button>
+      </div>
     </Card>
+  );
+}
+
+/**
+ * How many GPA points each letter is worth. The usual 4.0 scale isn't
+ * universal — some schools ignore +/-, some give an A+ 4.3 — so the student
+ * picks a preset or types their own. Weighted GPA builds on the same points.
+ */
+function GpaPointsModal({
+  open,
+  onClose,
+  value,
+  onSave,
+}: {
+  open: boolean;
+  onClose: () => void;
+  value: GpaPoints;
+  onSave: (points: GpaPoints) => void;
+}) {
+  const [rows, setRows] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (open) setRows(Object.fromEntries(GPA_LETTERS.map((l) => [l, String(value[l] ?? DEFAULT_GPA_POINTS[l])])));
+  }, [open, value]);
+
+  const matching = GPA_POINT_PRESETS.find((p) =>
+    GPA_LETTERS.every((l) => Number(rows[l]) === p.points[l]),
+  );
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const next: GpaPoints = {};
+    for (const l of GPA_LETTERS) {
+      const n = Number(rows[l]);
+      // A blank or nonsense cell keeps the standard value rather than saving NaN.
+      next[l] = Number.isFinite(n) && rows[l]?.trim() !== "" && n >= 0 && n <= 10 ? n : DEFAULT_GPA_POINTS[l];
+    }
+    onSave(next);
+    onClose();
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Unweighted GPA settings"
+      description="How many points each letter grade is worth at your school."
+    >
+      <form onSubmit={submit} className="space-y-4">
+        <Select
+          value={matching?.id ?? "custom"}
+          onChange={(e) => {
+            const preset = GPA_POINT_PRESETS.find((p) => p.id === e.target.value);
+            if (preset) setRows(Object.fromEntries(GPA_LETTERS.map((l) => [l, String(preset.points[l])])));
+          }}
+          aria-label="Scale preset"
+        >
+          {GPA_POINT_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name} — {p.note}
+            </option>
+          ))}
+          {!matching && <option value="custom">Custom (your edits)</option>}
+        </Select>
+
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3">
+          {GPA_LETTERS.map((l) => (
+            <label key={l} className="flex items-center justify-between gap-2">
+              <span className="w-8 text-sm font-medium">{l}</span>
+              <Input
+                inputMode="decimal"
+                value={rows[l] ?? ""}
+                onChange={(e) => setRows((cur) => ({ ...cur, [l]: e.target.value }))}
+                aria-label={`Points for ${l}`}
+                className="h-9 w-20 text-right"
+              />
+            </label>
+          ))}
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Your letter cutoffs (which percent is an A) are set separately in Settings → School. Weighted GPA
+          adds each class&apos;s level bonus to these points.
+        </p>
+
+        <div className="flex justify-end gap-2 border-t border-white/[0.07] pt-4">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit">Save</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
