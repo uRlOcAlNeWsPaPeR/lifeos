@@ -160,7 +160,10 @@ export function SchoolView() {
             onOpenAssignment={setDetailFor}
             onAddAssignment={() => setAssignFor(openCourse)}
             onImportScreenshot={() => openScreenshots(openCourse.id, "manage")}
-            onRecheck={() => openScreenshots(openCourse.id, "recheck")}
+            onRecheck={() =>
+              // Nothing saved yet → open the window, which explains and offers to add some.
+              openScreenshots(openCourse.id, (openCourse.screenshotCount ?? 0) > 0 ? "recheck" : "manage")
+            }
             onEditWeights={() => setWeightsFor(openCourse)}
           />
         </div>
@@ -396,16 +399,14 @@ function CourseCard({
           )}
         </div>
         <div className="flex items-start gap-3">
-          {(course.screenshotCount ?? 0) > 0 && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onRecheck}
-              title="Read this course's saved screenshots again and replace what was imported from them"
-            >
-              <RefreshCw className="h-3.5 w-3.5" /> Recheck
-            </Button>
-          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onRecheck}
+            title="Read this course's saved screenshots again and replace what was imported from them"
+          >
+            <RefreshCw className="h-3.5 w-3.5" /> Recheck
+          </Button>
           {(g.pct != null || g.letter) && (
             <div className="text-right leading-tight" title={`Grade ${SOURCE_NOTE[g.source ?? "manual"]}`}>
               <p className="text-lg font-semibold">{g.letter ?? fmtPct(g.pct)}</p>
@@ -2033,11 +2034,19 @@ function AssignmentScreenshotImporter({
             </p>
           )}
 
-          {staged.length === 0 && saved && saved.length > 0 && phase === "pick" && (
+          {staged.length === 0 && saved && phase === "pick" && (
             <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <p className="text-sm font-medium">
-                {saved.length} saved screenshot{saved.length === 1 ? "" : "s"} for this course
+                {saved.length
+                  ? `${saved.length} saved screenshot${saved.length === 1 ? "" : "s"} for this course`
+                  : "No saved screenshots yet"}
               </p>
+              {saved.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Screenshots you import from now on are saved with this course, so you can Recheck them
+                  if the AI gets something wrong.
+                </p>
+              )}
               <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Saved screenshots">
                 {saved.map((sv, i) => (
                   <li
@@ -2059,6 +2068,7 @@ function AssignmentScreenshotImporter({
                   size="sm"
                   className="text-destructive hover:text-destructive"
                   loading={deleting}
+                  disabled={saved.length === 0}
                   onClick={deleteSaved}
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Delete all screenshots
