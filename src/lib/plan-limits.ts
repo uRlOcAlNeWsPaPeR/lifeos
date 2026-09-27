@@ -1,7 +1,7 @@
 // Client-safe plan definitions. Server enforcement lives in lib/ai + the store.
 
-// Two tiers. Every AI feature is capped on BOTH plans — nothing is unlimited, so
-// no single user can run up the API bill.
+// Two tiers. Every AI feature is capped on both plans except screenshot import
+// on Student+, which is deliberately unlimited (Infinity).
 export const PLAN_LIMITS = {
   free: {
     brainDumpsPerWeek: 5,
@@ -23,10 +23,9 @@ export const PLAN_LIMITS = {
     fullAnalytics: true,
     googleCalendarEnabled: true,
     screenshotImportEnabled: true,
-    // Vision calls are the priciest AI request LifeOS makes (image tokens on
-    // top of the prompt) — its own weekly cap, separate from the Brain Dump
-    // text budget, so one big screenshot session can't eat it.
-    screenshotImportsPerWeek: 10,
+    // No cap for Student+: a long gradebook takes several screenshots per class.
+    // Still tracked per week, and the free plan stays off.
+    screenshotImportsPerWeek: Infinity,
   },
 } as const;
 
