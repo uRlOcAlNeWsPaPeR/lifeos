@@ -20,6 +20,7 @@ import {
   Scale,
   ListChecks,
   ImagePlus,
+  RefreshCw,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -1149,6 +1150,10 @@ function AssignmentScreenshotImporter({
   const [staged, setStaged] = useState<StagedShot[]>([]);
   const stagedRef = useRef<StagedShot[]>([]);
   stagedRef.current = staged;
+  // Files already read into this review, kept so "Recheck" can read them again
+  // without the student picking them a second time.
+  const [readFiles, setReadFiles] = useState<{ key: string; file: File }[]>([]);
+  const [confirmRecheck, setConfirmRecheck] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
   // The latest lists, so a batch merges into what the student sees now rather
@@ -1180,6 +1185,8 @@ function AssignmentScreenshotImporter({
     setAdding(null);
     setShots(0);
     setNotice(null);
+    setReadFiles([]);
+    setConfirmRecheck(false);
     setStaged((cur) => {
       for (const st of cur) URL.revokeObjectURL(st.url);
       return [];
@@ -1390,6 +1397,10 @@ function AssignmentScreenshotImporter({
       return cur.filter((x) => !done.has(x.key));
     });
     setShots((n) => n + useful);
+    setReadFiles((cur) => [
+      ...cur,
+      ...batch.slice(0, consumed).map((x) => ({ key: x.key, file: x.file })),
+    ]);
 
     // Nothing usable, and nothing already on screen to fall back to: go back to
     // the line-up with the reason, so the student can swap a shot and retry.
@@ -1431,6 +1442,32 @@ function AssignmentScreenshotImporter({
       notes.push(`Only ${batch.length} of ${queue.length} were read — that's all the screenshot imports left this week.`);
     }
     setNotice(notes.length ? notes.join(" ") : null);
+  }
+
+  /**
+   * Throw away what was read and read every screenshot again from scratch — for
+   * when the AI misread something. Screenshots still lined up (not yet read)
+   * are read too. Edits made in the review are replaced, hence the confirm.
+   */
+  function recheckAll() {
+    if (!readFiles.length || inFlight.current) return;
+    setConfirmRecheck(false);
+    const again: StagedShot[] = readFiles.map((r) => ({
+      key: r.key,
+      file: r.file,
+      url: URL.createObjectURL(r.file),
+    }));
+    const queue = [...again, ...stagedRef.current];
+    stagedRef.current = queue;
+    setStaged(queue);
+    setReadFiles([]);
+    itemsRef.current = [];
+    weightDraftsRef.current = [];
+    setItems([]);
+    setWeightDrafts([]);
+    setWeightsApplied(false);
+    setShots(0);
+    void readStaged();
   }
 
   async function confirmImport() {
@@ -1568,6 +1605,33 @@ function AssignmentScreenshotImporter({
                     weeklyLimit === 1 ? "" : "s"
                   } left this week.`}
           </p>
+          {readFiles.length > 0 &&
+            (confirmRecheck ? (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/40 bg-warning/[0.06] px-3 py-2.5">
+                <span className="text-xs">
+                  Read {readFiles.length === 1 ? "the screenshot" : `all ${readFiles.length} screenshots`} again?
+                  Your edits below will be replaced.
+                </span>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmRecheck(false)}>
+                    Keep mine
+                  </Button>
+                  <Button size="sm" onClick={recheckAll}>
+                    Recheck
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmRecheck(true)}
+                disabled={!!adding || remaining === 0}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-white/15 px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Something look wrong? Recheck the screenshots
+              </button>
+            ))}
 
           {/* Frozen while another screenshot is being read, so an edit can't
               collide with the merge that's about to land. */}
