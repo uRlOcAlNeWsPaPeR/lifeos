@@ -93,6 +93,8 @@ export interface CourseDTO {
   gradeWeights?: { category: string; weight: number }[] | null;
   /** Which GPA level this class counts as — see `GpaLevel`. null = regular. */
   gpaLevel?: string | null;
+  /** How many gradebook screenshots are saved for this course (for Recheck). */
+  screenshotCount?: number;
   assignments: AssignmentDTO[];
 }
 
@@ -111,6 +113,8 @@ export interface AssignmentDTO {
   pointsPossible: number | null;
   /** Which of the course's `gradeWeights` categories this counts toward, if any. */
   category?: string | null;
+  /** Came from a screenshot import — Recheck replaces exactly these. */
+  fromScreenshot?: boolean;
   provider?: string | null;
   canvasAssignmentId?: string | null;
   canvasUrl?: string | null;

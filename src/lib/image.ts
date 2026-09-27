@@ -33,3 +33,22 @@ export async function compressImage(
   if (comma === -1) throw new Error("Couldn't process that image.");
   return { data: dataUrl.slice(comma + 1), mimeType };
 }
+
+/**
+ * A smaller copy for saving with a course, so a screenshot can be re-read later.
+ * Firestore documents cap at 1 MB, so this aims well under that and gives up
+ * (null) rather than store something that can't fit.
+ */
+export async function compressForStorage(
+  file: File,
+): Promise<{ data: string; mimeType: string } | null> {
+  for (const [dim, q] of [
+    [1600, 0.7],
+    [1200, 0.6],
+    [900, 0.55],
+  ] as const) {
+    const out = await compressImage(file, dim, q);
+    if (out.data.length < 850_000) return out;
+  }
+  return null;
+}

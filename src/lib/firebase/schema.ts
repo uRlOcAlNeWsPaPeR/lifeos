@@ -26,7 +26,7 @@ import type { GpaLevel, GradeScalePref } from "@/lib/grades";
 
 export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms", "decks", "podcasts"] as const;
 export type CollectionName = (typeof COLLECTIONS)[number];
-type AnyCol = CollectionName | "brainDumps" | "focusSessions";
+type AnyCol = CollectionName | "brainDumps" | "focusSessions" | "courseScreenshots";
 
 export function userDoc(uid: string): DocumentReference {
   return doc(db(), "users", uid);

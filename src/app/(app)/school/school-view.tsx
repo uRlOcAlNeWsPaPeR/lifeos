@@ -42,13 +42,14 @@ import {
   type LetterScaleEntry,
 } from "@/lib/grades";
 import { cn } from "@/lib/utils";
-import { compressImage } from "@/lib/image";
+import { compressForStorage, compressImage } from "@/lib/image";
 import {
   canonicalCategory,
   groupByCategory,
   mergeCourseWeights,
   mergeItems,
   mergeWeights,
+  titleKey,
   type ScreenshotDraft,
 } from "@/lib/screenshot-merge";
 import { authedApi } from "@/lib/client";
@@ -84,7 +85,14 @@ export function SchoolView() {
   } = useAppData();
   const [courseModal, setCourseModal] = useState(false);
   const [assignFor, setAssignFor] = useState<CourseDTO | null>(null);
-  const [screenshotFor, setScreenshotFor] = useState<CourseDTO | null>(null);
+  // Which course's screenshot window is open, and whether it opened straight
+  // into re-reading that course's saved screenshots ("recheck").
+  const [screenshotForId, setScreenshotForId] = useState<string | null>(null);
+  const [screenshotIntent, setScreenshotIntent] = useState<"manage" | "recheck">("manage");
+  const openScreenshots = (id: string, intent: "manage" | "recheck") => {
+    setScreenshotIntent(intent);
+    setScreenshotForId(id);
+  };
   const [weightsFor, setWeightsFor] = useState<CourseDTO | null>(null);
   const [detailFor, setDetailFor] = useState<AssignmentDTO | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -95,6 +103,8 @@ export function SchoolView() {
     [data.profile.prefs.gradeScale],
   );
   const openCourse = openId ? courses.find((c) => c.id === openId) ?? null : null;
+  // Live copy, so saved-screenshot counts stay current while the window is open.
+  const screenshotFor = screenshotForId ? courses.find((c) => c.id === screenshotForId) ?? null : null;
   // keep the open detail modal in sync with live store updates
   const detailAssignment = detailFor
     ? data.assignments.find((a) => a.id === detailFor.id) ?? null
@@ -149,7 +159,8 @@ export function SchoolView() {
             deleteAssignment={deleteAssignment}
             onOpenAssignment={setDetailFor}
             onAddAssignment={() => setAssignFor(openCourse)}
-            onImportScreenshot={() => setScreenshotFor(openCourse)}
+            onImportScreenshot={() => openScreenshots(openCourse.id, "manage")}
+            onRecheck={() => openScreenshots(openCourse.id, "recheck")}
             onEditWeights={() => setWeightsFor(openCourse)}
           />
         </div>
@@ -170,7 +181,8 @@ export function SchoolView() {
       />
       <AssignmentScreenshotImporter
         course={screenshotFor}
-        onClose={() => setScreenshotFor(null)}
+        intent={screenshotIntent}
+        onClose={() => setScreenshotForId(null)}
         onImport={addAssignmentsBatch}
         onSaveWeights={(courseId, rows) =>
           updateCourse(courseId, { gradeWeights: rows.length ? rows : null })
@@ -243,6 +255,7 @@ function CourseCard({
   onOpenAssignment,
   onAddAssignment,
   onImportScreenshot,
+  onRecheck,
   onEditWeights,
 }: {
   course: CourseDTO;
@@ -253,6 +266,7 @@ function CourseCard({
   onOpenAssignment: (a: AssignmentDTO) => void;
   onAddAssignment: () => void;
   onImportScreenshot: () => void;
+  onRecheck: () => void;
   onEditWeights: () => void;
 }) {
   // Default view is just what's still actionable: upcoming work and anything
@@ -382,6 +396,16 @@ function CourseCard({
           )}
         </div>
         <div className="flex items-start gap-3">
+          {(course.screenshotCount ?? 0) > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onRecheck}
+              title="Read this course's saved screenshots again and replace what was imported from them"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Recheck
+            </Button>
+          )}
           {(g.pct != null || g.letter) && (
             <div className="text-right leading-tight" title={`Grade ${SOURCE_NOTE[g.source ?? "manual"]}`}>
               <p className="text-lg font-semibold">{g.letter ?? fmtPct(g.pct)}</p>
@@ -1100,6 +1124,7 @@ interface ScreenshotAiCategory {
  */
 function AssignmentScreenshotImporter({
   course,
+  intent,
   onClose,
   onImport,
   onSaveWeights,
@@ -1109,6 +1134,8 @@ function AssignmentScreenshotImporter({
   usedThisWeek,
 }: {
   course: CourseDTO | null;
+  /** "recheck" opens straight into re-reading the course's saved screenshots. */
+  intent: "manage" | "recheck";
   onClose: () => void;
   onImport: (
     courseId: string,
@@ -1122,6 +1149,7 @@ function AssignmentScreenshotImporter({
       category: string | null;
       status: string;
     }[],
+    opts?: { replaceScreenshot?: boolean },
   ) => Promise<number>;
   /** Saves the weight table read off the screenshot onto the course. */
   onSaveWeights: (courseId: string, rows: { category: string; weight: number }[]) => Promise<void>;
@@ -1154,6 +1182,13 @@ function AssignmentScreenshotImporter({
   // without the student picking them a second time.
   const [readFiles, setReadFiles] = useState<{ key: string; file: File }[]>([]);
   const [confirmRecheck, setConfirmRecheck] = useState(false);
+  const { listCourseScreenshots, saveCourseScreenshots, deleteCourseScreenshots } = useAppData();
+  // Screenshots already saved with this course (thumbnails as data URLs).
+  const [saved, setSaved] = useState<{ id: string; image: string; mimeType: string }[] | null>(null);
+  // Rechecking: importing replaces the course's earlier screenshot imports.
+  const [replacing, setReplacing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const openedFor = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inFlight = useRef(false);
   // The latest lists, so a batch merges into what the student sees now rather
@@ -1175,6 +1210,51 @@ function AssignmentScreenshotImporter({
     [],
   );
 
+  // When the window opens on a course: load what's saved, and for "recheck"
+  // line all of it up and read it straight away.
+  useEffect(() => {
+    if (!course || !enabled) return;
+    const tag = `${course.id}|${intent}`;
+    if (openedFor.current === tag) return;
+    openedFor.current = tag;
+    if (!(course.screenshotCount ?? 0)) {
+      setSaved([]);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await listCourseScreenshots(course.id);
+        if (cancelled) return;
+        setSaved(list);
+        if (intent === "recheck" && list.length) {
+          const shots: StagedShot[] = list.map((sv) => {
+            const bin = atob(sv.image);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const file = new File([bytes], `saved-${sv.id}.jpg`, { type: sv.mimeType });
+            return { key: `saved:${sv.id}`, file, url: URL.createObjectURL(file) };
+          });
+          stagedRef.current = shots;
+          setStaged(shots);
+          setReplacing(true);
+          void readStaged();
+        }
+      } catch {
+        if (!cancelled) {
+          setSaved([]);
+          setError("Couldn't load the saved screenshots. Please try again.");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      // Let a re-run (React strict mode) start over rather than get stuck.
+      if (openedFor.current === tag) openedFor.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [course?.id, intent, enabled]);
+
   function reset() {
     setPhase("pick");
     setError(null);
@@ -1187,6 +1267,10 @@ function AssignmentScreenshotImporter({
     setNotice(null);
     setReadFiles([]);
     setConfirmRecheck(false);
+    setSaved(null);
+    setReplacing(false);
+    setDeleting(false);
+    openedFor.current = null;
     setStaged((cur) => {
       for (const st of cur) URL.revokeObjectURL(st.url);
       return [];
@@ -1470,6 +1554,33 @@ function AssignmentScreenshotImporter({
     void readStaged();
   }
 
+  /** Delete every saved screenshot and the assignments that came from them — after a yes/no. */
+  async function deleteSaved() {
+    if (!course || !saved?.length || deleting) return;
+    const fromShots = course.assignments.filter((a) => a.fromScreenshot).length;
+    const yes = await confirm({
+      title: "Delete all screenshots?",
+      body: `This removes the ${saved.length} saved screenshot${saved.length === 1 ? "" : "s"}${
+        fromShots
+          ? ` and the ${fromShots} assignment${fromShots === 1 ? "" : "s"} imported from them`
+          : ""
+      }. Assignments you added yourself stay.`,
+      confirmLabel: "Yes, delete",
+      cancelLabel: "No",
+      destructive: true,
+    });
+    if (!yes) return;
+    setDeleting(true);
+    try {
+      await deleteCourseScreenshots(course.id);
+      setSaved([]);
+      toast("Screenshots deleted", "success");
+    } catch {
+      setError("Couldn't delete the screenshots. Please try again.");
+    }
+    setDeleting(false);
+  }
+
   async function confirmImport() {
     if (!course || importing) return;
     const kept = items.filter((i) => i.keep && i.title.trim());
@@ -1497,9 +1608,23 @@ function AssignmentScreenshotImporter({
       }
     }
     const known = merged.map((w) => w.category);
+    // Adding to a course that already has assignments: leave out the ones it
+    // already holds (a new screenshot overlapping an earlier import). When
+    // rechecking, the earlier screenshot imports are being replaced, so only
+    // the ones added some other way count as already there.
+    const already = course.assignments.filter((a) => !(replacing && a.fromScreenshot));
+    const fresh = kept.filter(
+      (i) =>
+        !already.some(
+          (a) =>
+            titleKey(a.title) === titleKey(i.title) &&
+            (!a.dueAt || !i.dueAt || a.dueAt.slice(0, 10) === i.dueAt),
+        ),
+    );
+    const skipped = kept.length - fresh.length;
     const count = await onImport(
       course.id,
-      kept.map((i) => {
+      fresh.map((i) => {
         const pointsEarned = i.pointsEarned ? Number(i.pointsEarned) : null;
         const gradeValue = i.gradeValue.trim() || null;
         return {
@@ -1516,9 +1641,33 @@ function AssignmentScreenshotImporter({
           status: pointsEarned != null || gradeValue ? "graded" : "open",
         };
       }),
+      { replaceScreenshot: replacing },
     );
+    // Keep the new screenshots with the course so they can be rechecked later.
+    // Best-effort: a failure here must not undo an import that already worked.
+    const toSave = readFiles.filter((r) => !r.key.startsWith("saved:"));
+    if (toSave.length) {
+      try {
+        const packed = (await Promise.all(toSave.map((r) => compressForStorage(r.file)))).filter(
+          (x): x is { data: string; mimeType: string } => !!x,
+        );
+        await saveCourseScreenshots(
+          course.id,
+          packed.map((x) => ({ image: x.data, mimeType: x.mimeType })),
+        );
+      } catch {
+        /* the assignments are in; only Recheck for these is lost */
+      }
+    }
     setImporting(false);
-    if (count) toast(`Added ${count} assignment${count === 1 ? "" : "s"} ✓`, "success");
+    if (count || skipped) {
+      toast(
+        `${replacing ? "Replaced with" : "Added"} ${count} assignment${count === 1 ? "" : "s"} ✓${
+          skipped ? ` (${skipped} already in this course)` : ""
+        }`,
+        "success",
+      );
+    }
     close();
   }
 
@@ -1570,6 +1719,13 @@ function AssignmentScreenshotImporter({
                 } — uncheck anything that isn't a real assignment, then import.`}
           </p>
 
+          {replacing && (
+            <p className="rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-xs">
+              Rechecking — importing replaces the{" "}
+              {course?.assignments.filter((a) => a.fromScreenshot).length ?? 0} assignments from your
+              earlier screenshots with what&apos;s below.
+            </p>
+          )}
           {notice && (
             <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-muted-foreground">
               {notice}
@@ -1875,6 +2031,47 @@ function AssignmentScreenshotImporter({
             <p className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-muted-foreground">
               {notice}
             </p>
+          )}
+
+          {staged.length === 0 && saved && saved.length > 0 && phase === "pick" && (
+            <div className="space-y-3 rounded-lg border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-sm font-medium">
+                {saved.length} saved screenshot{saved.length === 1 ? "" : "s"} for this course
+              </p>
+              <ul className="flex gap-2 overflow-x-auto pb-1" aria-label="Saved screenshots">
+                {saved.map((sv, i) => (
+                  <li
+                    key={sv.id}
+                    className="relative h-20 w-14 shrink-0 overflow-hidden rounded-md border border-white/10"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- a saved data URL, not a hosted image */}
+                    <img
+                      src={`data:${sv.mimeType};base64,${sv.image}`}
+                      alt={`Saved screenshot ${i + 1}`}
+                      className="h-full w-full object-cover object-top"
+                    />
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  loading={deleting}
+                  onClick={deleteSaved}
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete all screenshots
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={stagingRoom === 0}
+                >
+                  <ImagePlus className="h-3.5 w-3.5" /> Add new screenshots
+                </Button>
+              </div>
+            </div>
           )}
 
           {staged.length === 0 && (

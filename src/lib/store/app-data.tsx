@@ -7,6 +7,8 @@ import {
   doc,
   getDocs,
   onSnapshot,
+  query,
+  where,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -275,7 +277,14 @@ interface AppDataValue {
       category: string | null;
       status: string;
     }[],
+    /** replaceScreenshot: drop the course's earlier screenshot imports first (Recheck). */
+    opts?: { replaceScreenshot?: boolean },
   ) => Promise<number>;
+  /** Screenshots saved with a course so they can be re-read later. */
+  listCourseScreenshots: (courseId: string) => Promise<{ id: string; image: string; mimeType: string }[]>;
+  saveCourseScreenshots: (courseId: string, shots: { image: string; mimeType: string }[]) => Promise<void>;
+  /** Removes the saved screenshots and the assignments imported from them. */
+  deleteCourseScreenshots: (courseId: string) => Promise<{ shots: number; assignments: number }>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
   createTaskForAssignment: (assignmentId: string) => Promise<void>;
@@ -619,6 +628,7 @@ export function AppDataProvider({
           pointsEarned,
           pointsPossible: (a.pointsPossible as number) ?? null,
           category: (a.category as string) ?? null,
+          fromScreenshot: Boolean(a.fromScreenshot),
           provider: (a.provider as string) ?? null,
           canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
           canvasUrl: (a.canvasUrl as string) ?? null,
@@ -684,6 +694,7 @@ export function AppDataProvider({
       canvasUrl: (c.canvasUrl as string) ?? null,
       gradeWeights: (c.gradeWeights as { category: string; weight: number }[]) ?? null,
       gpaLevel: (c.gpaLevel as string) ?? null,
+      screenshotCount: (c.screenshotCount as number) ?? 0,
       assignments: assignments
         .filter((a) => a.courseId === c.id)
         .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
@@ -1148,9 +1159,14 @@ export function AppDataProvider({
           return { ...(payload as unknown as AssignmentDTO), id: ref.id };
         }, "Couldn't add assignment"),
 
-      addAssignmentsBatch: (courseId, items) =>
+      addAssignmentsBatch: (courseId, items, opts) =>
         guard(async () => {
           const batch = writeBatch(db());
+          if (opts?.replaceScreenshot) {
+            for (const a of assignmentsRaw) {
+              if (a.courseId === courseId && a.fromScreenshot) batch.delete(entityDoc(uid, "assignments", a.id));
+            }
+          }
           for (const it of items) {
             batch.set(doc(col(uid, "assignments")), {
               title: it.title.trim(),
@@ -1162,12 +1178,51 @@ export function AppDataProvider({
               pointsEarned: it.pointsEarned ?? null,
               pointsPossible: it.pointsPossible ?? null,
               category: it.category ?? null,
+              fromScreenshot: true,
               createdAt: now(),
             });
           }
           await batch.commit();
           return items.length;
         }, "Couldn't add those assignments").then((n) => n ?? 0),
+
+      listCourseScreenshots: async (courseId) => {
+        const snap = await getDocs(query(col(uid, "courseScreenshots"), where("courseId", "==", courseId)));
+        return snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as { image: string; mimeType: string; createdAt?: string }) }))
+          .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id))
+          .map(({ id, image, mimeType }) => ({ id, image, mimeType }));
+      },
+
+      saveCourseScreenshots: (courseId, shots) =>
+        guard(async () => {
+          if (!shots.length) return;
+          const batch = writeBatch(db());
+          // Sequential timestamps keep the order they were added in.
+          const base = Date.now();
+          shots.forEach((s, i) =>
+            batch.set(doc(col(uid, "courseScreenshots")), {
+              courseId,
+              image: s.image,
+              mimeType: s.mimeType,
+              createdAt: new Date(base + i).toISOString(),
+            }),
+          );
+          const have = (coursesRaw.find((c) => c.id === courseId)?.screenshotCount as number) ?? 0;
+          batch.update(entityDoc(uid, "courses", courseId), { screenshotCount: have + shots.length });
+          await batch.commit();
+        }, "Couldn't save the screenshots").then(() => undefined),
+
+      deleteCourseScreenshots: async (courseId) => {
+        const snap = await getDocs(query(col(uid, "courseScreenshots"), where("courseId", "==", courseId)));
+        const mine = assignmentsRaw.filter((a) => a.courseId === courseId && a.fromScreenshot);
+        const batch = writeBatch(db());
+        snap.docs.forEach((d) => batch.delete(d.ref));
+        mine.forEach((a) => batch.delete(entityDoc(uid, "assignments", a.id)));
+        batch.update(entityDoc(uid, "courses", courseId), { screenshotCount: 0 });
+        await batch.commit();
+        return { shots: snap.size, assignments: mine.length };
+      },
 
       updateAssignment: (id, patch) =>
         guard(() => updateDoc(entityDoc(uid, "assignments", id), patch as Record<string, unknown>), "Couldn't update assignment").then(() => undefined),
