@@ -51,11 +51,6 @@ export const BADGES: BadgeDef[] = [
   { id: "marathon", name: "Marathoner", desc: "Finish a full practice exam" },
 ];
 
-/** Upcoming digital SAT administrations (approximate official dates). */
-export const SAT_DATES = ["2026-08-29", "2026-10-03", "2026-11-07", "2026-12-05", "2027-03-13"];
-/** Upcoming PSAT/NMSQT administrations (approximate — schools set exact dates). */
-export const PSAT_DATES = ["2026-10-14", "2026-10-28", "2027-10-13"];
-
 export interface SectionSpec {
   key: Section;
   name: string;

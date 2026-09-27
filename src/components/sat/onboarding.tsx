@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Flame, Rocket, Sprout, Target, TrendingUp, Dumbbell, User } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { SingleChips } from "@/components/ui/choice-chips";
 import { toast } from "@/components/ui/toaster";
 import { commit } from "@/lib/sat/store";
 import { suggestTargets, todayStr } from "@/lib/sat/engine";
-import { PSAT_DATES, SAT_DATES } from "@/lib/sat/constants";
+import { useOfficialDates } from "@/lib/sat/use-official-dates";
+import { TestDateField } from "./test-date-field";
 import { confetti } from "@/lib/sat/celebrate";
 import { cn } from "@/lib/utils";
 
@@ -45,13 +46,7 @@ export function SatOnboarding({ defaultName }: { defaultName?: string }) {
   const [goal, setGoal] = useState(10);
 
   const today = todayStr();
-  const upcoming = useMemo(
-    () => ({
-      sat: SAT_DATES.filter((d) => d > today).slice(0, 4),
-      psat: PSAT_DATES.filter((d) => d > today).slice(0, 4),
-    }),
-    [today],
-  );
+  const { dates: official } = useOfficialDates();
 
   function next() {
     if (step === 0 && !name.trim()) return toast("Tell us your name first.", "error");
@@ -112,8 +107,8 @@ export function SatOnboarding({ defaultName }: { defaultName?: string }) {
 
           {step === 1 && (
             <>
-              <DateField label="SAT date" value={satDate} onChange={setSatDate} quick={upcoming.sat} />
-              <DateField label="PSAT/NMSQT date" value={psatDate} onChange={setPsatDate} quick={upcoming.psat} />
+              <TestDateField kind="sat" label="SAT date" value={satDate} onChange={setSatDate} dates={official} />
+              <TestDateField kind="psat" label="PSAT/NMSQT date" value={psatDate} onChange={setPsatDate} dates={official} />
             </>
           )}
 
@@ -196,44 +191,6 @@ export function SatOnboarding({ defaultName }: { defaultName?: string }) {
         </div>
       </Card>
     </div>
-  );
-}
-
-function DateField({
-  label,
-  value,
-  onChange,
-  quick,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  quick: string[];
-}) {
-  return (
-    <Field label={label}>
-      {quick.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {quick.map((d) => (
-            <button
-              key={d}
-              type="button"
-              onClick={() => onChange(d)}
-              aria-pressed={value === d}
-              className={cn(
-                "rounded-lg border px-3 py-1.5 text-xs transition-colors",
-                value === d
-                  ? "border-primary/50 bg-primary/10 text-foreground"
-                  : "border-white/10 text-muted-foreground hover:border-white/20 hover:text-foreground",
-              )}
-            >
-              {fmtDate.format(new Date(`${d}T12:00:00`))}
-            </button>
-          ))}
-        </div>
-      )}
-      <Input type="date" value={value} onChange={(e) => onChange(e.target.value)} />
-    </Field>
   );
 }
 

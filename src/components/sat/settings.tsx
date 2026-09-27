@@ -16,11 +16,14 @@ import { defaultState, parseState, todayStr } from "@/lib/sat/engine";
 import { COLLEGE_BOARD_BANK_URL, DESMOS_URL } from "@/lib/sat/constants";
 import { SatHeader } from "./common";
 import { ScoreSlider } from "./onboarding";
+import { TestDateField } from "./test-date-field";
+import { useOfficialDates } from "@/lib/sat/use-official-dates";
 import { LogExamDialog } from "./log-exam";
 
 export function SatSettings() {
   const { s } = useSat();
   const p = s.profile!;
+  const { dates: official } = useOfficialDates();
 
   const [name, setName] = useState(p.name);
   const [satDate, setSatDate] = useState(p.tests.sat.testDate ?? "");
@@ -105,13 +108,19 @@ export function SatSettings() {
             <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={20} autoComplete="off" />
           </Field>
 
+          <p className="-mb-2 text-xs text-muted-foreground">
+            Enter your real test date, or both. Your countdown counts down to these. Dates come from College
+            Board&apos;s site and update automatically.
+          </p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="SAT test date">
-              <Input type="date" value={satDate} onChange={(e) => setSatDate(e.target.value)} />
-            </Field>
-            <Field label="PSAT/NMSQT test date">
-              <Input type="date" value={psatDate} onChange={(e) => setPsatDate(e.target.value)} />
-            </Field>
+            <TestDateField kind="sat" label="Your SAT date" value={satDate} onChange={setSatDate} dates={official} />
+            <TestDateField
+              kind="psat"
+              label="Your PSAT/NMSQT date"
+              value={psatDate}
+              onChange={setPsatDate}
+              dates={official}
+            />
           </div>
           <ScoreSlider label="SAT target" value={satTarget} onChange={setSatTarget} min={400} max={1600} />
           <ScoreSlider label="PSAT target" value={psatTarget} onChange={setPsatTarget} min={320} max={1520} />

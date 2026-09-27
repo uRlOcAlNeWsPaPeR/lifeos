@@ -16,7 +16,9 @@ import { pickFromCatalog } from "@/lib/sat/qbank";
 import {
   formatStudy, journeyPct, liveStreak, startTotal, studyTotals, todayStr, totalEstimate,
 } from "@/lib/sat/engine";
-import { EXAM_SPECS, SAT_DATES } from "@/lib/sat/constants";
+import { EXAM_SPECS } from "@/lib/sat/constants";
+import { isInPsatWindow, isOfficialSat } from "@/lib/sat/official-dates";
+import { useOfficialDates } from "@/lib/sat/use-official-dates";
 import { formatClock } from "@/lib/sat/exam";
 import type { SatState, Section, TestKind } from "@/lib/sat/types";
 import { cn } from "@/lib/utils";
@@ -197,33 +199,31 @@ function TodayCard({
   );
 }
 
-/** Live countdown to the nearest set test date — or the next official SAT. */
+/**
+ * Countdowns for the dates the student set in Settings — one card per test, so
+ * someone sitting both the SAT and the PSAT sees both. Deliberately nothing
+ * else: no generic "next SAT" unless they've chosen it.
+ */
 function Countdown({ s }: { s: SatState }) {
   const now = useNow();
+  const { dates, live } = useOfficialDates();
   const p = s.profile!;
-  const upcoming = (["sat", "psat"] as const)
-    .map((k) => ({ k, d: p.tests[k].testDate ? new Date(`${p.tests[k].testDate}T08:00:00`) : null }))
-    .filter((x): x is { k: TestKind; d: Date } => Boolean(x.d && x.d.getTime() > now))
-    .sort((a, b) => a.d.getTime() - b.d.getTime())[0];
+  const rows = (["sat", "psat"] as const)
+    .map((k) => {
+      const day = p.tests[k].testDate;
+      return { k, day, d: day ? new Date(`${day}T08:00:00`) : null };
+    })
+    .filter((x): x is { k: TestKind; day: string; d: Date } => Boolean(x.d && x.d.getTime() > now))
+    .sort((a, b) => a.d.getTime() - b.d.getTime());
 
-  let target: Date | null = upcoming?.d ?? null;
-  let label = upcoming ? (upcoming.k === "sat" ? "SAT" : "PSAT/NMSQT") : "";
-  if (!target) {
-    const next = SAT_DATES.map((d) => new Date(`${d}T08:00:00`)).find((d) => d.getTime() > now);
-    if (next) {
-      target = next;
-      label = "Next SAT";
-    }
-  }
-
-  if (!target) {
+  if (!rows.length) {
     return (
       <Card className="flex items-center gap-3 p-5">
         <CalendarClock className="h-5 w-5 shrink-0 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          No test date yet.{" "}
+          No test date set.{" "}
           <Link href={SAT_ROUTES.settings} className="text-primary hover:underline">
-            Add one
+            Add your SAT or PSAT date
           </Link>{" "}
           for a countdown.
         </p>
@@ -231,25 +231,41 @@ function Countdown({ s }: { s: SatState }) {
     );
   }
 
-  let sec = Math.max(0, Math.floor((target.getTime() - now) / 1000));
-  const days = Math.floor(sec / 86400);
-  sec %= 86400;
-  const clock = `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
-
   return (
-    <Card className="flex flex-col justify-center p-5 sm:p-6">
-      <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <CalendarClock className="h-4 w-4 text-primary" />
-        {label}
-      </p>
-      <p className="mt-2 flex items-baseline gap-2" role="timer" aria-label={`${days} days until the ${label}`}>
-        <span className="text-4xl font-semibold tabular-nums tracking-tight">{days}</span>
-        <span className="text-sm text-muted-foreground">days away</span>
-      </p>
-      <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-        {clock} · {target.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-      </p>
-    </Card>
+    <div className="grid gap-4">
+      {rows.map(({ k, day, d }) => {
+        const label = k === "sat" ? "SAT" : "PSAT/NMSQT";
+        let sec = Math.max(0, Math.floor((d.getTime() - now) / 1000));
+        const days = Math.floor(sec / 86400);
+        sec %= 86400;
+        const clock = `${String(Math.floor(sec / 3600)).padStart(2, "0")}:${String(Math.floor((sec % 3600) / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+        // College Board can move a date after the student saved it.
+        const stale = live && (k === "sat" ? !isOfficialSat(dates, day) : dates.psat.length > 0 && !isInPsatWindow(dates, day));
+        return (
+          <Card key={k} className="flex flex-col justify-center p-5 sm:p-6">
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <CalendarClock className="h-4 w-4 text-primary" />
+              {label}
+            </p>
+            <p className="mt-2 flex items-baseline gap-2" role="timer" aria-label={`${days} days until the ${label}`}>
+              <span className="text-4xl font-semibold tabular-nums tracking-tight">{days}</span>
+              <span className="text-sm text-muted-foreground">days away</span>
+            </p>
+            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+              {clock} · {d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+            </p>
+            {stale && (
+              <p className="mt-2 text-xs text-warning">
+                College Board doesn&apos;t list this date right now.{" "}
+                <Link href={SAT_ROUTES.settings} className="underline">
+                  Check it
+                </Link>
+              </p>
+            )}
+          </Card>
+        );
+      })}
+    </div>
   );
 }
 
