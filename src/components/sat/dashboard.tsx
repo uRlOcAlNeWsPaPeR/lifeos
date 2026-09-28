@@ -2,10 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import {
-  ArrowRight, BookOpen, CalendarClock, ClipboardCheck, Flame, Layers, PauseCircle,
-  PenLine, Play, RotateCcw, Timer, TrendingUp, Zap,
-} from "lucide-react";
+import { ArrowRight, CalendarClock, Flame, PauseCircle, Play, Timer, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress, Ring } from "@/components/ui/progress";
@@ -86,8 +83,6 @@ export function SatDashboard() {
         <ScoreCard s={s} />
 
         <QotdCard />
-
-        <MoreLinks missed={s.missed.length} />
       </div>
     </>
   );
@@ -333,31 +328,3 @@ function QotdCard() {
   );
 }
 
-/** Quiet shortcuts to the rest of SAT Prep, for anyone who'd rather browse. */
-function MoreLinks({ missed }: { missed: number }) {
-  const links = [
-    { href: SAT_ROUTES.practice, label: "Practice", icon: PenLine, note: "Pick a section, skill or difficulty" },
-    { href: SAT_ROUTES.exams, label: "Practice exams", icon: ClipboardCheck, note: "Full-length, adaptive, timed" },
-    { href: SAT_ROUTES.review, label: "Review mistakes", icon: RotateCcw, note: missed ? `${missed} waiting` : "Nothing to review" },
-    { href: SAT_ROUTES.flashcards, label: "Flashcards", icon: Layers, note: "Vocabulary and roots" },
-    { href: SAT_ROUTES.guides, label: "Study guides", icon: BookOpen, note: "Formulas and grammar rules" },
-    { href: SAT_ROUTES.progress, label: "Progress", icon: TrendingUp, note: "Strengths, badges, activity" },
-  ];
-  return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {links.map((l) => (
-        <Link key={l.href} href={l.href} className="block">
-          <Card interactive className="flex h-full items-center gap-3 p-4">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
-              <l.icon className="h-4 w-4" />
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium">{l.label}</span>
-              <span className="block truncate text-xs text-muted-foreground">{l.note}</span>
-            </span>
-          </Card>
-        </Link>
-      ))}
-    </div>
-  );
-}
