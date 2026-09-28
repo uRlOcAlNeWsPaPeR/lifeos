@@ -49,7 +49,7 @@ export class CanvasClient {
     if (canvasEnv.mock) return MOCK_COURSES;
     return this.paginate<CanvasCourse>(
       `/courses?enrollment_state=active&enrollment_type=student` +
-        `&include[]=term&include[]=total_scores&include[]=teachers` +
+        `&include[]=term&include[]=total_scores&include[]=current_grading_period_scores&include[]=teachers` +
         `&state[]=available&per_page=${PER_PAGE}`,
     );
   }

@@ -146,6 +146,17 @@ export async function syncCanvas(
     for (const cc of canvasCourses) {
       const canvasCourseId = String(cc.id);
       const enrollment = cc.enrollments?.find((e) => e.type === "student") ?? cc.enrollments?.[0];
+      // In a course split into grading periods (quarters/semesters), the grade
+      // Canvas shows a student is the current period's — the all-periods total
+      // mixes in finished periods, or is hidden entirely.
+      const periodScore =
+        enrollment?.multiple_grading_periods_enabled &&
+        enrollment.current_period_computed_current_score != null
+          ? {
+              grade: enrollment.current_period_computed_current_grade ?? null,
+              score: enrollment.current_period_computed_current_score,
+            }
+          : null;
       const teacher = cc.teachers?.[0]?.display_name?.trim() || null;
       const baseName = cc.name?.trim() || `Canvas course ${canvasCourseId}`;
       const groups = groupsByCourseId.get(cc.id) ?? [];
@@ -165,8 +176,8 @@ export async function syncCanvas(
         name: courseNameWithTeacher(baseName, teacher),
         code: cc.course_code?.trim() || null,
         term: cc.term?.name ?? null,
-        currentGrade: enrollment?.computed_current_grade ?? null,
-        currentScore: enrollment?.computed_current_score ?? null,
+        currentGrade: periodScore ? periodScore.grade : (enrollment?.computed_current_grade ?? null),
+        currentScore: periodScore ? periodScore.score : (enrollment?.computed_current_score ?? null),
         provider: "canvas",
         canvasCourseId,
         canvasUrl: `${conn.instanceUrl}/courses/${canvasCourseId}`,

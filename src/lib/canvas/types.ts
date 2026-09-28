@@ -119,6 +119,10 @@ export interface CanvasCourse {
     enrollment_state: string;
     computed_current_grade?: string | null;
     computed_current_score?: number | null;
+    /** With `include[]=current_grading_period_scores`, in courses split into grading periods. */
+    multiple_grading_periods_enabled?: boolean;
+    current_period_computed_current_grade?: string | null;
+    current_period_computed_current_score?: number | null;
   }[];
   /** Present with `include[]=teachers` — the course's teacher(s). */
   teachers?: { id: number; display_name?: string; short_name?: string }[];

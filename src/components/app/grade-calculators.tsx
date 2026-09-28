@@ -74,7 +74,7 @@ export function GradeCalculators({
         {tab === "weighted" && <WeightedCalc scale={scale} />}
         {tab === "points" && <PointsCalc courses={courses} scale={scale} />}
         {tab === "final" && <FinalCalc courses={courses} scale={scale} />}
-        {tab === "gpa" && <GpaCalc courses={courses} points={gpaPoints} />}
+        {tab === "gpa" && <GpaCalc courses={courses} scale={scale} points={gpaPoints} />}
       </div>
     </div>
   );
@@ -558,16 +558,24 @@ interface GRow {
   letter: string;
 }
 
-function GpaCalc({ courses, points }: { courses: CourseDTO[]; points?: GpaPoints }) {
+function GpaCalc({
+  courses,
+  scale,
+  points,
+}: {
+  courses: CourseDTO[];
+  scale: LetterScaleEntry[];
+  points?: GpaPoints;
+}) {
+  // Seed from each class's current grade. A class with no grade yet is left
+  // out rather than guessed as an A, which would inflate the GPA.
   const seeded = useMemo<GRow[]>(() => {
-    if (courses.length === 0) return [{ id: rid(), name: "", credits: "1", letter: "A" }];
-    return courses.map((c) => ({
-      id: rid(),
-      name: c.name,
-      credits: "1",
-      letter: courseGrade(c).letter ?? "A",
-    }));
-  }, [courses]);
+    const rows = courses.flatMap((c) => {
+      const letter = courseGrade(c, scale).letter;
+      return letter ? [{ id: rid(), name: c.name, credits: "1", letter }] : [];
+    });
+    return rows.length ? rows : [{ id: rid(), name: "", credits: "1", letter: "A" }];
+  }, [courses, scale]);
 
   const [rows, setRows] = useState<GRow[]>(seeded);
 

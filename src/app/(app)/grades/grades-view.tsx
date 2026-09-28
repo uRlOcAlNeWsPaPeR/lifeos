@@ -26,6 +26,7 @@ import {
   GPA_POINT_PRESETS,
   estimateGpa,
   findGpaLevel,
+  gpaFromLetter,
   REGULAR_LEVEL_ID,
   fmtPct,
   gradedWithPoints,
@@ -73,6 +74,10 @@ export function GradesView() {
   const points = data.profile.prefs.gpaPoints ?? DEFAULT_GPA_POINTS;
   const { unweighted, weighted: weightedGpa, counted } = estimateGpa(courses, scale, levels, points);
   const gpa = weighted ? weightedGpa : unweighted;
+  // Set up = the student saved their own levels or put a class above Regular.
+  const weightedSetUp =
+    Boolean(data.profile.prefs.gpaLevels?.length) ||
+    courses.some((c) => c.gpaLevel && c.gpaLevel !== REGULAR_LEVEL_ID);
   const pcts = graded.map((g) => g.grade.pct).filter((p): p is number => p != null);
   const avg = pcts.length
     ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 10) / 10
@@ -108,6 +113,7 @@ export function GradesView() {
               gpa={gpa}
               other={weighted ? unweighted : weightedGpa}
               weighted={weighted}
+              weightedSetUp={weightedSetUp}
               counted={counted}
               total={courses.length}
               onToggle={(v) => updatePrefs({ gpaWeighted: v })}
@@ -125,6 +131,7 @@ export function GradesView() {
                 course={c}
                 scale={scale}
                 levels={levels}
+                points={points}
                 weighted={weighted}
                 onSetGrade={(v) => updateCourse(c.id, { currentGrade: v })}
                 onSetLevel={(id) => updateCourse(c.id, { gpaLevel: id })}
@@ -215,6 +222,7 @@ function GpaStat({
   gpa,
   other,
   weighted,
+  weightedSetUp,
   counted,
   total,
   onToggle,
@@ -224,6 +232,7 @@ function GpaStat({
   gpa: number | null;
   other: number | null;
   weighted: boolean;
+  weightedSetUp: boolean;
   counted: number;
   total: number;
   onToggle: (weighted: boolean) => void;
@@ -276,7 +285,7 @@ function GpaStat({
           className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
         >
           <Scale className="h-3.5 w-3.5" />
-          {weighted ? "Edit course levels" : "Set up weighted GPA"}
+          {weightedSetUp ? "Weighted GPA settings" : "Set up weighted GPA"}
         </button>
       </div>
     </Card>
@@ -511,6 +520,7 @@ function CourseGradeCard({
   course,
   scale,
   levels,
+  points,
   weighted,
   onSetGrade,
   onSetLevel,
@@ -518,6 +528,7 @@ function CourseGradeCard({
   course: CourseDTO;
   scale: LetterScaleEntry[];
   levels: GpaLevel[];
+  points: GpaPoints;
   weighted: boolean;
   onSetGrade: (grade: string | null) => void;
   onSetLevel: (levelId: string | null) => void;
@@ -597,7 +608,7 @@ function CourseGradeCard({
           </Select>
           <span className="text-xs text-muted-foreground">
             {weighted
-              ? `A = ${(4 + (findGpaLevel(levels, course.gpaLevel)?.bonus ?? 0)).toFixed(1)}`
+              ? `A = ${((gpaFromLetter("A", points) ?? 4) + (findGpaLevel(levels, course.gpaLevel)?.bonus ?? 0)).toFixed(1)}`
               : "for weighted GPA"}
           </span>
         </div>
