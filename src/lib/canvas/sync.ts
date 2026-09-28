@@ -181,6 +181,7 @@ export async function syncCanvas(
         provider: "canvas",
         canvasCourseId,
         canvasUrl: `${conn.instanceUrl}/courses/${canvasCourseId}`,
+        canvasWeighted: Boolean(cc.apply_assignment_group_weights),
         ...(cc.apply_assignment_group_weights
           ? { gradeWeights: gradeWeights?.length ? gradeWeights : null }
           : {}),

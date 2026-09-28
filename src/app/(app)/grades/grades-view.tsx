@@ -31,6 +31,7 @@ import {
   fmtPct,
   gradedWithPoints,
   resolveGradeScale,
+  type GpaClassPoints,
   type GpaLevel,
   type GpaPoints,
   type GradeSource,
@@ -72,12 +73,14 @@ export function GradesView() {
   const levels = data.profile.prefs.gpaLevels?.length ? data.profile.prefs.gpaLevels : DEFAULT_GPA_LEVELS;
   const weighted = data.profile.prefs.gpaWeighted;
   const points = data.profile.prefs.gpaPoints ?? DEFAULT_GPA_POINTS;
-  const { unweighted, weighted: weightedGpa, counted } = estimateGpa(courses, scale, levels, points);
+  const { unweighted, weighted: weightedGpa, counted, classes: gpaClasses } = estimateGpa(courses, scale, levels, points);
   const gpa = weighted ? weightedGpa : unweighted;
-  // Set up = the student saved their own levels or put a class above Regular.
+  // Set up = a class is marked above Regular, or the levels were edited.
+  // (Prefs always carry a levels list — the defaults — so its presence alone
+  // doesn't mean anything was set up.)
   const weightedSetUp =
-    Boolean(data.profile.prefs.gpaLevels?.length) ||
-    courses.some((c) => c.gpaLevel && c.gpaLevel !== REGULAR_LEVEL_ID);
+    courses.some((c) => c.gpaLevel && c.gpaLevel !== REGULAR_LEVEL_ID) ||
+    JSON.stringify(levels) !== JSON.stringify(DEFAULT_GPA_LEVELS);
   const pcts = graded.map((g) => g.grade.pct).filter((p): p is number => p != null);
   const avg = pcts.length
     ? Math.round((pcts.reduce((s, p) => s + p, 0) / pcts.length) * 10) / 10
@@ -114,6 +117,7 @@ export function GradesView() {
               other={weighted ? unweighted : weightedGpa}
               weighted={weighted}
               weightedSetUp={weightedSetUp}
+              classes={gpaClasses}
               counted={counted}
               total={courses.length}
               onToggle={(v) => updatePrefs({ gpaWeighted: v })}
@@ -223,6 +227,7 @@ function GpaStat({
   other,
   weighted,
   weightedSetUp,
+  classes,
   counted,
   total,
   onToggle,
@@ -233,12 +238,15 @@ function GpaStat({
   other: number | null;
   weighted: boolean;
   weightedSetUp: boolean;
+  classes: GpaClassPoints[];
   counted: number;
   total: number;
   onToggle: (weighted: boolean) => void;
   onEditLevels: () => void;
   onEditPoints: () => void;
 }) {
+  const [showMath, setShowMath] = useState(false);
+  const worth = (c: GpaClassPoints) => (weighted ? c.points + c.bonus : c.points);
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between gap-2">
@@ -287,7 +295,38 @@ function GpaStat({
           <Scale className="h-3.5 w-3.5" />
           {weightedSetUp ? "Weighted GPA settings" : "Set up weighted GPA"}
         </button>
+        {classes.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowMath((v) => !v)}
+            aria-expanded={showMath}
+            className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+          >
+            {showMath ? "Hide the math" : "Show the math"}
+          </button>
+        )}
       </div>
+      {showMath && classes.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-white/10 pt-3 text-xs">
+          {classes.map((c) => (
+            <div key={c.courseId} className="flex items-center justify-between gap-3">
+              <span className="truncate text-muted-foreground">
+                {c.name} · {c.letter}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {worth(c).toFixed(2)}
+                {weighted && c.bonus > 0 && (
+                  <span className="text-muted-foreground"> ({c.points.toFixed(2)} + {c.bonus})</span>
+                )}
+              </span>
+            </div>
+          ))}
+          <p className="pt-1 text-muted-foreground">
+            ({classes.map((c) => worth(c).toFixed(2)).join(" + ")}) / {classes.length} ={" "}
+            <span className="font-medium text-foreground">{gpa == null ? "—" : gpa.toFixed(2)}</span>
+          </p>
+        </div>
+      )}
     </Card>
   );
 }

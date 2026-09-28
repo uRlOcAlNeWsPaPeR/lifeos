@@ -10,6 +10,7 @@ import {
   DEFAULT_GPA_POINTS,
   GPA_POINT_PRESETS,
   gpaFromLetter,
+  courseGrade,
   estimateGpa,
   findGpaLevel,
   REGULAR_LEVEL_ID,
@@ -30,7 +31,7 @@ const course = (grade: string | null, gpaLevel: string | null = null): CourseDTO
 
 test("no graded classes means no GPA at all", () => {
   const r = estimateGpa([], undefined, DEFAULT_GPA_LEVELS);
-  assert.deepEqual(r, { unweighted: null, weighted: null, counted: 0 });
+  assert.deepEqual(r, { unweighted: null, weighted: null, counted: 0, classes: [] });
   assert.equal(estimateGpa([course(null)], undefined, DEFAULT_GPA_LEVELS).counted, 0);
 });
 
@@ -121,6 +122,52 @@ test("every preset defines every letter", () => {
       assert.equal(typeof preset.points[l], "number", `${preset.id} lacks ${l}`);
     }
   }
+});
+
+test("GPA is (class 1 + … + class n) / n, and lists each class", () => {
+  const cs = ["A", "A-", "B+", "B", "A", "C"].map((g) => course(g));
+  const r = estimateGpa(cs, undefined, DEFAULT_GPA_LEVELS);
+  // (4 + 3.7 + 3.3 + 3 + 4 + 2) / 6 = 3.333…
+  assert.equal(r.unweighted, 3.33);
+  assert.equal(r.counted, 6);
+  assert.deepEqual(r.classes.map((c) => c.points), [4, 3.7, 3.3, 3, 4, 2]);
+});
+
+test("weighted GPA averages each class's points plus its level bonus", () => {
+  const r = estimateGpa([course("A", "ap"), course("B", "honors"), course("A")], undefined, DEFAULT_GPA_LEVELS);
+  // (5 + 3.5 + 4) / 3 = 4.1666…
+  assert.equal(r.weighted, 4.17);
+  assert.deepEqual(r.classes.map((c) => c.bonus), [1, 0.5, 0]);
+});
+
+/** A Canvas course with a Canvas score plus the student's own category weights. */
+const canvasCourse = (canvasWeighted: boolean | undefined): CourseDTO =>
+  ({
+    id: "cv",
+    name: "Chem",
+    provider: "canvas",
+    currentGrade: null,
+    currentScore: 70,
+    canvasWeighted,
+    gradeWeights: [
+      { category: "Tests", weight: 70 },
+      { category: "Homework", weight: 30 },
+    ],
+    assignments: [
+      { id: "t", status: "graded", pointsEarned: 90, pointsPossible: 100, category: "Tests" },
+      { id: "h", status: "graded", pointsEarned: 100, pointsPossible: 100, category: "Homework" },
+    ],
+  }) as unknown as CourseDTO;
+
+test("the student's own weights decide the grade when Canvas isn't weighting", () => {
+  const g = courseGrade(canvasCourse(false));
+  assert.equal(g.source, "weighted");
+  assert.equal(g.pct, 93); // 0.7 × 90 + 0.3 × 100
+});
+
+test("Canvas's score still wins when Canvas does the weighting (or hasn't said)", () => {
+  assert.equal(courseGrade(canvasCourse(true)).pct, 70);
+  assert.equal(courseGrade(canvasCourse(undefined)).pct, 70);
 });
 
 report("grades");

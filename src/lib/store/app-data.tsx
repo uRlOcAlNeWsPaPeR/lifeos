@@ -693,6 +693,7 @@ export function AppDataProvider({
       canvasCourseId: (c.canvasCourseId as string) ?? null,
       canvasUrl: (c.canvasUrl as string) ?? null,
       gradeWeights: (c.gradeWeights as { category: string; weight: number }[]) ?? null,
+      canvasWeighted: (c.canvasWeighted as boolean) ?? null,
       gpaLevel: (c.gpaLevel as string) ?? null,
       screenshotCount: (c.screenshotCount as number) ?? 0,
       assignments: assignments

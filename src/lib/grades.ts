@@ -364,9 +364,9 @@ export function categoryPct(assignments: AssignmentDTO[]): number | null {
 
 /**
  * The single grade to show for a course. Canvas's own computed score wins (it
- * knows the real weighting); otherwise, for a course with declared grade
- * categories (Settings → School, non-Canvas only), we weight each category's
- * average by its declared share; otherwise we compute a flat points average
+ * knows the real weighting) unless the course carries the student's own
+ * category weights and Canvas isn't weighting it; with declared categories we
+ * weight each category's average by its share; otherwise we compute a flat points average
  * from graded assignments; otherwise fall back to whatever the student typed
  * in. `scale` is whichever percent→letter cutoffs the student picked
  * (Settings → School); defaults to the U.S. +/- scale when they haven't chosen one.
@@ -376,16 +376,24 @@ export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTE
   const earned = graded.reduce((n, a) => n + (a.pointsEarned ?? 0), 0);
   const possible = graded.reduce((n, a) => n + (a.pointsPossible ?? 0), 0);
 
-  if (course.currentScore != null) {
-    return {
-      source: "canvas",
-      pct: course.currentScore,
-      letter: parseGradeString(course.currentGrade, scale).letter ?? letterFromPct(course.currentScore, scale),
-      earned: graded.length ? earned : null,
-      possible: graded.length ? possible : null,
-      gradedCount: graded.length,
-    };
-  }
+  const canvasResult = (): CourseGrade | null =>
+    course.currentScore == null
+      ? null
+      : {
+          source: "canvas",
+          pct: course.currentScore,
+          letter:
+            parseGradeString(course.currentGrade, scale).letter ??
+            letterFromPct(course.currentScore, scale),
+          earned: graded.length ? earned : null,
+          possible: graded.length ? possible : null,
+          gradedCount: graded.length,
+        };
+
+  // The student's own category weights beat Canvas's score only when Canvas
+  // itself isn't weighting the class (their real gradebook lives elsewhere).
+  const ownWeights = Boolean(course.gradeWeights?.length) && course.canvasWeighted === false;
+  if (course.currentScore != null && !ownWeights) return canvasResult()!;
 
   if (course.gradeWeights?.length) {
     const rows: WeightRow[] = course.gradeWeights
@@ -404,6 +412,11 @@ export function courseGrade(course: CourseDTO, scale: LetterScaleEntry[] = LETTE
       }
     }
   }
+
+  // Weights that matched no graded work: Canvas's own score is still better
+  // than a flat points average.
+  const canvas = canvasResult();
+  if (canvas) return canvas;
 
   if (graded.length && possible > 0) {
     const pct = Math.round((earned / possible) * 1000) / 10;
@@ -451,12 +464,25 @@ export function findGpaLevel(levels: GpaLevel[], id: string | null | undefined):
   return levels.find((l) => l.id === id) ?? null;
 }
 
+/** One class's share of the GPA: its letter and what it's worth. */
+export interface GpaClassPoints {
+  courseId: string;
+  name: string;
+  letter: string;
+  /** Points on the student's unweighted scale. */
+  points: number;
+  /** Level bonus added for the weighted GPA (0 for regular or a failing grade). */
+  bonus: number;
+}
+
 export interface GpaEstimate {
   /** The plain 4.0-scale average — every class counted the same. */
   unweighted: number | null;
   /** The same average with each course's level bonus added. */
   weighted: number | null;
   counted: number;
+  /** Every class that counted, so the page can show the sum it averaged. */
+  classes: GpaClassPoints[];
 }
 
 /**
@@ -472,17 +498,21 @@ export function estimateGpa(
   levels: GpaLevel[] = DEFAULT_GPA_LEVELS,
   points: GpaPoints = DEFAULT_GPA_POINTS,
 ): GpaEstimate {
-  const plain: number[] = [];
-  const bumped: number[] = [];
+  // (class 1 + class 2 + … + class n) / n, over every class with a grade.
+  const classes: GpaClassPoints[] = [];
   for (const c of courses) {
     const g = courseGrade(c, scale);
     const p = gpaFromLetter(g.letter, points);
-    if (p == null) continue;
-    plain.push(p);
+    if (p == null || !g.letter) continue;
     const bonus = p > 0 ? (findGpaLevel(levels, c.gpaLevel)?.bonus ?? 0) : 0;
-    bumped.push(p + bonus);
+    classes.push({ courseId: c.id, name: c.name, letter: g.letter, points: p, bonus });
   }
-  if (!plain.length) return { unweighted: null, weighted: null, counted: 0 };
+  if (!classes.length) return { unweighted: null, weighted: null, counted: 0, classes };
   const mean = (xs: number[]) => Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 100) / 100;
-  return { unweighted: mean(plain), weighted: mean(bumped), counted: plain.length };
+  return {
+    unweighted: mean(classes.map((c) => c.points)),
+    weighted: mean(classes.map((c) => c.points + c.bonus)),
+    counted: classes.length,
+    classes,
+  };
 }

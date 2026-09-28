@@ -91,6 +91,12 @@ export interface CourseDTO {
    * reports its own weighted `currentScore`.
    */
   gradeWeights?: { category: string; weight: number }[] | null;
+  /**
+   * Canvas courses only: whether the teacher turned on weighted grading in
+   * Canvas. When false, the `gradeWeights` are the student's own (e.g. read off
+   * a gradebook screenshot) and they decide the class grade, not Canvas's score.
+   */
+  canvasWeighted?: boolean | null;
   /** Which GPA level this class counts as — see `GpaLevel`. null = regular. */
   gpaLevel?: string | null;
   /** How many gradebook screenshots are saved for this course (for Recheck). */
