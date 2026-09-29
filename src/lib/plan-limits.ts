@@ -62,12 +62,22 @@ export function hasGrantedPlan(email: string | null | undefined): boolean {
   return CREATOR_EMAILS.has(e) || COMPED_EMAILS.has(e);
 }
 
-/** The plan actually in force: email grant → stored plan → free fallback. */
+/**
+ * Event switch (e.g. a hackathon): NEXT_PUBLIC_EVERYONE_PLUS="1" gives every
+ * account Student+ so judges on brand-new accounts don't hit free-plan caps
+ * mid-demo. NEXT_PUBLIC_ so the client and server agree; it's inlined at build
+ * time, so flipping it needs a redeploy.
+ */
+export const EVERYONE_PLUS = /^(1|true|yes)$/i.test(
+  (process.env.NEXT_PUBLIC_EVERYONE_PLUS ?? "").trim(),
+);
+
+/** The plan actually in force: event switch → email grant → stored plan → free fallback. */
 export function effectivePlan(
   plan: string | null | undefined,
   email?: string | null,
 ): PlanId {
-  if (hasGrantedPlan(email)) return "student_plus";
+  if (EVERYONE_PLUS || hasGrantedPlan(email)) return "student_plus";
   if (plan === "pro") return "student_plus"; // legacy tier — folded into Student+
   return plan && plan in PLAN_LIMITS ? (plan as PlanId) : "free";
 }

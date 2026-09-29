@@ -12,6 +12,16 @@ import {
   ListChecks,
   ChevronDown,
   Moon,
+  Percent,
+  Gamepad2,
+  NotebookPen,
+  PenLine,
+  ClipboardCheck,
+  RotateCcw,
+  Layers,
+  CalendarClock,
+  Flame,
+  TrendingUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -154,9 +164,12 @@ export default function LandingPage() {
               { icon: Sparkles, title: "AI-powered planning", body: "Every morning LifeOS reviews your deadlines, schedule and goals and picks the three things to focus on — with the reasoning behind each." },
               { icon: Brain, title: "Brain Dump", body: "Type everything on your mind. LifeOS turns the mess into structured tasks you review one at a time before anything saves." },
               { icon: Moon, title: "Sleep-aware scheduling", body: "Set your bedtime once. LifeOS won't push normal work past it — and always lets you override." },
-              { icon: GraduationCap, title: "School tracking", body: "Courses, assignments, grades and due dates. Built to import automatically once official integrations land." },
+              { icon: GraduationCap, title: "Canvas sync", body: "Connect Canvas and your courses, assignments, due dates and grades come in on their own — no retyping." },
+              { icon: Percent, title: "Grades & GPA", body: "Every class's current grade, weighted and unweighted GPA on your school's scale, and calculators for what you need on the final." },
+              { icon: Gamepad2, title: "Study tools", body: "Paste a vocab list or your notes and practice with flashcards, matching, quizzes and Recall Rush." },
               { icon: Target, title: "Goals", body: "“Get an A in Physics.” “Practice guitar 4× a week.” Track milestones and the tasks that move them." },
               { icon: CalendarDays, title: "One calendar", body: "Tasks, deadlines, classes and study sessions on one view. A change anywhere updates everywhere." },
+              { icon: NotebookPen, title: "SAT Prep", body: "Real College Board questions, full adaptive practice exams and a score estimate, built right in." },
             ] as const
           ).map(({ icon: Icon, title, body }, i) => (
             <Reveal key={title} delay={(i % 3) * 0.08}>
@@ -169,6 +182,97 @@ export default function LandingPage() {
               </div>
             </Reveal>
           ))}
+        </div>
+      </section>
+
+      {/* ─────────────────────── SAT PREP ─────────────────────── */}
+      <section id="sat" className="relative overflow-hidden py-24">
+        <div className="mx-auto grid w-full max-w-6xl items-center gap-14 px-6 lg:grid-cols-2">
+          <div>
+            <Reveal blur={false}>
+              <p className="text-xs font-medium uppercase tracking-[0.25em] text-primary">SAT Prep, built in</p>
+            </Reveal>
+            <h2 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+              <RevealWords text="Study for the SAT where you already plan." />
+            </h2>
+            <Reveal delay={0.15}>
+              <p className="mt-6 text-lg text-muted-foreground">
+                Real questions from the College Board question bank, a plan paced to your test date,
+                and a score estimate that moves as you practice. No separate app, no extra login.
+              </p>
+            </Reveal>
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  { icon: PenLine, title: "Targeted practice", body: "Pick a section, skill or difficulty." },
+                  { icon: ClipboardCheck, title: "Full practice exams", body: "Adaptive, timed, module by module." },
+                  { icon: RotateCcw, title: "Review mistakes", body: "Every miss comes back until you get it." },
+                  { icon: Layers, title: "Flashcards & guides", body: "Vocab, roots, formulas and grammar rules." },
+                  { icon: CalendarClock, title: "Test-day countdown", body: "SAT and PSAT dates, straight from College Board." },
+                  { icon: Flame, title: "Daily goal & streak", body: "A little every day adds up." },
+                ] as const
+              ).map(({ icon: Icon, title, body }, i) => (
+                <Reveal key={title} delay={0.1 + (i % 2) * 0.06}>
+                  <div className="flex h-full items-start gap-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
+                    <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                    <span>
+                      <span className="block text-sm font-medium">{title}</span>
+                      <span className="block text-xs text-muted-foreground">{body}</span>
+                    </span>
+                  </div>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+
+          {/* A still of the SAT overview — illustrative numbers, not a real student's. */}
+          <Parallax speed={0.12} className="mx-auto w-full max-w-md">
+            <Reveal delay={0.2}>
+              <div className="card-surface ai-glow space-y-4 p-6" aria-hidden="true">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Estimated score</span>
+                  <Badge tone="primary">
+                    <TrendingUp className="h-3 w-3" /> +60 this month
+                  </Badge>
+                </div>
+                <p className="text-5xl font-semibold tracking-tight">
+                  1340<span className="ml-2 text-base font-normal text-muted-foreground">/ 1600</span>
+                </p>
+                <div className="space-y-2">
+                  {[
+                    { label: "Reading & Writing", score: 680, pct: 85 },
+                    { label: "Math", score: 660, pct: 82 },
+                  ].map((s) => (
+                    <div key={s.label}>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>{s.label}</span>
+                        <span className="tabular-nums text-foreground">{s.score}</span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div className="h-full rounded-full bg-gradient-brand" style={{ width: `${s.pct}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-3 border-t border-white/[0.06] pt-4 text-sm">
+                  <div className="flex items-center gap-2">
+                    <CalendarClock className="h-4 w-4 text-primary" />
+                    <span>
+                      <span className="font-medium">38 days</span>
+                      <span className="block text-xs text-muted-foreground">to test day</span>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-primary" />
+                    <span>
+                      <span className="font-medium">12-day streak</span>
+                      <span className="block text-xs text-muted-foreground">10 / 10 today</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </Reveal>
+          </Parallax>
         </div>
       </section>
 

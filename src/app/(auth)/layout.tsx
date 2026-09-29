@@ -29,9 +29,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         />
         <div className="absolute inset-0 hero-grid opacity-40" />
         <div className="relative flex h-full flex-col justify-center px-14">
-          <blockquote className="max-w-md text-2xl font-medium leading-snug tracking-tight">
-            “I open LifeOS every morning and it tells me exactly what matters today.”
-          </blockquote>
+          <p className="max-w-md text-2xl font-medium leading-snug tracking-tight">
+            Open LifeOS every morning and know exactly what matters today.
+          </p>
           <p className="mt-4 text-sm text-muted-foreground">
             The command center for your whole student life — assignments, deadlines,
             goals and plans in one intelligent system.

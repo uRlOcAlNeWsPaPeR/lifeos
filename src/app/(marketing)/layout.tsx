@@ -21,6 +21,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
           <nav className="hidden items-center gap-7 text-sm text-muted-foreground md:flex">
             <a href="/#story" className="hover:text-foreground">Story</a>
             <a href="/#features" className="hover:text-foreground">Features</a>
+            <a href="/#sat" className="hover:text-foreground">SAT Prep</a>
             <a href="/#how" className="hover:text-foreground">How it works</a>
           </nav>
           <div className="flex items-center gap-2">
