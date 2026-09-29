@@ -1,4 +1,4 @@
-import { env, geminiModelChain } from "@/lib/env";
+import { env, geminiModelChain, modelList } from "@/lib/env";
 import { LLMProvider } from "./llm-base";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -27,6 +27,9 @@ export class GeminiProvider extends LLMProvider {
   protected supportsVision = true;
   private apiKey = env.GEMINI_API_KEY;
   private models = geminiModelChain();
+  // Screenshot reads can use their own list (see GEMINI_VISION_MODELS); unset,
+  // they share the text chain.
+  private visionModels = modelList(env.GEMINI_VISION_MODELS);
 
   protected async complete(
     system: string,
@@ -55,7 +58,8 @@ export class GeminiProvider extends LLMProvider {
 
     let lastErr = "";
 
-    for (const model of this.models) {
+    const models = opts?.image && this.visionModels.length ? this.visionModels : this.models;
+    for (const model of models) {
       for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
         let res: Response;
         try {
@@ -124,6 +128,6 @@ export class GeminiProvider extends LLMProvider {
       }
     }
 
-    throw new Error(`Gemini unavailable across ${this.models.length} model(s) — ${lastErr}`);
+    throw new Error(`Gemini unavailable across ${models.length} model(s) — ${lastErr}`);
   }
 }

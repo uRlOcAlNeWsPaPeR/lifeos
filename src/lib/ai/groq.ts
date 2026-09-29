@@ -1,5 +1,5 @@
 import "server-only";
-import { env, groqModelChain } from "@/lib/env";
+import { env, groqModelChain, modelList } from "@/lib/env";
 import { LLMProvider } from "./llm-base";
 
 const ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
@@ -22,26 +22,37 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class GroqProvider extends LLMProvider {
   readonly name = "groq" as const;
   private apiKey = env.GROQ_API_KEY;
-  private models = groqModelChain();
+  private textModels = groqModelChain();
+  private visionModels = modelList(env.GROQ_VISION_MODELS);
+  protected supportsVision = this.visionModels.length > 0;
 
   protected async complete(
     system: string,
     user: string,
-    _opts?: { schema?: unknown },
+    opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<string> {
     // Not every Groq model honours response_format: json_object — the
     // shared LLMProvider JSON extractor (tolerant of prose/fences) is the
     // real safety net here, not this hint.
-    void _opts;
+    const image = opts?.image;
+    const models = image ? this.visionModels : this.textModels;
 
     const messages = [
       { role: "system", content: system },
-      { role: "user", content: user },
+      {
+        role: "user",
+        content: image
+          ? [
+              { type: "text", text: user },
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
+            ]
+          : user,
+      },
     ];
 
     let lastErr = "";
 
-    for (const model of this.models) {
+    for (const model of models) {
       for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
         let res: Response;
         try {
@@ -114,6 +125,6 @@ export class GroqProvider extends LLMProvider {
       }
     }
 
-    throw new Error(`Groq unavailable across ${this.models.length} model(s) — ${lastErr}`);
+    throw new Error(`Groq unavailable across ${models.length} model(s) — ${lastErr}`);
   }
 }

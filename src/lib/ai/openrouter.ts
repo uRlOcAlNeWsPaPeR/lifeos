@@ -1,6 +1,6 @@
 import "server-only";
 import { FieldValue } from "firebase-admin/firestore";
-import { env, appOrigin, openRouterModelChain } from "@/lib/env";
+import { env, appOrigin, modelList, openRouterModelChain } from "@/lib/env";
 import { adminDb } from "@/lib/firebase/admin";
 import { periodKey } from "@/lib/firebase/schema";
 import { LLMProvider } from "./llm-base";
@@ -15,6 +15,9 @@ const ATTEMPTS_PER_MODEL = 2;
 // hung for another 30s+ — pure wasted latency, not a safety net. 15s cleanly
 // separates "working" from "broken" without cutting off a real answer.
 const TIMEOUT_MS = 15_000;
+// Reading a screenshot is real work (a full gradebook is dozens of rows), so
+// image calls get more room than text ones before we give up on a model.
+const IMAGE_TIMEOUT_MS = 40_000;
 
 // OpenRouter's ":free" tier is ONE pool shared across the whole account — not
 // per-user, not per-model: 20 requests/minute, and 1,000/day once $10+ of
@@ -44,18 +47,21 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class OpenRouterProvider extends LLMProvider {
   readonly name = "openrouter" as const;
   private apiKey = env.OPENROUTER_API_KEY;
-  private models = openRouterModelChain();
+  private textModels = openRouterModelChain();
+  private visionModels = modelList(env.OPENROUTER_VISION_MODELS);
+  protected supportsVision = this.visionModels.length > 0;
 
   protected async complete(
     system: string,
     user: string,
-    _opts?: { schema?: unknown },
+    opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<string> {
     // Free-tier "schema enforcement" is spotty and model-dependent — the shared
     // LLMProvider JSON extractor (tolerant of prose/fences) is the real safety
     // net here, not a forced schema. `response_format` below is a widely
     // supported hint that costs nothing when a model ignores it.
-    void _opts;
+    const image = opts?.image;
+    const models = image ? this.visionModels : this.textModels;
 
     if (await this.overBudget()) {
       throw new Error("OpenRouter daily budget reached for today — skipping to the next provider");
@@ -63,12 +69,20 @@ export class OpenRouterProvider extends LLMProvider {
 
     const messages = [
       { role: "system", content: system },
-      { role: "user", content: user },
+      {
+        role: "user",
+        content: image
+          ? [
+              { type: "text", text: user },
+              { type: "image_url", image_url: { url: `data:${image.mimeType};base64,${image.data}` } },
+            ]
+          : user,
+      },
     ];
 
     let lastErr = "";
 
-    for (const model of this.models) {
+    for (const model of models) {
       for (let attempt = 1; attempt <= ATTEMPTS_PER_MODEL; attempt++) {
         let res: Response;
         try {
@@ -86,7 +100,7 @@ export class OpenRouterProvider extends LLMProvider {
               response_format: { type: "json_object" },
               temperature: 0.2,
             }),
-            signal: AbortSignal.timeout(TIMEOUT_MS),
+            signal: AbortSignal.timeout(image ? IMAGE_TIMEOUT_MS : TIMEOUT_MS),
           });
         } catch (e) {
           // Unknown whether this actually reached OpenRouter's servers before
@@ -164,7 +178,7 @@ export class OpenRouterProvider extends LLMProvider {
       }
     }
 
-    throw new Error(`OpenRouter unavailable across ${this.models.length} model(s) — ${lastErr}`);
+    throw new Error(`OpenRouter unavailable across ${models.length} model(s) — ${lastErr}`);
   }
 
   /** Today's OpenRouter call count vs. the safety budget — one cheap read. */

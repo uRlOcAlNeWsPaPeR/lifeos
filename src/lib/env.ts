@@ -36,6 +36,23 @@ export const env = {
   // model names still get renamed/deprecated over time, so no default here
   // either. Comma list, most-preferred first.
   GROQ_MODELS: process.env.GROQ_MODELS ?? "",
+  // Screenshot import only (the one feature that sends an image). Separate
+  // from the text lists because most free models can't read images, and the
+  // best image readers aren't the best text ones. Comma lists, most-preferred
+  // first; empty = that provider skips images and passes them down the chain.
+  //
+  // Benchmarked 2026-09-29 on a 12-row weighted gradebook through the real
+  // screenshot path: Groq "qwen/qwen3.8-27b" was fastest and accurate (~3.5s,
+  // 11-12/12) but its free tier is 8K tokens/min, about one screenshot a
+  // minute, so it 429s instantly when busy and the next provider takes over.
+  // Gemini "gemini-3.5-flash-lite" (500/day) and "gemini-flash-lite-latest"
+  // were accurate too; gemma-4, gemini-3.1-flash-lite and every free
+  // OpenRouter vision model were slow, inaccurate, rate-limited or empty.
+  // Production: GROQ_VISION_MODELS=qwen/qwen3.8-27b,
+  // GEMINI_VISION_MODELS=gemini-3.5-flash-lite,gemini-flash-lite-latest,gemini-3.5-flash.
+  GEMINI_VISION_MODELS: process.env.GEMINI_VISION_MODELS ?? "",
+  OPENROUTER_VISION_MODELS: process.env.OPENROUTER_VISION_MODELS ?? "",
+  GROQ_VISION_MODELS: process.env.GROQ_VISION_MODELS ?? "",
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL ?? "",
   AI_PROVIDER:
     (process.env.AI_PROVIDER as "auto" | "anthropic" | "gemini" | "openrouter" | "heuristic") ||
@@ -54,6 +71,15 @@ export function geminiModelChain(): string[] {
 /** OPENROUTER_MODELS, comma-split, de-duplicated. Empty when unconfigured. */
 export function openRouterModelChain(): string[] {
   return env.OPENROUTER_MODELS.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((m, i, arr) => arr.indexOf(m) === i);
+}
+
+/** A comma-separated model list, trimmed and de-duplicated. */
+export function modelList(csv: string): string[] {
+  return csv
+    .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((m, i, arr) => arr.indexOf(m) === i);
