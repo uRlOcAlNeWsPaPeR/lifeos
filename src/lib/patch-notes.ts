@@ -1,7 +1,7 @@
 // What's-new / patch notes shown to a returning student instead of the daily
 // brief the first time they open LifeOS after an update. Add a new entry to
 // the top of PATCH_NOTES with each release — LATEST_PATCH_VERSION and the
-// gating in components/app/daily-brief.tsx pick it up automatically.
+// gating in components/app/whats-new.tsx pick it up automatically.
 
 export interface PatchNote {
   /** Unique, sortable — bump this with every entry. Compared as a plain string. */

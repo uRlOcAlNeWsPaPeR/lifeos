@@ -7,7 +7,7 @@ import { AppDataProvider, useAppData } from "@/lib/store/app-data";
 import { AssistantChatProvider } from "@/lib/assistant-chat";
 import { recordLastPage } from "@/lib/last-page";
 import { Sidebar } from "@/components/app/sidebar";
-import { DailyBrief } from "@/components/app/daily-brief";
+import { WhatsNew } from "@/components/app/whats-new";
 import { CanvasAutoSync } from "@/components/canvas/canvas-auto-sync";
 import { TaskReminders } from "@/components/app/task-reminders";
 import { FullscreenLoader, FirebaseNotConfigured } from "@/components/app/gates";
@@ -67,7 +67,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
     return (
       <>
         <main className="min-h-[100svh]">{children}</main>
-        <DailyBrief />
+        <WhatsNew />
         <CanvasAutoSync />
         <TaskReminders />
         <CommandPalette />
@@ -88,7 +88,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
-      <DailyBrief />
+      <WhatsNew />
       <CanvasAutoSync />
       <TaskReminders />
       <CommandPalette />
