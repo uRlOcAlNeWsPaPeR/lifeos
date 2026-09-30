@@ -614,8 +614,12 @@ export function AppDataProvider({
         // treated a score as graded on its own, or any other path that set a
         // grade without also flipping status. Never displays or counts
         // toward the course grade as "open" once a real score/grade exists.
+        // ...unless the student picked the status themselves on a non-Canvas
+        // assignment (e.g. a screenshot misread an ungraded row as graded):
+        // their choice wins, and any leftover score just stops counting.
         const rawStatus = (a.status as AssignmentDTO["status"]) ?? "open";
-        const status = pointsEarned != null || gradeValue ? "graded" : rawStatus;
+        const userPicked = a.statusByUser === true && a.provider !== "canvas";
+        const status = !userPicked && (pointsEarned != null || gradeValue) ? "graded" : rawStatus;
         return {
           id: a.id,
           title: (a.title as string) ?? "",

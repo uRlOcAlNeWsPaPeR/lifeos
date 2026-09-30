@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Check, Clock, CalendarClock, CalendarPlus, Pencil, Trash2, Plus, ListChecks } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge, priorityTone } from "@/components/ui/badge";
 import { confirm } from "@/components/ui/confirm";
@@ -33,6 +34,10 @@ export function AssignmentDetail({
 }) {
   const { data, addTask, updateTask, toggleTask, deleteTask, updateAssignment } = useAppData();
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editingDetails, setEditingDetails] = useState(false);
+  // Canvas owns its assignments — each sync would overwrite an edit here.
+  // Everything else (screenshot / Infinite Campus imports, manual) is ours.
+  const editable = !!assignment && assignment.provider !== "canvas";
 
   const goals = useMemo(
     () => data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title })),
@@ -127,6 +132,24 @@ export function AssignmentDetail({
                 <Badge tone="primary">{assignment.gradeValue}</Badge>
               )}
             </div>
+
+            {editable && !editingDetails && (
+              <Button size="sm" variant="outline" onClick={() => setEditingDetails(true)}>
+                <Pencil className="h-3.5 w-3.5" />
+                Edit assignment
+              </Button>
+            )}
+            {editable && editingDetails && (
+              <AssignmentDetailsForm
+                key={assignment.id}
+                assignment={assignment}
+                onCancel={() => setEditingDetails(false)}
+                onSave={async (patch) => {
+                  await updateAssignment(assignment.id, patch);
+                  setEditingDetails(false);
+                }}
+              />
+            )}
 
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -276,5 +299,121 @@ export function AssignmentDetail({
         />
       )}
     </>
+  );
+}
+
+/** "YYYY-MM-DD" for a date input, whether dueAt is a bare date or a full ISO time. */
+function dateInputValue(dueAt: string | null): string {
+  if (!dueAt) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dueAt)) return dueAt;
+  const d = new Date(dueAt);
+  if (Number.isNaN(d.getTime())) return "";
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - off).toISOString().slice(0, 10);
+}
+
+/** Keep a stored due time when only the day changes; bare dates stay bare. */
+function withNewDate(prev: string | null, day: string): string | null {
+  if (!day) return null;
+  if (!prev || /^\d{4}-\d{2}-\d{2}$/.test(prev)) return day;
+  const old = new Date(prev);
+  if (Number.isNaN(old.getTime())) return day;
+  const [y, m, d] = day.split("-").map(Number);
+  const next = new Date(old);
+  next.setFullYear(y, m - 1, d);
+  return next.toISOString();
+}
+
+const num = (v: string): number | null => {
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Full edit for an assignment LifeOS owns (screenshot / Infinite Campus
+ * import, or added by hand): name, due date, status, score and notes.
+ */
+function AssignmentDetailsForm({
+  assignment,
+  onSave,
+  onCancel,
+}: {
+  assignment: AssignmentDTO;
+  onSave: (patch: Record<string, unknown>) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState(assignment.title);
+  const [day, setDay] = useState(dateInputValue(assignment.dueAt));
+  const [status, setStatus] = useState<AssignmentDTO["status"]>(assignment.status);
+  const [earned, setEarned] = useState(assignment.pointsEarned?.toString() ?? "");
+  const [possible, setPossible] = useState(assignment.pointsPossible?.toString() ?? "");
+  const [gradeValue, setGradeValue] = useState(assignment.gradeValue ?? "");
+  const [notes, setNotes] = useState(assignment.description ?? "");
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!title.trim()) return;
+    setSaving(true);
+    try {
+      await onSave({
+        title: title.trim(),
+        dueAt: withNewDate(assignment.dueAt, day),
+        status,
+        statusByUser: true,
+        pointsEarned: num(earned),
+        pointsPossible: num(possible),
+        gradeValue: gradeValue.trim() || null,
+        description: notes.trim() || null,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3.5">
+      <Field label="Name">
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} />
+      </Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Due date">
+          <Input type="date" value={day} onChange={(e) => setDay(e.target.value)} />
+        </Field>
+        <Field label="Status">
+          <Select value={status} onChange={(e) => setStatus(e.target.value as AssignmentDTO["status"])}>
+            <option value="open">Open</option>
+            <option value="submitted">Submitted</option>
+            <option value="graded">Graded</option>
+          </Select>
+        </Field>
+      </div>
+      <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
+        <Field label="Points earned">
+          <Input inputMode="decimal" value={earned} onChange={(e) => setEarned(e.target.value)} placeholder="—" />
+        </Field>
+        <Field label="Out of">
+          <Input inputMode="decimal" value={possible} onChange={(e) => setPossible(e.target.value)} placeholder="—" />
+        </Field>
+        <Field label="Or grade">
+          <Input value={gradeValue} onChange={(e) => setGradeValue(e.target.value)} placeholder="A-, 92%" maxLength={20} />
+        </Field>
+      </div>
+      {status !== "graded" && (earned || gradeValue) && (
+        <p className="text-xs text-muted-foreground">
+          The score is kept but won&apos;t count toward your grade until this is Graded.
+        </p>
+      )}
+      <Field label="Notes">
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} maxLength={1500} />
+      </Field>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="ghost" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+        <Button size="sm" onClick={save} loading={saving} disabled={!title.trim()}>
+          Save
+        </Button>
+      </div>
+    </div>
   );
 }

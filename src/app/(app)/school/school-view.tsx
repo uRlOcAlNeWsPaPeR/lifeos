@@ -684,7 +684,7 @@ function AssignmentRow({
           <Select
             className="h-8 w-28 text-xs"
             value={a.status}
-            onChange={(e) => updateAssignment(a.id, { status: e.target.value })}
+            onChange={(e) => updateAssignment(a.id, { status: e.target.value, statusByUser: true })}
           >
             <option value="open">Open</option>
             <option value="submitted">Submitted</option>
