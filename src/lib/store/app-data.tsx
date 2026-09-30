@@ -51,7 +51,8 @@ import type {
  * (sortOrder), otherwise by due date. Something added since the last drag has
  * no sortOrder yet and falls back to the due-date comparison.
  */
-function byAssignmentOrder(a: AssignmentDTO, b: AssignmentDTO): number {
+type Ordered = Pick<AssignmentDTO, "dueAt" | "sortOrder">;
+function byAssignmentOrder(a: Ordered, b: Ordered): number {
   if (a.sortOrder != null && b.sortOrder != null && a.sortOrder !== b.sortOrder) {
     return a.sortOrder - b.sortOrder;
   }
@@ -1196,15 +1197,28 @@ export function AppDataProvider({
       addAssignmentsBatch: (courseId, items, opts) =>
         guard(async () => {
           const batch = writeBatch(db());
-          if (opts?.replaceScreenshot) {
-            for (const a of assignmentsRaw) {
-              // Imports the student has edited are theirs now — keep them.
-              if (a.courseId === courseId && a.fromScreenshot && !a.editedByUser) {
-                batch.delete(entityDoc(uid, "assignments", a.id));
-              }
-            }
+          const replaced = (a: (typeof assignmentsRaw)[number]) =>
+            !!opts?.replaceScreenshot && !!a.fromScreenshot && !a.editedByUser;
+          for (const a of assignmentsRaw) {
+            // Imports the student has edited are theirs now — keep them.
+            if (a.courseId === courseId && replaced(a)) batch.delete(entityDoc(uid, "assignments", a.id));
           }
-          for (const it of items) {
+          // Keep the new rows in the order the screenshots show them, after
+          // whatever the course already holds. The existing ones are pinned
+          // to their current on-screen order so the two don't interleave by
+          // due date.
+          const staying = assignmentsRaw
+            .filter((a) => a.courseId === courseId && !replaced(a))
+            .map((a) => ({
+              id: a.id,
+              dueAt: (a.dueAt as string) ?? null,
+              sortOrder: typeof a.sortOrder === "number" ? a.sortOrder : null,
+            }))
+            .sort(byAssignmentOrder);
+          staying.forEach((a, i) => {
+            if (a.sortOrder !== i) batch.update(entityDoc(uid, "assignments", a.id), { sortOrder: i });
+          });
+          for (const [j, it] of items.entries()) {
             batch.set(doc(col(uid, "assignments")), {
               title: it.title.trim(),
               description: it.description ?? null,
@@ -1217,6 +1231,7 @@ export function AppDataProvider({
               category: it.category ?? null,
               fromScreenshot: true,
               importedTitle: it.title.trim(),
+              sortOrder: staying.length + j,
               createdAt: now(),
             });
           }
