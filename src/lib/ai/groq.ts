@@ -72,6 +72,11 @@ export class GroqProvider extends LLMProvider {
               // image prompt, so ~4.5K is the most one screenshot can use;
               // anything longer gets cut off and moves to the next provider.
               ...(image ? { max_tokens: 4500 } : {}),
+              // gpt-oss thinks before answering; at its default effort that
+              // was ~1,200 hidden tokens for a simple question (3.2s, and a
+              // big bite of the 8K tokens/min free budget). Low is plenty
+              // for reading the student's own data back to them.
+              ...(model.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {}),
             }),
             signal: AbortSignal.timeout(25_000),
           });

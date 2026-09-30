@@ -57,25 +57,56 @@ export abstract class LLMProvider implements AIProvider {
     opts?: { schema?: unknown; image?: { mimeType: string; data: string } },
   ): Promise<string>;
 
+  /**
+   * The student's data as the model sees it — trimmed to what a question or a
+   * plan can actually use, because size is speed: Groq's free tier caps a
+   * request at 8K tokens/min, and a busy account's full dump (90 assignments,
+   * a semester of calendar) is ~10K, which made every request skip the fast
+   * provider. Kept: unfinished work, anything graded in the last two weeks,
+   * and the next two weeks of calendar. Empty fields are dropped, dates are
+   * minute-precision, and there's no indentation.
+   */
   protected snapshot(ctx: LifeOSContext): string {
-    const d = (x?: Date | null) => (x ? x.toISOString() : null);
+    const now = ctx.now.getTime();
+    const DAY = 86_400_000;
+    const d = (x?: Date | null) => (x ? x.toISOString().slice(0, 16) + "Z" : null);
+    const recent = (x?: Date | null) => !x || x.getTime() >= now - 14 * DAY;
+    const soon = (x: Date) => x.getTime() <= now + 14 * DAY;
+    const byDue = <T extends { dueAt?: Date | null }>(a: T, b: T) =>
+      (a.dueAt?.getTime() ?? Infinity) - (b.dueAt?.getTime() ?? Infinity);
+
+    const tasks = ctx.tasks
+      .filter((t) => t.status !== "done" || recent(t.dueAt))
+      .sort(byDue)
+      .slice(0, 60);
+    const assignments = ctx.assignments
+      .filter((a) => a.status === "open" || a.status === "submitted" || recent(a.dueAt))
+      .sort(byDue)
+      .slice(0, 60);
+    const events = ctx.events
+      .filter((e) => e.endAt.getTime() >= now - DAY && soon(e.startAt))
+      .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
+      .slice(0, 40);
+
     return JSON.stringify(
-      {
-        now: ctx.now.toISOString(),
+      compact({
+        now: d(ctx.now),
         // Pre-resolved calendar dates so the model never has to compute weekdays
         // itself (LLMs are unreliable at "what date is Friday?").
         dateReference: dateReference(ctx.now),
         profile: ctx.profile,
-        tasks: ctx.tasks.map((t) => ({ ...t, dueAt: d(t.dueAt) })),
+        tasks: tasks.map((t) => ({ ...t, dueAt: d(t.dueAt) })),
         goals: ctx.goals.map((g) => ({ ...g, dueAt: d(g.dueAt) })),
         courses: ctx.courses,
-        assignments: ctx.assignments.map((a) => ({ ...a, dueAt: d(a.dueAt) })),
-        events: ctx.events.map((e) => ({ ...e, startAt: d(e.startAt), endAt: d(e.endAt) })),
-      },
-      null,
-      1,
+        assignments: assignments.map((a) => ({ ...a, dueAt: d(a.dueAt) })),
+        events: events.map((e) => ({ ...e, startAt: d(e.startAt), endAt: d(e.endAt) })),
+        // So "that's everything?" answers stay honest about what was left out.
+        olderGradedAssignmentsNotShown: ctx.assignments.length - assignments.length || undefined,
+        laterEventsNotShown: ctx.events.length - events.length || undefined,
+      }),
     );
   }
+
 
   private async json<T>(
     system: string,
@@ -762,4 +793,19 @@ function dateReference(now: Date): Record<string, string> {
     if (i === 7) ref["next week"] = iso(d);
   }
   return ref;
+}
+
+/** Drop null / undefined / false / "" / [] recursively — they cost tokens and say nothing. */
+function compact(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(compact);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v)) {
+      const c = compact(x);
+      if (c === null || c === undefined || c === false || c === "" || (Array.isArray(c) && !c.length)) continue;
+      out[k] = c;
+    }
+    return out;
+  }
+  return v;
 }

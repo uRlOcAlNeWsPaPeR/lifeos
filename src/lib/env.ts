@@ -104,8 +104,8 @@ export function appOrigin(): string {
 
 /**
  * Every configured hosted provider, in try-order: Groq's free tier first,
- * then OpenRouter's free pool, then Gemini/Anthropic (order between those
- * two picked by AI_PROVIDER), then — handled by the caller — the offline
+ * then Gemini/Anthropic (order between those two picked by AI_PROVIDER), then
+ * OpenRouter's free pool, then — handled by the caller — the offline
  * heuristic engine. Whichever ones actually have an API key (and, for
  * Groq/OpenRouter, at least one configured model) are included; the rest are
  * skipped, not retried as empty links. `getAI()` chains them — if the first
@@ -126,15 +126,17 @@ export function resolveAiProviderChain(): ("openrouter" | "groq" | "anthropic" |
   // (only AI_PROVIDER=heuristic does that, handled above).
   const paidOrder: ("anthropic" | "gemini")[] =
     env.AI_PROVIDER === "gemini" ? ["gemini", "anthropic"] : ["anthropic", "gemini"];
-  // Groq leads OpenRouter — measured live (2026-09-15) on the app's real
-  // system prompt: faster (1.8-1.9s vs. 10-11s), better instruction
-  // following, and Groq's per-model daily quota (each of 3 configured models
-  // gets its own separate ~1K/day bucket, ~3K/day aggregate) comfortably
-  // beats OpenRouter's single shared 1K/day pool across ALL its free models.
+  // Groq leads — measured live (2026-09-15) on the app's real system
+  // prompt: faster (1.8-1.9s vs. 10-11s), better instruction following, and
+  // a separate ~1K/day bucket per model. OpenRouter goes LAST: re-measured
+  // 2026-09-30, two of its configured free models had stopped being free
+  // (instant 404) and the third hung for the full 15s timeout, so sitting
+  // second it added ~16s to every question Groq was too busy for, while
+  // Gemini flash-lite answered the same question in ~2.5s.
   const order: ("groq" | "openrouter" | "anthropic" | "gemini")[] = [
     "groq",
-    "openrouter",
     ...paidOrder,
+    "openrouter",
   ];
   return order.filter((p) =>
     p === "openrouter"
