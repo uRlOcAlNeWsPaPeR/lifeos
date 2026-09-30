@@ -46,6 +46,18 @@ import type {
   TaskDTO,
 } from "@/lib/types";
 
+/**
+ * A course's assignments in the student's own order once they've dragged any
+ * (sortOrder), otherwise by due date. Something added since the last drag has
+ * no sortOrder yet and falls back to the due-date comparison.
+ */
+function byAssignmentOrder(a: AssignmentDTO, b: AssignmentDTO): number {
+  if (a.sortOrder != null && b.sortOrder != null && a.sortOrder !== b.sortOrder) {
+    return a.sortOrder - b.sortOrder;
+  }
+  return (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z");
+}
+
 /** The fields a screenshot import fills in — editing any of them marks it as the student's. */
 const IMPORT_FIELDS = new Set([
   "title",
@@ -299,6 +311,8 @@ interface AppDataValue {
   deleteCourseScreenshots: (courseId: string) => Promise<{ shots: number; assignments: number }>;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
+  /** Save a course's assignment order after a drag (ids top to bottom). */
+  reorderAssignments: (ids: string[]) => Promise<void>;
   createTaskForAssignment: (assignmentId: string) => Promise<void>;
 
   commitBrainDump: (
@@ -647,6 +661,7 @@ export function AppDataProvider({
           fromScreenshot: Boolean(a.fromScreenshot),
           editedByUser: Boolean(a.editedByUser),
           importedTitle: (a.importedTitle as string) ?? null,
+          sortOrder: typeof a.sortOrder === "number" ? a.sortOrder : null,
           provider: (a.provider as string) ?? null,
           canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
           canvasUrl: (a.canvasUrl as string) ?? null,
@@ -716,7 +731,7 @@ export function AppDataProvider({
       screenshotCount: (c.screenshotCount as number) ?? 0,
       assignments: assignments
         .filter((a) => a.courseId === c.id)
-        .sort((a, b) => (a.dueAt ?? "z").localeCompare(b.dueAt ?? "z")),
+        .sort(byAssignmentOrder),
     }));
 
     const events: EventDTO[] = eventsRaw
@@ -1265,6 +1280,13 @@ export function AppDataProvider({
           () => undefined,
         );
       },
+
+      reorderAssignments: (ids) =>
+        guard(async () => {
+          const batch = writeBatch(db());
+          ids.forEach((id, i) => batch.update(entityDoc(uid, "assignments", id), { sortOrder: i }));
+          await batch.commit();
+        }, "Couldn't move that assignment").then(() => undefined),
 
       deleteAssignment: (id) =>
         guard(async () => {

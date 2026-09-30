@@ -21,6 +21,7 @@ import {
   ListChecks,
   ImagePlus,
   RefreshCw,
+  GripVertical,
 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
@@ -328,6 +329,55 @@ function CourseCard({
   const [open, setOpen] = useState(true);
   const g = courseGrade(course, scale);
 
+  // Drag to reorder; drop into another category section to recategorize.
+  const { reorderAssignments } = useAppData();
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null); // row id or "cat:<key>"
+  const endDrag = () => {
+    setDragId(null);
+    setDropOn(null);
+  };
+
+  /** Drop the dragged assignment onto a row (take its place) or a section (append). */
+  async function dropAssignment(targetId: string | null, category?: string) {
+    const id = dragId;
+    endDrag();
+    if (!id || id === targetId) return;
+    const moving = course.assignments.find((x) => x.id === id);
+    if (!moving) return;
+    if (category !== undefined && (moving.category ?? "") !== category) {
+      await updateAssignment(id, { category: category || null });
+    }
+    const ids = course.assignments.map((x) => x.id);
+    const from = ids.indexOf(id);
+    const to = targetId ? ids.indexOf(targetId) : ids.length - 1;
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    await reorderAssignments(ids);
+  }
+  const dragProps = (a: AssignmentDTO, category?: string) =>
+    selectMode
+      ? {}
+      : {
+          draggable: true,
+          dragging: dragId === a.id,
+          dropHere: dropOn === a.id && dragId !== a.id,
+          onDragStart: () => setDragId(a.id),
+          onDragEnd: endDrag,
+          onDragOver: (e: React.DragEvent) => {
+            if (!dragId) return;
+            e.preventDefault();
+            e.stopPropagation(); // the row, not its section, is the target
+            setDropOn(a.id);
+          },
+          onDrop: (e: React.DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            void dropAssignment(a.id, category);
+          },
+        };
+
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkDueAt, setBulkDueAt] = useState("");
@@ -530,7 +580,22 @@ function CourseCard({
         categorized ? (
           <div className="mt-3 space-y-5 animate-slide-up">
             {groups!.map((grp) => (
-              <div key={grp.key || "__none__"}>
+              <div
+                key={grp.key || "__none__"}
+                onDragOver={(e) => {
+                  if (!dragId) return;
+                  e.preventDefault();
+                  setDropOn(`cat:${grp.key}`);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  void dropAssignment(null, grp.key);
+                }}
+                className={cn(
+                  "rounded-lg transition-colors",
+                  dropOn === `cat:${grp.key}` && "bg-primary/[0.06] ring-1 ring-primary/30",
+                )}
+              >
                 <div className="mb-1 flex items-center justify-between border-t border-white/[0.06] pt-3">
                   <span className="text-xs font-semibold">
                     {grp.label}
@@ -542,10 +607,14 @@ function CourseCard({
                     <span className="text-xs text-muted-foreground">{fmtPct(grp.avgPct)} avg</span>
                   )}
                 </div>
+                {grp.items.length === 0 && dragId && (
+                  <p className="py-3 text-center text-xs text-muted-foreground">Drop here to move it to {grp.label}</p>
+                )}
                 <ul className="divide-y divide-white/[0.06]">
                   {grp.items.map((a) => (
                     <AssignmentRow
                       key={a.id}
+                      {...dragProps(a, grp.key)}
                       a={a}
                       course={course}
                       selectMode={selectMode}
@@ -565,6 +634,7 @@ function CourseCard({
             {visible.map((a) => (
               <AssignmentRow
                 key={a.id}
+                {...dragProps(a)}
                 a={a}
                 course={course}
                 selectMode={selectMode}
@@ -587,6 +657,13 @@ function CourseCard({
  * section once the course has grade weights defined.
  */
 function AssignmentRow({
+  draggable = false,
+  dragging = false,
+  dropHere = false,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
   a,
   course,
   selectMode,
@@ -604,13 +681,41 @@ function AssignmentRow({
   onOpen: () => void;
   updateAssignment: (id: string, patch: Record<string, unknown>) => Promise<void>;
   deleteAssignment: (id: string) => Promise<void>;
+  draggable?: boolean;
+  dragging?: boolean;
+  dropHere?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
 }) {
   const due = relativeDue(a.dueAt);
   const past = a.status === "open" && Boolean(due?.past);
   const upcoming = a.status === "open" && !!due && !due.past;
 
   return (
-    <li className={cn("flex flex-wrap items-center gap-3 py-3", past && "opacity-60")}>
+    <li
+      draggable={draggable}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        onDragStart?.();
+      }}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      className={cn(
+        "group/row flex flex-wrap items-center gap-3 py-3",
+        past && "opacity-60",
+        dragging && "opacity-40",
+        dropHere && "shadow-[inset_0_2px_0_hsl(var(--primary))]",
+      )}
+    >
+      {draggable && (
+        <GripVertical
+          className="-ml-1 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/40 transition-colors group-hover/row:text-muted-foreground active:cursor-grabbing"
+          aria-hidden="true"
+        />
+      )}
       {selectMode && (
         <input
           type="checkbox"

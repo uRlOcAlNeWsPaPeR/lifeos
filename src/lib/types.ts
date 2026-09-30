@@ -126,6 +126,8 @@ export interface AssignmentDTO {
   editedByUser?: boolean;
   /** The name the screenshot gave it, so a renamed import still matches its re-read row. */
   importedTitle?: string | null;
+  /** The student's own position in the course list, once they've dragged it. null = by due date. */
+  sortOrder?: number | null;
   provider?: string | null;
   canvasAssignmentId?: string | null;
   canvasUrl?: string | null;
