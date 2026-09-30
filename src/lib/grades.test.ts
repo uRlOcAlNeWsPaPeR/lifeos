@@ -12,6 +12,7 @@ import {
   gpaFromLetter,
   courseGrade,
   estimateGpa,
+  pointsTotal,
   findGpaLevel,
   REGULAR_LEVEL_ID,
   type GpaLevel,
@@ -168,6 +169,30 @@ test("the student's own weights decide the grade when Canvas isn't weighting", (
 test("Canvas's score still wins when Canvas does the weighting (or hasn't said)", () => {
   assert.equal(courseGrade(canvasCourse(true)).pct, 70);
   assert.equal(courseGrade(canvasCourse(undefined)).pct, 70);
+});
+
+const graded = (earned: number | null, possible: number | null, over: Record<string, unknown> = {}) =>
+  ({ id: Math.random().toString(), status: "graded", pointsEarned: earned, pointsPossible: possible, gradeValue: null, ...over }) as never;
+
+test("category total is summed points, not an average of percents", () => {
+  // 1/2 (50%) and 99/100 (99%) average to 74.5%, but the real total is 100/102.
+  const t = pointsTotal([graded(1, 2), graded(99, 100)]);
+  assert.equal(t.earned, 100);
+  assert.equal(t.possible, 102);
+  assert.equal(t.pct, 98.04);
+});
+
+test("open work and letter-only grades stay out of the points total", () => {
+  const t = pointsTotal([
+    graded(8, 10),
+    graded(10, 10, { status: "open" }),
+    graded(null, null, { gradeValue: "A-" }),
+  ]);
+  assert.deepEqual(t, { earned: 8, possible: 10, pct: 80, letterOnly: 1 });
+});
+
+test("no graded points means no percent", () => {
+  assert.equal(pointsTotal([]).pct, null);
 });
 
 report("grades");

@@ -276,6 +276,42 @@ export function pointsPct(rows: PointsRow[]): number | null {
   return Math.round((e / p) * 1000) / 10;
 }
 
+/** Exact points in a set of assignments: total earned out of total possible. */
+export interface PointsTotal {
+  earned: number;
+  possible: number;
+  /** earned / possible, to two decimals. null when nothing graded has points. */
+  pct: number | null;
+  /** Graded work recorded only as a letter or percent, so not in the totals. */
+  letterOnly: number;
+}
+
+/**
+ * Add up every graded assignment's points: the category's real running total
+ * (e.g. 47 / 52), not an average of per-assignment percents.
+ */
+export function pointsTotal(assignments: AssignmentDTO[]): PointsTotal {
+  let earned = 0;
+  let possible = 0;
+  let letterOnly = 0;
+  for (const a of assignments) {
+    if (a.status !== "graded") continue;
+    if (a.pointsEarned != null && a.pointsPossible != null && a.pointsPossible > 0) {
+      earned += a.pointsEarned;
+      possible += a.pointsPossible;
+    } else if (a.gradeValue) {
+      letterOnly++;
+    }
+  }
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    earned: round2(earned),
+    possible: round2(possible),
+    pct: possible > 0 ? round2((earned / possible) * 100) : null,
+    letterOnly,
+  };
+}
+
 /* --------------------------- weighted categories -------------------------- */
 
 export interface WeightRow {

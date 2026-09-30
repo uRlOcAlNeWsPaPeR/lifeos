@@ -36,9 +36,9 @@ import { useAppData } from "@/lib/store/app-data";
 import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName, toInputDate } from "@/lib/format";
 import {
   assignmentGradeLabel,
-  categoryPct,
   courseGrade,
   fmtPct,
+  pointsTotal,
   resolveGradeScale,
   type LetterScaleEntry,
 } from "@/lib/grades";
@@ -309,14 +309,14 @@ function CourseCard({
           label: w.category,
           weight: w.weight as number | null,
           items: visible.filter((a) => (a.category ?? "") === w.category),
-          avgPct: categoryPct(course.assignments.filter((a) => (a.category ?? "") === w.category)),
+          points: pointsTotal(course.assignments.filter((a) => (a.category ?? "") === w.category)),
         }));
         const uncategorized = {
           key: "",
           label: "No category",
           weight: null as number | null,
           items: visible.filter((a) => !known.has(a.category ?? "")),
-          avgPct: null as number | null,
+          points: pointsTotal(visible.filter((a) => !known.has(a.category ?? ""))),
         };
         // Every declared weight category always gets its section, in weight
         // order, even with nothing in it yet — that's the whole point of
@@ -641,9 +641,23 @@ function CourseCard({
                       </span>
                     )}
                   </span>
-                  {grp.avgPct != null && (
-                    <span className="text-xs text-muted-foreground">{fmtPct(grp.avgPct)} avg</span>
-                  )}
+                  {grp.points.pct != null ? (
+                    <span className="text-right text-xs text-muted-foreground">
+                      <span className="tabular-nums">
+                        {fmtPoints(grp.points.earned)} / {fmtPoints(grp.points.possible)} pts ·{" "}
+                        <span className="font-medium text-foreground">{grp.points.pct.toFixed(2)}%</span>
+                      </span>
+                      {grp.points.letterOnly > 0 && (
+                        <span className="block text-[11px]">
+                          +{grp.points.letterOnly} graded by letter only
+                        </span>
+                      )}
+                    </span>
+                  ) : grp.points.letterOnly > 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      {grp.points.letterOnly} graded by letter only
+                    </span>
+                  ) : null}
                 </button>
                 {!collapsed.has(grp.key) && grp.items.length === 0 && dragId && (
                   <p className="py-3 text-center text-xs text-muted-foreground">Drop here to move it to {grp.label}</p>
@@ -2322,4 +2336,9 @@ function AssignmentScreenshotImporter({
       )}
     </Modal>
   );
+}
+
+/** Points without trailing zeros: 47, 12.5, 88.25. */
+function fmtPoints(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
 }
