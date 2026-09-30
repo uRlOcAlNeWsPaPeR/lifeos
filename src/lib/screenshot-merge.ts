@@ -192,3 +192,34 @@ export function mergeCourseWeights(
   }
   return out;
 }
+
+/** What an import needs to know about an assignment the course already has. */
+export interface ExistingAssignment {
+  title: string;
+  dueAt: string | null;
+  fromScreenshot?: boolean;
+  editedByUser?: boolean;
+  importedTitle?: string | null;
+}
+
+/**
+ * Whether a freshly read row is already on the course, so importing it would
+ * duplicate. Normally that's the same title on the same (or an unknown) day.
+ * An import the student edited is matched on its current OR originally
+ * imported name, date aside — they may have fixed the name or date itself,
+ * and it survives a Recheck, so its re-read row must not come back as a copy.
+ */
+export function alreadyOnCourse(
+  existing: ExistingAssignment[],
+  row: { title: string; dueAt: string },
+  replacingImports: boolean,
+): boolean {
+  const k = titleKey(row.title);
+  return existing.some((a) => {
+    if (replacingImports && a.fromScreenshot && !a.editedByUser) return false; // being replaced
+    if (a.editedByUser) {
+      return titleKey(a.title) === k || (!!a.importedTitle && titleKey(a.importedTitle) === k);
+    }
+    return titleKey(a.title) === k && (!a.dueAt || !row.dueAt || a.dueAt.slice(0, 10) === row.dueAt);
+  });
+}

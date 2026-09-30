@@ -46,6 +46,18 @@ import type {
   TaskDTO,
 } from "@/lib/types";
 
+/** The fields a screenshot import fills in — editing any of them marks it as the student's. */
+const IMPORT_FIELDS = new Set([
+  "title",
+  "dueAt",
+  "status",
+  "pointsEarned",
+  "pointsPossible",
+  "gradeValue",
+  "category",
+  "description",
+]);
+
 const rid = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
 const now = () => new Date().toISOString();
 
@@ -633,6 +645,8 @@ export function AppDataProvider({
           pointsPossible: (a.pointsPossible as number) ?? null,
           category: (a.category as string) ?? null,
           fromScreenshot: Boolean(a.fromScreenshot),
+          editedByUser: Boolean(a.editedByUser),
+          importedTitle: (a.importedTitle as string) ?? null,
           provider: (a.provider as string) ?? null,
           canvasAssignmentId: (a.canvasAssignmentId as string) ?? null,
           canvasUrl: (a.canvasUrl as string) ?? null,
@@ -1169,7 +1183,10 @@ export function AppDataProvider({
           const batch = writeBatch(db());
           if (opts?.replaceScreenshot) {
             for (const a of assignmentsRaw) {
-              if (a.courseId === courseId && a.fromScreenshot) batch.delete(entityDoc(uid, "assignments", a.id));
+              // Imports the student has edited are theirs now — keep them.
+              if (a.courseId === courseId && a.fromScreenshot && !a.editedByUser) {
+                batch.delete(entityDoc(uid, "assignments", a.id));
+              }
             }
           }
           for (const it of items) {
@@ -1184,6 +1201,7 @@ export function AppDataProvider({
               pointsPossible: it.pointsPossible ?? null,
               category: it.category ?? null,
               fromScreenshot: true,
+              importedTitle: it.title.trim(),
               createdAt: now(),
             });
           }
@@ -1220,7 +1238,9 @@ export function AppDataProvider({
 
       deleteCourseScreenshots: async (courseId) => {
         const snap = await getDocs(query(col(uid, "courseScreenshots"), where("courseId", "==", courseId)));
-        const mine = assignmentsRaw.filter((a) => a.courseId === courseId && a.fromScreenshot);
+        const mine = assignmentsRaw.filter(
+          (a) => a.courseId === courseId && a.fromScreenshot && !a.editedByUser,
+        );
         const batch = writeBatch(db());
         snap.docs.forEach((d) => batch.delete(d.ref));
         mine.forEach((a) => batch.delete(entityDoc(uid, "assignments", a.id)));
@@ -1229,8 +1249,22 @@ export function AppDataProvider({
         return { shots: snap.size, assignments: mine.length };
       },
 
-      updateAssignment: (id, patch) =>
-        guard(() => updateDoc(entityDoc(uid, "assignments", id), patch as Record<string, unknown>), "Couldn't update assignment").then(() => undefined),
+      updateAssignment: (id, patch) => {
+        // Editing a screenshot import's own fields makes it the student's:
+        // flag it so Recheck keeps it, and remember the imported name (older
+        // imports predate importedTitle) so a rename still matches on re-read.
+        const cur = assignmentsRaw.find((a) => a.id === id);
+        const full: Record<string, unknown> = { ...patch };
+        if (cur?.fromScreenshot && Object.keys(patch).some((k) => IMPORT_FIELDS.has(k))) {
+          full.editedByUser = true;
+          if (!cur.importedTitle && typeof patch.title === "string" && patch.title !== cur.title) {
+            full.importedTitle = cur.title ?? null;
+          }
+        }
+        return guard(() => updateDoc(entityDoc(uid, "assignments", id), full), "Couldn't update assignment").then(
+          () => undefined,
+        );
+      },
 
       deleteAssignment: (id) =>
         guard(async () => {

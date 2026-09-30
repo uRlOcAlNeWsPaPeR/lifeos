@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import { test, report } from "@/lib/test-harness";
 import {
+  alreadyOnCourse,
   canonicalCategory,
   groupByCategory,
   mergeCourseWeights,
@@ -253,6 +254,40 @@ test("merging weights never mutates the course's own list", () => {
   const existing = [{ category: "Tests", weight: 40 }];
   mergeCourseWeights(existing, [{ category: "Tests", weight: 90 }]);
   assert.equal(existing[0].weight, 40);
+});
+
+const imported = (title: string, over: Record<string, unknown> = {}) => ({
+  title,
+  dueAt: "2026-09-10",
+  fromScreenshot: true,
+  editedByUser: false,
+  importedTitle: title,
+  ...over,
+});
+
+test("recheck: an unedited import is being replaced, so its re-read row comes back", () => {
+  assert.equal(alreadyOnCourse([imported("Quiz 3")], { title: "Quiz 3", dueAt: "2026-09-10" }, true), false);
+});
+
+test("recheck: an edited import is kept, so its re-read row is skipped", () => {
+  const edited = imported("Quiz 3", { editedByUser: true });
+  assert.equal(alreadyOnCourse([edited], { title: "Quiz 3", dueAt: "2026-09-10" }, true), true);
+});
+
+test("recheck: a renamed import still matches the row it came from", () => {
+  const renamed = imported("Quiz 3 (retake)", { editedByUser: true, importedTitle: "Quiz 3" });
+  assert.equal(alreadyOnCourse([renamed], { title: "Quiz 3", dueAt: "2026-09-10" }, true), true);
+});
+
+test("recheck: an edited import with a moved due date still matches", () => {
+  const moved = imported("Quiz 3", { editedByUser: true, dueAt: "2026-09-12" });
+  assert.equal(alreadyOnCourse([moved], { title: "Quiz 3", dueAt: "2026-09-10" }, true), true);
+});
+
+test("adding a screenshot: same title on a different day is a different assignment", () => {
+  const manual = { title: "Reading Log", dueAt: "2026-09-01" };
+  assert.equal(alreadyOnCourse([manual], { title: "Reading Log", dueAt: "2026-09-08" }, false), false);
+  assert.equal(alreadyOnCourse([manual], { title: "reading log", dueAt: "2026-09-01" }, false), true);
 });
 
 report("screenshot-merge");

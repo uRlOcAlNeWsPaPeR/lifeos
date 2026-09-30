@@ -119,8 +119,13 @@ export interface AssignmentDTO {
   pointsPossible: number | null;
   /** Which of the course's `gradeWeights` categories this counts toward, if any. */
   category?: string | null;
-  /** Came from a screenshot import — Recheck replaces exactly these. */
+  /** Came from a screenshot import — Recheck replaces these, unless edited. */
   fromScreenshot?: boolean;
+  /** A screenshot import the student has since edited: Recheck and "delete
+   *  screenshots" leave it alone, and a re-read row matching it is skipped. */
+  editedByUser?: boolean;
+  /** The name the screenshot gave it, so a renamed import still matches its re-read row. */
+  importedTitle?: string | null;
   provider?: string | null;
   canvasAssignmentId?: string | null;
   canvasUrl?: string | null;

@@ -44,12 +44,12 @@ import {
 import { cn } from "@/lib/utils";
 import { compressForStorage, compressImage } from "@/lib/image";
 import {
+  alreadyOnCourse,
   canonicalCategory,
   groupByCategory,
   mergeCourseWeights,
   mergeItems,
   mergeWeights,
-  titleKey,
   type ScreenshotDraft,
 } from "@/lib/screenshot-merge";
 import { authedApi } from "@/lib/client";
@@ -1558,14 +1558,15 @@ function AssignmentScreenshotImporter({
   /** Delete every saved screenshot and the assignments that came from them — after a yes/no. */
   async function deleteSaved() {
     if (!course || !saved?.length || deleting) return;
-    const fromShots = course.assignments.filter((a) => a.fromScreenshot).length;
+    const fromShots = course.assignments.filter((a) => a.fromScreenshot && !a.editedByUser).length;
+    const edited = course.assignments.filter((a) => a.fromScreenshot && a.editedByUser).length;
     const yes = await confirm({
       title: "Delete all screenshots?",
       body: `This removes the ${saved.length} saved screenshot${saved.length === 1 ? "" : "s"}${
         fromShots
           ? ` and the ${fromShots} assignment${fromShots === 1 ? "" : "s"} imported from them`
           : ""
-      }. Assignments you added yourself stay.`,
+      }. Assignments you added yourself${edited ? " or edited" : ""} stay.`,
       confirmLabel: "Yes, delete",
       cancelLabel: "No",
       destructive: true,
@@ -1613,15 +1614,8 @@ function AssignmentScreenshotImporter({
     // already holds (a new screenshot overlapping an earlier import). When
     // rechecking, the earlier screenshot imports are being replaced, so only
     // the ones added some other way count as already there.
-    const already = course.assignments.filter((a) => !(replacing && a.fromScreenshot));
-    const fresh = kept.filter(
-      (i) =>
-        !already.some(
-          (a) =>
-            titleKey(a.title) === titleKey(i.title) &&
-            (!a.dueAt || !i.dueAt || a.dueAt.slice(0, 10) === i.dueAt),
-        ),
-    );
+    // Rechecking replaces the earlier imports, except ones the student edited.
+    const fresh = kept.filter((i) => !alreadyOnCourse(course.assignments, i, replacing));
     const skipped = kept.length - fresh.length;
     const count = await onImport(
       course.id,
@@ -1723,8 +1717,10 @@ function AssignmentScreenshotImporter({
           {replacing && (
             <p className="rounded-lg border border-primary/30 bg-primary/[0.06] px-3 py-2 text-xs">
               Rechecking — importing replaces the{" "}
-              {course?.assignments.filter((a) => a.fromScreenshot).length ?? 0} assignments from your
-              earlier screenshots with what&apos;s below.
+              {course?.assignments.filter((a) => a.fromScreenshot && !a.editedByUser).length ?? 0}{" "}
+              assignments from your earlier screenshots with what&apos;s below.
+              {(course?.assignments.filter((a) => a.fromScreenshot && a.editedByUser).length ?? 0) > 0 &&
+                ` The ${course!.assignments.filter((a) => a.fromScreenshot && a.editedByUser).length} you edited are kept as you left them.`}
             </p>
           )}
           {notice && (
