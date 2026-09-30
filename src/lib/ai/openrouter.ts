@@ -166,6 +166,13 @@ export class OpenRouterProvider extends LLMProvider {
         const data = (await res.json()) as {
           choices?: { message?: { content?: string }; finish_reason?: string }[];
         };
+        if (data.choices?.[0]?.finish_reason === "length") {
+          // Cut off at the output cap — a long gradebook read this way keeps
+          // only its first rows (e.g. just the first category). A partial
+          // answer is worse than none, so let the next model read it whole.
+          lastErr = `${model}: output cut off (finish_reason=length)`;
+          break;
+        }
         const text = data.choices?.[0]?.message?.content ?? "";
         if (!text) {
           lastErr = `${model}: no text${

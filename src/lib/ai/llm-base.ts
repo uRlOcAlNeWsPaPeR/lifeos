@@ -477,7 +477,9 @@ const BRAIN_DUMP_IMAGE_SYSTEM = [
   "",
   "OTHER: `estimatedMinutes` a realistic integer or null; `suggestedSlot` null (screenshots rarely state one); `reasoning` one short sentence.",
   "",
-  'Output ONLY minified JSON: {"items":[{"title","notes","category","gradeCategory","suggestedPriority","suggestedDueAt","dueDateWasExplicit","estimatedMinutes","suggestedSlot","reasoning","pointsPossible","pointsEarned","gradeValue"}],"categories":[{"name","weight"}],"summary"}. `summary` is one plain sentence on what the image actually is and what you found (e.g. \"A Canvas grades page with 3 assignments and 2 weighted categories\" or \"A photo of a whiteboard with no assignments\") — the student reads it when nothing usable comes back, so say what you SAW, not just that you found nothing. If the image has neither readable assignments nor a weight table, return {"items":[],"categories":[],"summary":"..."}.',
+  "BREVITY — a gradebook can have 40+ rows and every one must fit, so keep each item small: OMIT any field that would be null, empty, false, or the default (\"medium\" priority). For an already-graded gradebook row, send only title, gradeCategory, its score fields, the date fields when a date is shown, and category — no notes that just repeat the title, no reasoning, no estimatedMinutes. A score or date printed on the row is NEVER optional: always include pointsEarned/pointsPossible (or gradeValue) and suggestedDueAt/dueDateWasExplicit when they're shown. Finishing EVERY row matters far more than any optional field.",
+  "",
+  'Output ONLY minified JSON, weight table first: {"categories":[{"name","weight"}],"items":[{"title","gradeCategory","pointsEarned","pointsPossible","gradeValue","suggestedDueAt","dueDateWasExplicit","category","notes","suggestedPriority","estimatedMinutes","suggestedSlot","reasoning"}],"summary"} — every item field except title is optional per BREVITY above. `summary` is one plain sentence on what the image actually is and what you found (e.g. \"A Canvas grades page with 3 assignments and 2 weighted categories\" or \"A photo of a whiteboard with no assignments\") — the student reads it when nothing usable comes back, so say what you SAW, not just that you found nothing. If the image has neither readable assignments nor a weight table, return {"items":[],"categories":[],"summary":"..."}.',
 ].join("\n");
 
 /**
@@ -648,6 +650,25 @@ const BRAIN_DUMP_IMAGE_SCHEMA = {
           gradeCategory: { type: "string" },
         },
         required: ["title"],
+        // What a gradebook row is FOR — its score, category and date — goes
+        // first; optional task-planning fields trail. Gemini writes fields in
+        // this order, and with the BREVITY rule it stopped before scores that
+        // sat at the end.
+        propertyOrdering: [
+          "title",
+          "gradeCategory",
+          "pointsEarned",
+          "pointsPossible",
+          "gradeValue",
+          "suggestedDueAt",
+          "dueDateWasExplicit",
+          "category",
+          "notes",
+          "suggestedPriority",
+          "estimatedMinutes",
+          "suggestedSlot",
+          "reasoning",
+        ],
       },
     },
     categories: {
@@ -662,6 +683,9 @@ const BRAIN_DUMP_IMAGE_SCHEMA = {
     summary: { type: "string" },
   },
   required: ["items"],
+  // Weight table before the rows: it's short, and it's the part most worth
+  // having if a long read ever runs out of room.
+  propertyOrdering: ["categories", "items", "summary"],
 } as const;
 
 /** Just what brain dump needs — NOT the full LifeOS dump (that only confuses splitting). */

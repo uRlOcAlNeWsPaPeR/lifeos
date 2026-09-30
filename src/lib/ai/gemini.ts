@@ -52,7 +52,9 @@ export class GeminiProvider extends LLMProvider {
         temperature: 0.2,
         // Gemini 3.x reasons by default and rejects thinkingBudget:0; leave a
         // generous budget so reasoning + the JSON answer both fit.
-        maxOutputTokens: 8192,
+        // Screenshots get more: a long gradebook is ~150 tokens a row on top
+        // of the reasoning, and a cut-off read is rejected outright.
+        maxOutputTokens: opts?.image ? 24576 : 8192,
       },
     });
 
@@ -67,11 +69,14 @@ export class GeminiProvider extends LLMProvider {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-goog-api-key": this.apiKey },
             body,
-            signal: AbortSignal.timeout(25_000),
+            // A screenshot read measured 4–41s on flash-lite; text stays at 25s.
+            signal: AbortSignal.timeout(opts?.image ? 50_000 : 25_000),
           });
         } catch (e) {
           lastErr = `${model}: ${(e as Error).message}`;
-          if (attempt < ATTEMPTS_PER_MODEL) {
+          // A model that timed out once is slow right now; retrying it just
+          // doubles the wait. Move on to the next model instead.
+          if ((e as Error).name !== "TimeoutError" && attempt < ATTEMPTS_PER_MODEL) {
             await sleep(500 * attempt);
             continue;
           }
@@ -123,6 +128,12 @@ export class GeminiProvider extends LLMProvider {
         if (!text) {
           lastErr = `${model}: no text${candidate?.finishReason ? ` (${candidate.finishReason})` : ""}`;
           break; // try the next model rather than retrying an empty response
+        }
+        if (candidate?.finishReason === "MAX_TOKENS") {
+          // Cut off at the output cap: a partial gradebook read is worse than
+          // none, so try the next model rather than returning half of it.
+          lastErr = `${model}: output cut off (MAX_TOKENS)`;
+          break;
         }
         return text;
       }

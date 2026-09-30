@@ -67,6 +67,11 @@ export class GroqProvider extends LLMProvider {
               messages,
               response_format: { type: "json_object" },
               temperature: 0.2,
+              // Groq's default output cap is 2,048 tokens, about 13 gradebook
+              // rows. Its free tier allows 8K tokens/min including the ~3.4K
+              // image prompt, so ~4.5K is the most one screenshot can use;
+              // anything longer gets cut off and moves to the next provider.
+              ...(image ? { max_tokens: 4500 } : {}),
             }),
             signal: AbortSignal.timeout(25_000),
           });
@@ -113,6 +118,13 @@ export class GroqProvider extends LLMProvider {
         const data = (await res.json()) as {
           choices?: { message?: { content?: string }; finish_reason?: string }[];
         };
+        if (data.choices?.[0]?.finish_reason === "length") {
+          // Cut off at the output cap — a long gradebook read this way keeps
+          // only its first rows (e.g. just the first category). A partial
+          // answer is worse than none, so let the next model read it whole.
+          lastErr = `${model}: output cut off (finish_reason=length)`;
+          break;
+        }
         const text = data.choices?.[0]?.message?.content ?? "";
         if (!text) {
           lastErr = `${model}: no text${

@@ -3,6 +3,10 @@ import { requireUid } from "@/lib/firebase/admin";
 import { brainDumpImageSchema } from "@/lib/validation";
 import { getAIFor, buildContext, assertAndCountAiUsage, getUserPlan, limitsFor } from "@/lib/ai";
 
+// A long gradebook can take a model 40s+ to read, and a slow one hands off to
+// the next; give the whole chain room rather than dying mid-read.
+export const maxDuration = 120;
+
 /**
  * Same output shape as /api/brain-dump, but the input is a screenshot (Canvas
  * page, planner app, syllabus, whiteboard photo) instead of typed text. Its
