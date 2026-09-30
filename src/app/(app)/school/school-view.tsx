@@ -333,6 +333,28 @@ function CourseCard({
   const { reorderAssignments } = useAppData();
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null); // row id or "cat:<key>"
+
+  // Collapsed category sections, remembered per course in this browser.
+  const collapseKey = `lifeos.collapsedCats.${course.id}`;
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(collapseKey) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleCategory = (key: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem(collapseKey, JSON.stringify([...next]));
+      } catch {
+        /* private mode — just won't be remembered */
+      }
+      return next;
+    });
   const endDrag = () => {
     setDragId(null);
     setDropOn(null);
@@ -596,36 +618,54 @@ function CourseCard({
                   dropOn === `cat:${grp.key}` && "bg-primary/[0.06] ring-1 ring-primary/30",
                 )}
               >
-                <div className="mb-1 flex items-center justify-between border-t border-white/[0.06] pt-3">
-                  <span className="text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(grp.key)}
+                  aria-expanded={!collapsed.has(grp.key)}
+                  className="mb-1 flex w-full items-center justify-between gap-2 border-t border-white/[0.06] pt-3 text-left"
+                >
+                  <span className="flex items-center gap-1.5 text-xs font-semibold">
+                    <ChevronDown
+                      className={cn(
+                        "h-3.5 w-3.5 text-muted-foreground transition-transform",
+                        collapsed.has(grp.key) && "-rotate-90",
+                      )}
+                    />
                     {grp.label}
                     {grp.weight != null && (
-                      <span className="ml-1.5 font-normal text-muted-foreground">{grp.weight}%</span>
+                      <span className="font-normal text-muted-foreground">{grp.weight}%</span>
+                    )}
+                    {collapsed.has(grp.key) && (
+                      <span className="font-normal text-muted-foreground">
+                        · {grp.items.length} assignment{grp.items.length === 1 ? "" : "s"}
+                      </span>
                     )}
                   </span>
                   {grp.avgPct != null && (
                     <span className="text-xs text-muted-foreground">{fmtPct(grp.avgPct)} avg</span>
                   )}
-                </div>
-                {grp.items.length === 0 && dragId && (
+                </button>
+                {!collapsed.has(grp.key) && grp.items.length === 0 && dragId && (
                   <p className="py-3 text-center text-xs text-muted-foreground">Drop here to move it to {grp.label}</p>
                 )}
-                <ul className="divide-y divide-white/[0.06]">
-                  {grp.items.map((a) => (
-                    <AssignmentRow
-                      key={a.id}
-                      {...dragProps(a, grp.key)}
-                      a={a}
-                      course={course}
-                      selectMode={selectMode}
-                      selected={selected.has(a.id)}
-                      onToggleSelect={() => toggleSelect(a.id)}
-                      onOpen={() => onOpenAssignment(a)}
-                      updateAssignment={updateAssignment}
-                      deleteAssignment={deleteAssignment}
-                    />
-                  ))}
-                </ul>
+                {!collapsed.has(grp.key) && (
+                  <ul className="divide-y divide-white/[0.06]">
+                    {grp.items.map((a) => (
+                      <AssignmentRow
+                        key={a.id}
+                        {...dragProps(a, grp.key)}
+                        a={a}
+                        course={course}
+                        selectMode={selectMode}
+                        selected={selected.has(a.id)}
+                        onToggleSelect={() => toggleSelect(a.id)}
+                        onOpen={() => onOpenAssignment(a)}
+                        updateAssignment={updateAssignment}
+                        deleteAssignment={deleteAssignment}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
             ))}
           </div>
