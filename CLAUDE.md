@@ -64,7 +64,7 @@ Refs (web, Mobbin sections): Pally story section, emblem section, footer.
 ### 2026-10-01: landing intro (logo → window reveal)
 Refs (web, Mobbin sections): Ragged Edge (centered lockup), OFF+BRAND (dark screen + center glow), Koto, Telescope / Air (brand opens onto the page).
 - `components/marketing/intro-reveal.tsx`: mark + glow fade in → wordmark slides out + green progress line → mark scales up while a circular mask window (`--hole`) opens onto the hero (~2.4s, GSAP). Pill nav drops in last.
-- Play/skip is decided **before first paint** by `INTRO_SCRIPT` in the root layout `<head>` (sets `<html data-intro>`; `suppressHydrationWarning` on `<html>`): only on `/`, only the **first time this browser ever opens the site** (`localStorage["lifeos.intro"]`; reloads and new tabs don't replay it), never with reduced motion. CSS shows `.intro-overlay` only for `play`, with a 5s failsafe.
+- Play/skip is decided **before first paint** by `INTRO_SCRIPT` in the root layout `<head>` (sets `<html data-intro>`; `suppressHydrationWarning` on `<html>`): only on `/`, once **per tab** (`sessionStorage["lifeos.intro"]`: every new tab plays it, a reload in the same tab doesn't), never with reduced motion. CSS shows `.intro-overlay` only for `play`, with a 5s failsafe.
 - **Not skippable (user's call):** the overlay swallows clicks, and wheel/touchmove/scroll keys are blocked in the capture phase until the timeline completes.
 - Hero `Reveal` delays are offset by `useIntroLead()` so the hero builds in as the window opens. New hero animations should use it too.
 

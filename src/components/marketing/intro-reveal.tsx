@@ -9,16 +9,16 @@ import gsap from "gsap";
  * opens from its center onto the page underneath.
  *
  * Whether it plays is decided before first paint by INTRO_SCRIPT (root
- * layout), which sets <html data-intro="play" | "skip">: only the first time
- * this browser ever opens "/" (localStorage, so reloads and new tabs don't
- * replay it), never with reduced motion. CSS keeps the overlay hidden unless
+ * layout), which sets <html data-intro="play" | "skip">: on "/" in every new
+ * tab (sessionStorage is per tab, so a reload in the same tab doesn't replay
+ * it), never with reduced motion. CSS keeps the overlay hidden unless
  * it's "play", so repeat visits never flash it. It can't be skipped: the
  * overlay blocks clicks and scrolling is held until it finishes.
  */
 
 const SEEN_KEY = "lifeos.intro";
 
-export const INTRO_SCRIPT = `(function(){try{var d=document.documentElement;var p=location.pathname==="/"&&!localStorage.getItem("${SEEN_KEY}")&&!matchMedia("(prefers-reduced-motion: reduce)").matches;d.setAttribute("data-intro",p?"play":"skip");if(p)localStorage.setItem("${SEEN_KEY}","1")}catch(e){}})();`;
+export const INTRO_SCRIPT = `(function(){try{var d=document.documentElement;var p=location.pathname==="/"&&!sessionStorage.getItem("${SEEN_KEY}")&&!matchMedia("(prefers-reduced-motion: reduce)").matches;d.setAttribute("data-intro",p?"play":"skip");if(p)sessionStorage.setItem("${SEEN_KEY}","1")}catch(e){}})();`;
 
 /** Seconds the hero's own entrance should wait so it builds in as the window opens. */
 export const INTRO_HERO_LEAD = 1.3;
