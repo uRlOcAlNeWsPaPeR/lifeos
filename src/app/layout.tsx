@@ -4,6 +4,7 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { BackgroundFX } from "@/components/background-fx";
+import { AmbientScene } from "@/components/three/ambient-scene-loader";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <BackgroundFX />
+          <AmbientScene />
           {children}
           <Toaster />
           <ConfirmHost />

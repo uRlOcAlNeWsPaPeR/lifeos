@@ -153,7 +153,7 @@ export function AssistantView({
   if (booting) return <BootingScreen />;
 
   return (
-    <div ref={stage} className="relative flex h-[100svh] overflow-hidden bg-background">
+    <div ref={stage} className="relative flex h-[100svh] overflow-hidden">
       <UpgradeAd feature="The AI Assistant" />
 
       {/* cursor-follow ambient light — same treatment as the Core */}

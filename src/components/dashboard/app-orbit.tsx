@@ -20,6 +20,7 @@ export function AppOrbit({
   onEnter,
   reducedMotion = false,
   centerAction,
+  sphereRef,
 }: {
   apps: LifeApp[];
   activeIndex: number;
@@ -29,6 +30,8 @@ export function AppOrbit({
   /** When set, replaces the "Enter" button under the active sphere (e.g. the
    *  study-lock bar) and drops the "Tap to enter" hint. */
   centerAction?: React.ReactNode;
+  /** Each sphere's button, so a 3D Core can be drawn over it (see CorePortal). */
+  sphereRef?: (app: LifeApp, el: HTMLButtonElement | null) => void;
 }) {
   const n = apps.length;
   const active = apps[activeIndex];
@@ -148,6 +151,7 @@ export function AppOrbit({
           return (
             <button
               key={app.id}
+              ref={sphereRef ? (el) => sphereRef(app, el) : undefined}
               type="button"
               aria-label={centre ? app.enterLabel : `Bring ${app.name} to the center`}
               aria-current={centre ? "true" : undefined}
@@ -173,7 +177,10 @@ export function AppOrbit({
                 willChange: "transform, opacity",
               }}
             >
-              <span className="pointer-events-none block h-full w-full transition-transform duration-300 hover:scale-[1.03]">
+              <span
+                data-core-css
+                className="pointer-events-none block h-full w-full transition-transform duration-300 hover:scale-[1.03]"
+              >
                 <LifeosCore
                   variant="orbit"
                   motif={app.motif}

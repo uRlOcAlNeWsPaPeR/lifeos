@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Menu as MenuIcon,
   ArrowLeft,
@@ -28,6 +28,8 @@ import { greeting, relativeDue, isStaleOverdue, parseDate } from "@/lib/format";
 import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from "@/lib/study-lock";
 import { consumeCoreReform, loadCorePhase, saveCorePhase } from "@/lib/core-phase";
 import { cn } from "@/lib/utils";
+import { SceneCanvas } from "@/components/three/scene-canvas";
+import { sceneStore, useSceneStatus, STATE_LOOK } from "@/lib/scene/scene-store";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
 
 export { resetCoreToHome } from "@/lib/core-phase";
@@ -124,12 +126,51 @@ export function CorePortal() {
     ) : undefined;
 
   useEffect(() => {
-    // warm the routed apps so navigation lands the instant the burst clears
-    LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
+    // Warm the routed apps so navigation lands the instant the burst clears —
+    // idle-deferred so this burst of chunk fetches doesn't compete with the 3D
+    // Core's own chunk for network/parse time right as the Dashboard mounts.
+    const warm = () =>
+      LIFE_APPS.forEach((a) => a.kind === "internal" && a.route && router.prefetch(a.route));
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warm);
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = window.setTimeout(warm, 300);
+    return () => window.clearTimeout(id);
   }, [router]);
 
   const firstName = data.profile.name.split(" ")[0] || "there";
   const m = useMemo(() => buildModel(data, analytics, now), [data, analytics, now]);
+
+  // 3D Core (see components/three). This component stays the source of truth:
+  // it registers the elements each Core is drawn over and how each should
+  // look; the scene follows their on-screen box, opacity and brightness, so
+  // every phase below drives it unchanged. The CSS Core hides only once the
+  // scene is actually drawing, and comes back if it ever fails.
+  const core3d = useSceneStatus() === "ready";
+  const orbitSphereRef = useCallback(
+    (app: LifeApp, el: HTMLElement | null) => sceneStore.setAnchor(`orbit:${app.id}`, el),
+    [],
+  );
+  const heroRef = useCallback((el: HTMLDivElement | null) => sceneStore.setAnchor("hero", el), []);
+  useEffect(() => {
+    const study = STATE_LOOK[m.state];
+    LIFE_APPS.forEach((app, i) =>
+      sceneStore.setLook(`orbit:${app.id}`, {
+        kind: "orbit",
+        active: i === appIndex,
+        // Study is the Core itself, so it carries the day's state colour.
+        hue: app.id === "study" ? study.hue : app.hue,
+        energy: app.id === "study" ? study.energy : 0.45,
+      }),
+    );
+    sceneStore.setLook("hero", {
+      kind: "hero",
+      active: true,
+      hue: boomApp ? boomApp.hue : study.hue,
+      energy: boomApp ? 0.6 : study.energy,
+    });
+  }, [appIndex, m.state, boomApp]);
 
   const reduced = () =>
     typeof window !== "undefined" &&
@@ -299,7 +340,9 @@ export function CorePortal() {
   return (
     <>
       {topBar}
-      <div ref={stage} className="relative h-[100svh] overflow-hidden">
+      <div ref={stage} className={cn("relative h-[100svh] overflow-hidden", core3d && "core3d-on")}>
+        <SceneCanvas />
+
         {/* cursor-follow ambient light — translated, not repainted */}
         <div
           aria-hidden
@@ -339,6 +382,7 @@ export function CorePortal() {
               onActiveChange={setAppIndex}
               onEnter={enterApp}
               centerAction={lockBar}
+              sphereRef={orbitSphereRef}
             />
           </div>
         )}
@@ -349,6 +393,7 @@ export function CorePortal() {
             {phase === "boom" && <BoomFx hue={boomApp?.hue} />}
             {phase === "closing" && <CloseFx hue={boomApp?.hue} />}
             <div
+              ref={heroRef}
               className="relative"
               style={{
                 animation:
@@ -357,7 +402,7 @@ export function CorePortal() {
                     : `core-reform ${TC.reform}ms cubic-bezier(0.22,1,0.36,1) ${TC.reformDelay}ms both`,
               }}
             >
-              <span className="pointer-events-none block">
+              <span data-core-css className="pointer-events-none block">
                 <LifeosCore
                   variant="hero"
                   state={m.state}

@@ -226,6 +226,19 @@ html.lenis body {
   }
 }
 
+/* While the 3D Core is drawing, the CSS Core it replaces steps aside. The DOM
+   buttons stay — they still take every click, key and hover. */
+[data-core-css] {
+  /* unlayered, so it outranks Tailwind's transition-transform on the orbit
+     sphere — keep that hover-scale transition alongside the fade */
+  transition:
+    opacity 320ms ease,
+    transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.core3d-on [data-core-css] {
+  opacity: 0;
+}
+
 /* LifeOS Core detonation */
 @keyframes core-charge {
   to {
