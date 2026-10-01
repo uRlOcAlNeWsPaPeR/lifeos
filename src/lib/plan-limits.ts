@@ -50,6 +50,7 @@ export const COMPED_EMAILS = new Set([
   "vijey7218@mydusd.org",
   "sid.khanuja@gmail.com",
   "avyukth.satish@gmail.com",
+  "neil.mallu@gmail.com",
 ]);
 
 export function isCreator(email: string | null | undefined): boolean {
