@@ -29,7 +29,7 @@ const FAQ = [
 
 export default function PricingPage() {
   return (
-    <div className="mx-auto max-w-6xl px-5 py-20">
+    <div className="mx-auto max-w-6xl px-5 pb-20 pt-28">
       <div className="mx-auto max-w-2xl text-center">
         <p className="text-sm font-medium uppercase tracking-wide text-primary">Pricing</p>
         <h1 className="mt-2 text-4xl font-semibold tracking-tight">

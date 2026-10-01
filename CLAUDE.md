@@ -53,6 +53,22 @@ Refs (web only): HoneyBook home (stat strip), Todoist Today + Linear grouped lis
 - **School folders show what's next**: soonest not-past-due open assignment + its relative due date, overdue count otherwise, and a thin grade bar in the course color.
 - **Empty states dim the ambient backdrop**: `EmptyState` mounts `AmbientDimmer`, which multiplies ambient opacity by `EMPTY_STATE_DIM` (0.4) via `lib/scene/ambient-dim.ts`.
 
+### 2026-10-01: landing page, editorial pass (inspired by Pally)
+Refs (web, Mobbin sections): Pally story section, emblem section, footer.
+- **Floating pill header** on all marketing pages (`(marketing)/layout.tsx`): centered glass pill, fixed over the hero. Marketing pages need ~7rem top padding for their first content.
+- **Story section** (`#story`): one large `font-light` statement paragraph, then a tilted, edge-faded `TodayStill` card (`components/marketing/story-visuals.tsx`, illustrative data) beside short "beats" with one highlighted word each (`Mark` in `page.tsx`).
+- **Core emblem**: `CoreEmblem` is a CSS-only glowing orb standing in for the Dashboard Core. Use it for the brand symbol on marketing pages (no WebGL there).
+- **Footer**: tagline + CTA, link columns, legal row, then a giant faint "LifeOS" wordmark lit by a green radial glow from below.
+- `.text-gradient` (headline text only) has its own bright green stops. Don't point it back at the dark `--g-*` fill stops; that made "Organized." invisible. Gradient text with tight `leading` needs `pb-[0.12em]` or descenders clip.
+
+### 2026-10-01: landing intro (logo → window reveal)
+Refs (web, Mobbin sections): Ragged Edge (centered lockup), OFF+BRAND (dark screen + center glow), Koto, Telescope / Air (brand opens onto the page).
+- `components/marketing/intro-reveal.tsx`: mark + glow fade in → wordmark slides out + green progress line → mark scales up while a circular mask window (`--hole`) opens onto the hero (~2.4s, GSAP). Pill nav drops in last.
+- Play/skip is decided **before first paint** by `INTRO_SCRIPT` in the root layout `<head>` (sets `<html data-intro>`; `suppressHydrationWarning` on `<html>`): only on `/`, only the **first time this browser ever opens the site** (`localStorage["lifeos.intro"]`; reloads and new tabs don't replay it), never with reduced motion. CSS shows `.intro-overlay` only for `play`, with a 5s failsafe.
+- **Not skippable (user's call):** the overlay swallows clicks, and wheel/touchmove/scroll keys are blocked in the capture phase until the timeline completes.
+- Hero `Reveal` delays are offset by `useIntroLead()` so the hero builds in as the window opens. New hero animations should use it too.
+
 ## Gotchas
 
+- Marketing reveals: GSAP's ScrollTrigger is registered in `SmoothScroll`'s effect, which runs *after* the child `Reveal` effects, so reveals log "Missing plugin" and play on load instead of on scroll (pre-existing, unfixed as of 2026-10-01).
 - Never run `npm run build` while `next dev` is running; it corrupts `.next` (app hangs on the logo spinner). Fix: `rm -rf .next`.

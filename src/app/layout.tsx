@@ -6,6 +6,7 @@ import { ConfirmHost } from "@/components/ui/confirm";
 import { BackgroundFX } from "@/components/background-fx";
 import { AmbientScene } from "@/components/three/ambient-scene-loader";
 import { AuthProvider } from "@/lib/firebase/auth-context";
+import { INTRO_SCRIPT } from "@/components/marketing/intro-reveal";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans", display: "swap" });
 
@@ -25,7 +26,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`dark ${inter.variable}`}>
+    // suppressHydrationWarning: INTRO_SCRIPT sets data-intro on <html> before React hydrates.
+    <html lang="en" className={`dark ${inter.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Landing intro: decide play/skip before first paint (see intro-reveal.tsx). */}
+        <script dangerouslySetInnerHTML={{ __html: INTRO_SCRIPT }} />
+      </head>
       <body>
         <AuthProvider>
           <BackgroundFX />

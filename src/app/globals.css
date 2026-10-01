@@ -119,8 +119,10 @@
     pointer-events: none;
   }
 
+  /* Headline text, so it gets its own bright stops — the --g-* stops are
+     deliberately dark (they're fills for buttons/bars) and made this unreadable. */
   .text-gradient {
-    background: linear-gradient(100deg, var(--g-green), var(--g-teal) 55%, var(--g-mint));
+    background: linear-gradient(100deg, hsl(152 62% 52%), hsl(162 58% 58%) 55%, hsl(148 70% 76%));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -549,3 +551,19 @@ html.lenis body {
   text-decoration: underline;
 }
 
+
+/* Landing intro overlay (components/marketing/intro-reveal.tsx). Hidden unless
+   the pre-paint script chose "play"; the failsafe hides it even if JS never runs.
+   The overlay itself swallows clicks while it's up. */
+.intro-overlay {
+  display: none;
+}
+:root[data-intro="play"] .intro-overlay {
+  display: flex;
+  animation: intro-failsafe 0.01s 5s forwards;
+}
+@keyframes intro-failsafe {
+  to {
+    visibility: hidden;
+  }
+}

@@ -26,12 +26,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CursorGlow } from "@/components/marketing/cinematic/cursor-glow";
-import { DeskScene, BookshelfScene, WritingScene } from "@/components/marketing/cinematic/scenes";
+import { DeskScene, WritingScene } from "@/components/marketing/cinematic/scenes";
+import { TodayStill, CoreEmblem } from "@/components/marketing/story-visuals";
+import { IntroReveal, useIntroLead } from "@/components/marketing/intro-reveal";
 import { Reveal, RevealWords, Parallax } from "@/components/marketing/cinematic/scroll-fx";
 
 export default function LandingPage() {
+  const lead = useIntroLead();
   return (
     <>
+      <IntroReveal />
       <CursorGlow />
 
       {/* ─────────────────────────── HERO ─────────────────────────── */}
@@ -43,26 +47,26 @@ export default function LandingPage() {
         </div>
 
         <div className="relative mx-auto max-w-4xl px-6 text-center">
-          <Reveal delay={0.1} y={16} blur={false}>
+          <Reveal delay={lead + 0.1} y={16} blur={false}>
             <Badge tone="primary" className="mx-auto mb-8">
               <Sparkles className="h-3 w-3" /> AI-powered planning for students
             </Badge>
           </Reveal>
           <h1 className="text-[13vw] font-semibold leading-[0.95] tracking-[-0.03em] sm:text-7xl md:text-[5.5rem]">
-            <Reveal delay={0.2}>
+            <Reveal delay={lead + 0.2}>
               <span className="block text-foreground">Your entire student life.</span>
             </Reveal>
-            <Reveal delay={0.42}>
-              <span className="block text-gradient">Organized.</span>
+            <Reveal delay={lead + 0.42}>
+              <span className="block pb-[0.12em] text-gradient">Organized.</span>
             </Reveal>
           </h1>
-          <Reveal delay={0.7} y={14} blur={false}>
+          <Reveal delay={lead + 0.7} y={14} blur={false}>
             <p className="mx-auto mt-7 max-w-xl text-base text-muted-foreground sm:text-lg">
               Assignments, deadlines, goals and study time — one calm system that plans your week
               and knows when to stop.
             </p>
           </Reveal>
-          <Reveal delay={0.85} y={14} blur={false}>
+          <Reveal delay={lead + 0.85} y={14} blur={false}>
             <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link href="/signup">
                 <Button size="lg" className="group w-full sm:w-auto">
@@ -88,25 +92,49 @@ export default function LandingPage() {
         </a>
       </section>
 
-      {/* ───────────────────── ACT I — one place ───────────────────── */}
-      <section id="story" className="relative flex min-h-[100svh] items-center overflow-hidden py-24">
-        <Parallax speed={0.18} className="pointer-events-none absolute -right-[8%] top-1/2 h-[80vh] w-[80vh] -translate-y-1/2 opacity-90">
-          <BookshelfScene />
-        </Parallax>
-        <div className="relative mx-auto w-full max-w-6xl px-6">
-          <div className="max-w-xl">
-            <Reveal blur={false}>
-              <p className="text-xs font-medium uppercase tracking-[0.25em] text-primary">The idea</p>
+      {/* ───────────────────── STORY — one place ───────────────────── */}
+      <section id="story" className="relative overflow-hidden py-28 sm:py-36">
+        <div className="mx-auto max-w-4xl px-6">
+          <Reveal>
+            <p className="text-2xl font-light leading-snug tracking-[-0.01em] text-foreground/90 sm:text-[2rem] sm:leading-[1.3]">
+              School was never one thing. It&apos;s six classes, a sports schedule, a part-time job,
+              a sleep debt, and a dozen deadlines living in five different apps and a paper planner.
+              Staying on top of it shouldn&apos;t be another full-time job.
+            </p>
+          </Reveal>
+        </div>
+
+        <div className="mx-auto mt-20 grid max-w-6xl items-center gap-14 px-6 lg:mt-28 lg:grid-cols-[1.1fr_1fr] lg:gap-20">
+          <Parallax speed={0.1} className="lg:-ml-[12%]">
+            <Reveal y={24}>
+              <TodayStill className="mx-auto max-w-lg lg:max-w-none" />
             </Reveal>
-            <h2 className="mt-4 text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-              <RevealWords text="Every class, every deadline, every plan — on one shelf." />
-            </h2>
-            <Reveal delay={0.15}>
-              <p className="mt-6 text-lg text-muted-foreground">
-                No more five apps and a paper planner. LifeOS holds your whole academic life so you
-                open one thing in the morning and know exactly where you stand.
-              </p>
-            </Reveal>
+          </Parallax>
+
+          <div className="max-w-md space-y-12 text-[15px] leading-relaxed text-muted-foreground">
+            {(
+              [
+                {
+                  lead: <>A planner that doesn&apos;t know your classes isn&apos;t a <Mark>planner</Mark>.</>,
+                  body: "Connect Canvas and your courses, assignments, due dates and grades arrive on their own. Everything else goes in with one brain dump.",
+                },
+                {
+                  lead: <>Five apps is four too many. Keep it in <Mark>one</Mark> place.</>,
+                  body: "Tasks, deadlines, classes, study sessions, goals and grades share one calendar and one morning view, so a change anywhere shows up everywhere.",
+                },
+                {
+                  lead: <>It suggests. You <Mark>decide</Mark>.</>,
+                  body: "Every morning LifeOS picks what to focus on and shows its reasoning. When a plan runs past your bedtime it offers fixes, but the call is always yours.",
+                },
+              ] as const
+            ).map((beat, i) => (
+              <Reveal key={i} delay={i * 0.06}>
+                <div>
+                  <p className="text-base font-medium text-foreground">{beat.lead}</p>
+                  <p className="mt-2.5">{beat.body}</p>
+                </div>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>
@@ -145,6 +173,27 @@ export default function LandingPage() {
               <WritingScene />
             </div>
           </Parallax>
+        </div>
+      </section>
+
+      {/* ─────────────────────── EMBLEM — the Core ─────────────────────── */}
+      <section className="relative overflow-hidden py-28 sm:py-36">
+        <div className="mx-auto max-w-xl px-6 text-center">
+          <Reveal>
+            <p className="text-lg font-light leading-relaxed text-foreground/85 sm:text-xl">
+              At the center of LifeOS is the Core: the one screen you open in the morning. It
+              already knows what&apos;s due, what you planned, and when you want to be asleep.
+            </p>
+          </Reveal>
+          <Reveal delay={0.1} y={20}>
+            <CoreEmblem className="my-16" />
+          </Reveal>
+          <Reveal delay={0.1}>
+            <p className="text-lg font-light leading-relaxed text-muted-foreground sm:text-xl">
+              Tap in, see the three things that matter today, and get on with your day. That&apos;s
+              the whole ritual.
+            </p>
+          </Reveal>
         </div>
       </section>
 
@@ -342,4 +391,9 @@ export default function LandingPage() {
       </section>
     </>
   );
+}
+
+/** Inline highlight for the one word a story beat hinges on. */
+function Mark({ children }: { children: React.ReactNode }) {
+  return <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-primary">{children}</span>;
 }
