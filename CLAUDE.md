@@ -26,7 +26,7 @@ LifeOS has a premium, modern, clean identity: **dark-only, deep green-black surf
 
 **Layout**: sidebar `w-64` glass `<aside>` on `lg+`; below `lg` a sticky blurred top bar + slide-over drawer. Mobile uses safe-area helpers (`.pb-safe`, `.bottom-safe`).
 
-**3D layers**: Dashboard has its own 3D Core; other in-app routes get the ambient backdrop mounted once in `src/app/layout.tsx` (per-route mood in `src/lib/scene/route-mood.ts`). Opaque page backgrounds hide it, so keep page roots transparent.
+**3D layers**: Dashboard has its own 3D Core plus the live nebula backdrop (see the 2026-10-01 nebula entry below); other in-app routes get the ambient backdrop mounted once in `src/app/layout.tsx` (per-route mood in `src/lib/scene/route-mood.ts`). Opaque page backgrounds hide it, so keep page roots transparent.
 
 ## UI / design workflow (Mobbin)
 
@@ -68,7 +68,18 @@ Refs (web, Mobbin sections): Ragged Edge (centered lockup), OFF+BRAND (dark scre
 - **Not skippable (user's call):** the overlay swallows clicks, and wheel/touchmove/scroll keys are blocked in the capture phase until the timeline completes.
 - Hero `Reveal` delays are offset by `useIntroLead()` so the hero builds in as the window opens. New hero animations should use it too.
 
+### 2026-10-01: Dashboard live nebula backdrop
+Ref: the user's own reference image (kept as `public/backdrop/nebula.webp`). Mobbin (web): GitHub globe (rim-lit planet), Cosmos (rocks that shift with the cursor), Grok (light streak), Linear (soft nebula that keeps text readable).
+- **Background only.** Spheres, carousel, click-to-expand and the console are untouched; `core-portal.tsx` just mounts `<NebulaBackdrop>` and passes the Core state, centred app and phase.
+- Files: `components/three/nebula-backdrop.tsx` (capability gate, lazy chunk, 1.4s fade-in, still-image fallback) → `nebula-root.tsx` (its own R3F canvas, fixed `-z-20`) → `nebula-shaders.ts`. Layout and mood are pure config in `lib/scene/nebula.ts` (+ test). One world unit = viewport height; horizontal positions are `u` (fraction of the half-width).
+- Layers, back to front: sky (flowing nebula, stars at two depths, planet top-right whose lit crescent follows the time of day), ribbons (3 additive strips + 2 flares), rocks (2 ridges, rim-lit in patches), motes.
+- Interactions: cursor parallax by depth and a cursor light; a tap on empty space (not controls or cards) sends a ripple and a pulse along the ribbon; the Core detonation flares the sky. Centring SAT turns the sky blue; the day's state tints mostly the ribbons (sky only 10%; a full shift turns the brand teal lime); the console dims it and drops to 24fps.
+- Fallbacks to the still: reduced motion, no WebGL, `?core3d=off`, a crash, a shader compile error, or still too slow after stepping DPR down to 0.6. Own error boundary; never touches `sceneStore`. The CSS cursor glow only renders when the live sky isn't on screen.
+- **The CSS Core is fallback-only (user's call):** on a device that passes the capability check, only the glass Core is ever shown, and it fades itself in (`appear` in `core-orb.tsx`). The old 650ms CSS "entrance" hold is gone. The CSS Core returns only when 3D can't run or the scene fails.
+
 ## Gotchas
 
 - Marketing reveals: GSAP's ScrollTrigger is registered in `SmoothScroll`'s effect, which runs *after* the child `Reveal` effects, so reveals log "Missing plugin" and play on load instead of on scroll (pre-existing, unfixed as of 2026-10-01).
 - Never run `npm run build` while `next dev` is running; it corrupts `.next` (app hangs on the logo spinner). Fix: `rm -rf .next`.
+- GLSL (three compiles as GLSL ES 3.0): `patch` is a reserved word; `pow(x, 2.0)` is undefined for negative `x` (use `x * x`); `smoothstep` with edge0 > edge1 is undefined.
+- WebGL checks: while the desktop app's browser pane is hidden, `requestAnimationFrame` and `ResizeObserver` are paused, so R3F canvases never size or draw there. Use the Playwright browser for visual/FPS checks.

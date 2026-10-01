@@ -29,7 +29,9 @@ import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from
 import { consumeCoreReform, loadCorePhase, saveCorePhase } from "@/lib/core-phase";
 import { cn } from "@/lib/utils";
 import { SceneCanvas } from "@/components/three/scene-canvas";
+import { NebulaBackdrop } from "@/components/three/nebula-backdrop";
 import { sceneStore, useSceneStatus, STATE_LOOK } from "@/lib/scene/scene-store";
+import { useSceneCapability } from "@/lib/scene/use-scene-capability";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
 
 export { resetCoreToHome } from "@/lib/core-phase";
@@ -145,35 +147,13 @@ export function CorePortal() {
   // 3D Core (see components/three). This component stays the source of truth:
   // it registers the elements each Core is drawn over and how each should
   // look; the scene follows their on-screen box, opacity and brightness, so
-  // every phase below drives it unchanged. The CSS Core hides only once the
-  // scene is actually drawing, and comes back if it ever fails.
-  //
-  // Swapping in the moment the scene reports ready made the handoff look
-  // different every visit: the first time, the three.js chunk is slow to load,
-  // so the CSS Core's own spin-and-glow plays for a bit before the 3D one takes
-  // over, which reads as a nice little entrance. Once that chunk is cached
-  // (every visit after), "ready" fires almost instantly and the CSS Core is
-  // swapped out before its animation is ever seen. Holding the swap to a
-  // minimum visible window makes that entrance play every time, not just once.
-  const sceneReady = useSceneStatus() === "ready";
-  const mountedAt = useRef(performance.now());
-  const [core3d, setCore3d] = useState(false);
-  useEffect(() => {
-    if (!sceneReady) {
-      setCore3d(false);
-      return;
-    }
-    const reducedMotion =
-      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const MIN_MS = 650;
-    const left = reducedMotion ? 0 : MIN_MS - (performance.now() - mountedAt.current);
-    if (left <= 0) {
-      setCore3d(true);
-      return;
-    }
-    const t = window.setTimeout(() => setCore3d(true), left);
-    return () => window.clearTimeout(t);
-  }, [sceneReady]);
+  // every phase below drives it unchanged. On a device that can draw it, the
+  // glass Core is the only one ever shown (it fades itself in once loaded);
+  // the CSS Core underneath is just the fallback for devices that can't, or
+  // for a scene that fails.
+  const sceneCap = useSceneCapability();
+  const sceneFailed = useSceneStatus() === "failed";
+  const core3d = !!sceneCap?.ok && !sceneFailed;
   const orbitSphereRef = useCallback(
     (app: LifeApp, el: HTMLElement | null) => sceneStore.setAnchor(`orbit:${app.id}`, el),
     [],
@@ -276,6 +256,21 @@ export function CorePortal() {
 
   const onConsole = phase === "console" || phase === "closing";
 
+  // The backdrop follows the Core: the day's state tints it, a centred routed
+  // app (SAT) recolours it, and the console dims it.
+  const nebulaInput = useMemo(() => {
+    const look = STATE_LOOK[m.state];
+    const app = boomApp ?? LIFE_APPS[appIndex];
+    return {
+      stateHue: look.hue,
+      energy: look.energy,
+      appHue: app && app.id !== "study" ? app.hue : null,
+      phase,
+    };
+  }, [m.state, boomApp, appIndex, phase]);
+  // the live sky lights itself from the cursor — the CSS glow is only for the still
+  const [nebulaLive, setNebulaLive] = useState(false);
+
   const topBar = (
     <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-8">
       <div className="flex items-center gap-2.5">
@@ -365,21 +360,24 @@ export function CorePortal() {
   /* ---------------- cinematic ---------------- */
   return (
     <>
+      <NebulaBackdrop input={nebulaInput} onLiveChange={setNebulaLive} />
       {topBar}
       <div ref={stage} className={cn("relative h-[100svh] overflow-hidden", core3d && "core3d-on")}>
         <SceneCanvas />
 
         {/* cursor-follow ambient light — translated, not repainted */}
-        <div
-          aria-hidden
-          className="pointer-events-none fixed left-0 top-0 -z-10 h-[900px] w-[900px] rounded-full motion-reduce:hidden"
-          style={{
-            background: "radial-gradient(circle, hsl(var(--glow)/0.09), transparent 62%)",
-            transform:
-              "translate3d(calc(var(--mxpx,50vw) - 450px), calc(var(--mypx,35vh) - 450px), 0)",
-            willChange: "transform",
-          }}
-        />
+        {!nebulaLive && (
+          <div
+            aria-hidden
+            className="pointer-events-none fixed left-0 top-0 -z-10 h-[900px] w-[900px] rounded-full motion-reduce:hidden"
+            style={{
+              background: "radial-gradient(circle, hsl(var(--glow)/0.09), transparent 62%)",
+              transform:
+                "translate3d(calc(var(--mxpx,50vw) - 450px), calc(var(--mypx,35vh) - 450px), 0)",
+              willChange: "transform",
+            }}
+          />
+        )}
 
         {/* welcome */}
         {phase !== "console" && (

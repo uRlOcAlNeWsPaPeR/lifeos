@@ -186,7 +186,16 @@ const MINT = hsl(168, 0.7, 0.55);
 export function CoreOrb({ id }: { id: string }) {
   const group = useRef<THREE.Group>(null);
   const tilt = useRef<THREE.Group>(null);
-  const live = useRef({ hue: -1, energy: 0.45, hover: 0, active: 0, tx: 0, ty: 0, time: Math.random() * 50 });
+  const live = useRef({
+    hue: -1,
+    energy: 0.45,
+    hover: 0,
+    active: 0,
+    appear: 0,
+    tx: 0,
+    ty: 0,
+    time: Math.random() * 50,
+  });
 
   const uniforms = useMemo(
     () => ({
@@ -281,6 +290,8 @@ export function CoreOrb({ id }: { id: string }) {
     L.hover += ((near ? 1 : 0) - L.hover) * ease(near ? 10 : 5);
     L.active += ((look.active ? 1 : 0) - L.active) * ease(5);
     L.energy += (look.energy - L.energy) * ease(2);
+    // no CSS Core covers the load any more, so the glass one fades in itself
+    L.appear += (1 - L.appear) * ease(3.5);
     // hue eases the short way round the wheel
     if (L.hue < 0) L.hue = look.hue;
     const dh = ((look.hue - L.hue + 540) % 360) - 180;
@@ -297,7 +308,7 @@ export function CoreOrb({ id }: { id: string }) {
 
     const u = uniforms;
     u.uTime.value = L.time;
-    u.uOpacity.value = opacity;
+    u.uOpacity.value = opacity * L.appear;
     u.uBright.value = bright;
     u.uEnergy.value = L.energy;
     u.uHover.value = L.hover;
