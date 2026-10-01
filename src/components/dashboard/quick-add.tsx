@@ -11,22 +11,27 @@ import { useAppData } from "@/lib/store/app-data";
 import { todayKey } from "@/lib/firebase/schema";
 import { cn } from "@/lib/utils";
 
-type Sheet = null | "task" | "event" | "study" | "reminder";
+export type QuickAddSheet = null | "task" | "event" | "study" | "reminder";
+
+/** The quick creators, shared by this floating control and the mobile dock. */
+export const QUICK_ADD_ACTIONS: {
+  key: Exclude<QuickAddSheet, null>;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { key: "task", label: "Task", icon: ListChecks },
+  { key: "event", label: "Event", icon: CalendarDays },
+  { key: "study", label: "Study session", icon: Timer },
+  { key: "reminder", label: "Reminder", icon: BellRing },
+];
 
 /**
  * Floating LifeOS control — expands into quick creators. Every action opens the
  * same editors used elsewhere, so functionality is identical.
  */
 export function QuickAdd() {
-  const { data, addTask, addEvent, addAlarm } = useAppData();
   const [open, setOpen] = useState(false);
-  const [sheet, setSheet] = useState<Sheet>(null);
-
-  const goals = useMemo(
-    () => data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title })),
-    [data.goals],
-  );
-  const courses = useMemo(() => data.courses.map((c) => ({ id: c.id, name: c.name })), [data.courses]);
+  const [sheet, setSheet] = useState<QuickAddSheet>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,17 +40,7 @@ export function QuickAdd() {
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
-  const actions: { key: Exclude<Sheet, null>; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { key: "task", label: "Task", icon: ListChecks },
-    { key: "event", label: "Event", icon: CalendarDays },
-    { key: "study", label: "Study session", icon: Timer },
-    { key: "reminder", label: "Reminder", icon: BellRing },
-  ];
-
-  async function saveTask(draft: TaskDraft) {
-    const payload = draftToPayload(draft);
-    await addTask({ ...payload, title: payload.title });
-  }
+  const actions = QUICK_ADD_ACTIONS;
 
   return (
     <>
@@ -79,9 +74,31 @@ export function QuickAdd() {
         </button>
       </div>
 
+      <QuickAddSheets sheet={sheet} onClose={() => setSheet(null)} />
+    </>
+  );
+}
+
+/** The editors behind each quick-add action. */
+export function QuickAddSheets({ sheet, onClose }: { sheet: QuickAddSheet; onClose: () => void }) {
+  const { data, addTask, addEvent, addAlarm } = useAppData();
+
+  const goals = useMemo(
+    () => data.goals.filter((g) => g.status === "active").map((g) => ({ id: g.id, title: g.title })),
+    [data.goals],
+  );
+  const courses = useMemo(() => data.courses.map((c) => ({ id: c.id, name: c.name })), [data.courses]);
+
+  async function saveTask(draft: TaskDraft) {
+    const payload = draftToPayload(draft);
+    await addTask({ ...payload, title: payload.title });
+  }
+
+  return (
+    <>
       <TaskEditor
         open={sheet === "task"}
-        onClose={() => setSheet(null)}
+        onClose={onClose}
         onSave={saveTask}
         task={null}
         goals={goals}
@@ -90,21 +107,21 @@ export function QuickAdd() {
       <EventEditor
         open={sheet === "event" || sheet === "study"}
         dateKey={todayKey()}
-        onClose={() => setSheet(null)}
+        onClose={onClose}
         onSave={async (p) => {
           await addEvent({
             ...p,
             kind: sheet === "study" ? "study_session" : p.kind,
           });
-          setSheet(null);
+          onClose();
         }}
       />
       <ReminderSheet
         open={sheet === "reminder"}
-        onClose={() => setSheet(null)}
+        onClose={onClose}
         onSave={async (label, time, sound) => {
           await addAlarm({ label, time, kind: "custom", sound, repeatDays: [], enabled: true });
-          setSheet(null);
+          onClose();
         }}
       />
     </>

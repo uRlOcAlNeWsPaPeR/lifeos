@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
+import { StatStrip, StatItem } from "@/components/ui/stat-strip";
 import { Progress } from "@/components/ui/progress";
 import { BarChart, GroupedBarChart, Donut } from "@/components/app/charts";
 import { CheckCircle2, AlertTriangle, Target, Flame, Lock, ArrowRight } from "lucide-react";
@@ -21,18 +22,18 @@ export function AnalyticsView({ header = true }: { header?: boolean }) {
         />
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Stat icon={CheckCircle2} label="Completed tasks" value={a.completedTotal} sub={`${a.completed7d} in the last 7 days`} />
-        <Stat
+      <StatStrip className="grid-cols-2 xl:grid-cols-4">
+        <StatItem icon={CheckCircle2} label="Completed tasks" value={a.completedTotal} sub={`${a.completed7d} in the last 7 days`} />
+        <StatItem
           icon={AlertTriangle}
           label="Tasks overdue"
           value={a.overdueOpen}
           sub={`${a.openTotal} open total`}
           tone={a.overdueOpen > 0 ? "warning" : "default"}
         />
-        <Stat icon={Target} label="Avg goal progress" value={`${a.avgGoalProgress}%`} sub={`${a.activeGoals} active goals`} />
-        <Stat icon={Flame} label="Completion streak" value={`${a.streakDays}d`} sub="days with a task done" />
-      </div>
+        <StatItem icon={Target} label="Avg goal progress" value={`${a.avgGoalProgress}%`} sub={`${a.activeGoals} active goals`} />
+        <StatItem icon={Flame} label="Completion streak" value={`${a.streakDays}d`} sub="days with a task done" />
+      </StatStrip>
 
       {!full ? (
         <Card className="mt-6 flex flex-col items-center gap-3 border-primary/30 bg-primary/[0.05] p-8 text-center">
@@ -144,38 +145,5 @@ export function AnalyticsView({ header = true }: { header?: boolean }) {
         </>
       )}
     </>
-  );
-}
-
-function Stat({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  tone = "default",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: React.ReactNode;
-  sub?: string;
-  tone?: "default" | "warning";
-}) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span
-          className={
-            tone === "warning"
-              ? "flex h-9 w-9 items-center justify-center rounded-xl border border-warning/30 bg-warning/10 text-warning"
-              : "flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary"
-          }
-        >
-          <Icon className="h-4 w-4" />
-        </span>
-      </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
-      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-    </Card>
   );
 }

@@ -84,7 +84,7 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
         plan={data.profile.plan}
       />
       <main className="flex-1 lg:h-screen lg:overflow-y-auto scrollbar-thin">
-        <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-8 sm:py-8 lg:px-10">
+        <div className="mx-auto w-full max-w-[1600px] px-4 py-6 pb-28 sm:px-8 sm:py-8 sm:pb-28 lg:px-10 lg:pb-8">
           {children}
         </div>
       </main>

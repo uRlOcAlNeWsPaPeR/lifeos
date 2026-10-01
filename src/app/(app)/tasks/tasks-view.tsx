@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Plus, ListChecks, Clock, Flame, CalendarClock, CalendarX2 } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { StatStrip, StatItem } from "@/components/ui/stat-strip";
 import { EmptyState } from "@/components/ui/misc";
 import { TaskItem } from "@/components/app/task-item";
 import { TaskEditor, draftToPayload, type TaskDraft } from "@/components/app/task-editor";
@@ -126,6 +126,45 @@ export function TasksView() {
     { id: "completed", label: "Completed", count: buckets.completed.length },
   ];
 
+  // "All open" reads better grouped by when — Linear/Todoist-style sections —
+  // using the same date each group already sorts by (planned → when you'll
+  // work on it, unplanned → when it's due). Every other tab is one flat list.
+  // Order within a section is the list's own order, so drag-reorder still
+  // works the same.
+  const sections = useMemo(() => {
+    if (tab !== "all") return [{ key: "flat", label: null as string | null, tasks: list }];
+    const now = new Date();
+    const eod = new Date(now);
+    eod.setHours(23, 59, 59, 999);
+    const eow = new Date(eod);
+    eow.setDate(eow.getDate() + 6);
+    const defs = [
+      { key: "overdue", label: "Overdue" },
+      { key: "today", label: "Today" },
+      { key: "week", label: "Next 7 days" },
+      { key: "later", label: "Later" },
+      { key: "none", label: "No date" },
+    ];
+    const byKey = new Map<string, TaskDTO[]>(defs.map((d) => [d.key, []]));
+    for (const t of list) {
+      const raw = group === "planned" ? t.scheduledAt : t.dueAt;
+      const when = raw ? (group === "planned" ? new Date(raw) : parseDate(raw)) : null;
+      const key = !when
+        ? "none"
+        : group === "unplanned" && when < now
+          ? "overdue"
+          : when <= eod
+            ? "today"
+            : when <= eow
+              ? "week"
+              : "later";
+      byKey.get(key)!.push(t);
+    }
+    return defs
+      .map((d) => ({ key: d.key, label: d.label as string | null, tasks: byKey.get(d.key)! }))
+      .filter((d) => d.tasks.length > 0);
+  }, [tab, list, group]);
+
   return (
     <>
       <PageHeader
@@ -138,73 +177,71 @@ export function TasksView() {
         }
       />
 
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
-        <StatChip icon={ListChecks} label="Open tasks" value={allOpen.length} />
-        <StatChip icon={Clock} label="Estimated work" value={fmtDuration(totalMinutes) || "0m"} />
-        <StatChip
+      <StatStrip className="mb-6 grid-cols-3">
+        <StatItem compact icon={ListChecks} label="Open" value={allOpen.length} />
+        <StatItem compact icon={Clock} label="Est. work" value={fmtDuration(totalMinutes) || "0m"} />
+        <StatItem
+          compact
           icon={Flame}
           label="Overdue"
           value={overdue}
-          tone={overdue > 0 ? "warn" : "ok"}
+          tone={overdue > 0 ? "warning" : "default"}
         />
-      </div>
+      </StatStrip>
 
-      <div className="mb-3 grid grid-cols-2 gap-2">
-        {groups.map((g) => (
-          <button
-            key={g.id}
-            onClick={() => {
-              setGroup(g.id);
-              setTab("today");
-            }}
-            className={cn(
-              "flex items-center gap-2.5 rounded-2xl border p-3.5 text-left transition-all duration-200",
-              group === g.id
-                ? "border-primary/40 bg-gradient-to-r from-primary/20 to-primary/5 shadow-[inset_0_0_0_1px_hsl(var(--glow)/0.3)]"
-                : "border-white/[0.07] bg-card/60 hover:border-white/15",
-            )}
-          >
-            <div
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div
+          role="group"
+          aria-label="Planned or unplanned tasks"
+          className="grid shrink-0 grid-cols-2 gap-1 rounded-full border border-white/[0.07] bg-card/60 p-1 backdrop-blur-xl"
+        >
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              aria-pressed={group === g.id}
+              onClick={() => {
+                setGroup(g.id);
+                setTab("today");
+              }}
               className={cn(
-                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl",
-                group === g.id ? "bg-primary/20 text-primary" : "bg-white/[0.05] text-muted-foreground",
+                "flex items-center justify-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200",
+                group === g.id
+                  ? "bg-primary/15 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--glow)/0.3)]"
+                  : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <g.icon className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold">{g.label}</p>
-              <p className="text-xs text-muted-foreground">
-                {g.count} open task{g.count === 1 ? "" : "s"}
-              </p>
-            </div>
-          </button>
-        ))}
-      </div>
+              <g.icon className={cn("h-4 w-4", group === g.id && "text-primary")} />
+              {g.label}
+              <span className="text-xs tabular-nums text-muted-foreground">{g.count}</span>
+            </button>
+          ))}
+        </div>
 
-      <div className="mb-5 flex gap-1 overflow-x-auto rounded-2xl border border-white/[0.07] bg-card/60 p-1.5 backdrop-blur-xl">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200",
-              tab === t.id
-                ? "bg-gradient-to-r from-primary/25 to-primary/5 text-foreground shadow-[inset_0_0_0_1px_hsl(var(--glow)/0.3)]"
-                : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
-            )}
-          >
-            {t.label}
-            <span
+        <div className="-mx-4 flex gap-1 overflow-x-auto px-4 scrollbar-none sm:mx-0 sm:px-0">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              aria-pressed={tab === t.id}
               className={cn(
-                "rounded-full px-2 py-0.5 text-xs",
-                tab === t.id ? "bg-primary/25 text-primary" : "bg-white/[0.06]",
+                "flex shrink-0 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                tab === t.id
+                  ? "bg-white/[0.07] text-foreground"
+                  : "text-muted-foreground hover:bg-white/5 hover:text-foreground",
               )}
             >
-              {t.count}
-            </span>
-          </button>
-        ))}
+              {t.label}
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs tabular-nums",
+                  tab === t.id ? "text-primary" : "text-muted-foreground",
+                )}
+              >
+                {t.count}
+              </span>
+            </button>
+          ))}
+        </div>
       </div>
 
       {list.length === 0 ? (
@@ -229,26 +266,47 @@ export function TasksView() {
           }
         />
       ) : (
-        <div className="space-y-2.5">
-          {list.map((task) => (
-            <div
-              key={task.id}
-              draggable={tab !== "completed"}
-              onDragStart={() => setDragId(task.id)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(task.id)}
-              className={cn("transition-opacity", dragId === task.id && "opacity-40")}
-            >
-              <TaskItem
-                task={task}
-                onToggle={(t) => toggleTask(t.id)}
-                onRestore={(t) => toggleTask(t.id)}
-                onEdit={setEditing}
-                onDelete={(t) => deleteTask(t.id)}
-                draggable={tab !== "completed"}
-              />
-            </div>
+        <div className="space-y-6">
+          {sections.map((section) => (
+            <section key={section.key}>
+              {section.label && (
+                <h2 className="mb-2 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">
+                  <span className={cn(section.key === "overdue" && "text-warning")}>{section.label}</span>
+                  <span className="tabular-nums text-muted-foreground/60">{section.tasks.length}</span>
+                </h2>
+              )}
+              <div className="space-y-2">
+                {section.tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    draggable={tab !== "completed"}
+                    onDragStart={() => setDragId(task.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => onDrop(task.id)}
+                    className={cn("transition-opacity", dragId === task.id && "opacity-40")}
+                  >
+                    <TaskItem
+                      task={task}
+                      onToggle={(t) => toggleTask(t.id)}
+                      onRestore={(t) => toggleTask(t.id)}
+                      onEdit={setEditing}
+                      onDelete={(t) => deleteTask(t.id)}
+                      draggable={tab !== "completed"}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
           ))}
+          {tab !== "completed" && (
+            <button
+              onClick={() => setCreating(true)}
+              className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-white/[0.08] px-4 py-3 text-sm text-muted-foreground transition-colors hover:border-primary/30 hover:bg-primary/[0.04] hover:text-foreground"
+            >
+              <Plus className="h-4 w-4 text-primary" />
+              Add task
+            </button>
+          )}
         </div>
       )}
 
@@ -264,36 +322,5 @@ export function TasksView() {
         courses={courses}
       />
     </>
-  );
-}
-
-function StatChip({
-  icon: Icon,
-  label,
-  value,
-  tone = "default",
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: React.ReactNode;
-  tone?: "default" | "warn" | "ok";
-}) {
-  return (
-    <Card className="flex items-center gap-3 p-4">
-      <div
-        className={cn(
-          "flex h-10 w-10 items-center justify-center rounded-xl border",
-          tone === "warn"
-            ? "border-warning/30 bg-warning/10 text-warning"
-            : "border-white/10 bg-white/[0.04] text-primary",
-        )}
-      >
-        <Icon className="h-5 w-5" />
-      </div>
-      <div>
-        <p className="text-xl font-semibold tracking-tight">{value}</p>
-        <p className="text-xs text-muted-foreground">{label}</p>
-      </div>
-    </Card>
   );
 }

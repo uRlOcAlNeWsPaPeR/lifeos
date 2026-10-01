@@ -5,6 +5,7 @@ import { Percent, GraduationCap, ChevronDown, BookOpen, Calculator, Scale, Plus,
 import Link from "next/link";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
+import { StatStrip, StatItem } from "@/components/ui/stat-strip";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -111,7 +112,7 @@ export function GradesView() {
         />
       ) : (
         <div className="space-y-8">
-          <div className="grid gap-4 sm:grid-cols-3">
+          <StatStrip className="grid-cols-2 sm:grid-cols-3">
             <GpaStat
               gpa={gpa}
               other={weighted ? unweighted : weightedGpa}
@@ -124,9 +125,9 @@ export function GradesView() {
               onEditLevels={() => setLevelsOpen(true)}
               onEditPoints={() => setPointsOpen(true)}
             />
-            <Stat label="Average grade" value={avg == null ? "—" : fmtPct(avg)} sub={`${graded.length} class${graded.length === 1 ? "" : "es"} with a grade`} />
-            <Stat label="Classes tracked" value={courses.length} sub={`${courses.filter((c) => c.provider === "canvas").length} from Canvas`} />
-          </div>
+            <StatItem compact icon={Percent} label="Average grade" value={avg == null ? "—" : fmtPct(avg)} sub={`${graded.length} class${graded.length === 1 ? "" : "es"} with a grade`} />
+            <StatItem compact icon={GraduationCap} label="Classes tracked" value={courses.length} sub={`${courses.filter((c) => c.provider === "canvas").length} from Canvas`} />
+          </StatStrip>
 
           <div className="space-y-4">
             {courses.map((c) => (
@@ -248,7 +249,7 @@ function GpaStat({
   const [showMath, setShowMath] = useState(false);
   const worth = (c: GpaClassPoints) => (weighted ? c.points + c.bonus : c.points);
   return (
-    <Card className="p-5">
+    <StatItem className="col-span-2 sm:col-span-1">
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm text-muted-foreground">
           {weighted ? "Weighted GPA" : "Unweighted GPA"}
@@ -327,7 +328,7 @@ function GpaStat({
           </p>
         </div>
       )}
-    </Card>
+    </StatItem>
   );
 }
 
@@ -537,21 +538,6 @@ function GpaLevelsModal({
         </div>
       </form>
     </Modal>
-  );
-}
-
-function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
-  return (
-    <Card className="p-5">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">{label}</span>
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-primary">
-          <Percent className="h-4 w-4" />
-        </span>
-      </div>
-      <p className="mt-3 text-3xl font-semibold tracking-tight">{value}</p>
-      {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-    </Card>
   );
 }
 

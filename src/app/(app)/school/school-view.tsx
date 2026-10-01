@@ -33,7 +33,7 @@ import { confirm } from "@/components/ui/confirm";
 import { Field, Input, Select } from "@/components/ui/input";
 import { BrainDumpLoader } from "@/components/app/brain-dump-loader";
 import { useAppData } from "@/lib/store/app-data";
-import { relativeDue, fmtDate, timeAgo, courseNameWithTeacher, lastName, toInputDate } from "@/lib/format";
+import { relativeDue, fmtDate, parseDate, timeAgo, courseNameWithTeacher, lastName, toInputDate } from "@/lib/format";
 import {
   assignmentGradeLabel,
   courseGrade,
@@ -215,7 +215,13 @@ function CourseFolder({
   onOpen: () => void;
 }) {
   const g = courseGrade(course, scale);
-  const openCount = course.assignments.filter((a) => a.status === "open").length;
+  const open = course.assignments.filter((a) => a.status === "open");
+  const overdueCount = open.filter((a) => relativeDue(a.dueAt)?.past).length;
+  // What's actually next: the soonest open assignment that isn't already past due.
+  const next = open
+    .filter((a) => a.dueAt && !relativeDue(a.dueAt)?.past)
+    .sort((a, b) => parseDate(a.dueAt!).getTime() - parseDate(b.dueAt!).getTime())[0];
+  const nextDue = next ? relativeDue(next.dueAt) : null;
   const grade = g.letter ?? (g.pct != null ? fmtPct(g.pct) : null);
 
   return (
@@ -226,7 +232,7 @@ function CourseFolder({
         style={{ background: course.color }}
       />
       <div
-        className="relative flex min-h-[7rem] flex-col rounded-2xl rounded-tl-md border p-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-glow-sm"
+        className="relative flex min-h-[8.5rem] flex-col rounded-2xl rounded-tl-md border p-4 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-glow-sm"
         style={{
           borderColor: `${course.color}44`,
           background: `linear-gradient(155deg, ${course.color}18, transparent 65%)`,
@@ -240,11 +246,42 @@ function CourseFolder({
           </div>
         </div>
         <p className="mt-2 line-clamp-2 text-sm font-medium leading-snug">{course.name}</p>
-        <p className="mt-auto pt-1 text-xs text-muted-foreground">
-          {openCount > 0
-            ? `${openCount} open assignment${openCount === 1 ? "" : "s"}`
-            : "Nothing open"}
-        </p>
+
+        <div className="mt-auto space-y-2.5 pt-3">
+          {g.pct != null && (
+            <div className="h-1 overflow-hidden rounded-full bg-white/[0.06]">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${Math.min(100, Math.max(0, g.pct))}%`, background: course.color }}
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2 text-xs">
+            {next ? (
+              <span className="min-w-0 truncate text-muted-foreground">
+                <span className="text-foreground/80">Next:</span> {next.title}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                {open.length > 0
+                  ? `${open.length} open assignment${open.length === 1 ? "" : "s"}`
+                  : "Nothing open"}
+              </span>
+            )}
+            {nextDue ? (
+              <span
+                className={cn(
+                  "shrink-0 font-medium",
+                  nextDue.tone === "warning" ? "text-warning" : "text-primary",
+                )}
+              >
+                {nextDue.label}
+              </span>
+            ) : overdueCount > 0 ? (
+              <span className="shrink-0 text-muted-foreground">{overdueCount} overdue</span>
+            ) : null}
+          </div>
+        </div>
       </div>
     </button>
   );

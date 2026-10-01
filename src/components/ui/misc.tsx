@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { AmbientDimmer } from "@/components/three/ambient-dimmer";
 
 export function EmptyState({
   icon: Icon,
@@ -14,6 +15,7 @@ export function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border px-6 py-12 text-center">
+      <AmbientDimmer />
       {Icon && (
         <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-xl bg-accent text-accent-foreground">
           <Icon className="h-5 w-5" />

@@ -179,6 +179,13 @@
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background: hsl(var(--muted-foreground) / 0.4);
   }
+  /* Sideways-scrolling chip rows on phones — still scrollable, no bar. */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .hero-grid {
@@ -396,7 +403,14 @@ html.lenis body {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 .bottom-safe {
-  bottom: max(1rem, env(safe-area-inset-bottom));
+  bottom: calc(max(1rem, env(safe-area-inset-bottom)) + var(--dock-offset, 0px));
+}
+/* The phone dock (components/app/mobile-dock.tsx) marks <html data-dock>
+   while mounted; toasts and the undo bar lift above it. */
+@media (max-width: 1023px) {
+  :root[data-dock] {
+    --dock-offset: 4.5rem;
+  }
 }
 
 /* ------------------------------------------------------------------ *

@@ -5,6 +5,7 @@ import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { RouteMood } from "@/lib/scene/route-mood";
 import { getQualityTier } from "@/lib/scene/use-scene-capability";
+import { ambientDimFactor } from "@/lib/scene/ambient-dim";
 
 const LOW_COUNT = 70;
 const HIGH_COUNT = 150;
@@ -191,7 +192,7 @@ function Field({ mood, count }: { mood: RouteMood; count: number }) {
     const u = material.uniforms;
     u.uTime.value = L.time;
     u.uSpeed.value = L.speed;
-    u.uOpacity.value += (mood.opacity - u.uOpacity.value) * ease(1.2);
+    u.uOpacity.value += (mood.opacity * ambientDimFactor() - u.uOpacity.value) * ease(1.2);
     u.uPx.value = state.viewport.dpr * 55;
 
     // hue eases the short way round the wheel
@@ -237,7 +238,7 @@ function Shapes({ mood }: { mood: RouteMood }) {
 
   useFrame((state, dt) => {
     const ease = (k: number) => 1 - Math.exp(-k * Math.min(dt, 0.1));
-    opacity.current += (mood.opacity * 0.4 - opacity.current) * ease(1.2);
+    opacity.current += (mood.opacity * 0.4 * ambientDimFactor() - opacity.current) * ease(1.2);
     color.current.lerp(hsl(mood.hue, 0.45, 0.5), ease(1.0));
 
     refs.current.forEach((mesh, i) => {

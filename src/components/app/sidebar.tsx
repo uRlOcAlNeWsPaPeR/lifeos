@@ -37,6 +37,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn, initials } from "@/lib/utils";
 import { useAuth } from "@/lib/firebase/auth-context";
 import { SearchTrigger } from "@/components/app/command-palette";
+import { MobileDock } from "@/components/app/mobile-dock";
 import { useSat } from "@/lib/sat/store";
 import { flagCoreReform, resetCoreToHome } from "@/lib/core-phase";
 
@@ -296,6 +297,9 @@ export function Sidebar({
           </div>
         </div>
       )}
+
+      {/* Phone dock — the most-used pages + quick add, one tap away */}
+      {!controlled && <MobileDock />}
 
       {/* Desktop sidebar */}
       {!controlled && (
