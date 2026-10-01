@@ -43,7 +43,24 @@ export default function DashboardError({
           Reload page
         </Button>
       </div>
-      {error.digest && <p className="text-xs text-muted-foreground/60">Error ref: {error.digest}</p>}
+      {/* Shown in the page itself, not just the console — so whoever hits this
+          can screenshot or copy it straight off the screen without opening
+          DevTools. A client-thrown error's message is never redacted (that
+          only happens to server-rendering errors), so this is always the real
+          text. */}
+      <div className="mt-2 max-w-lg rounded-lg border border-white/10 bg-white/[0.03] p-3 text-left">
+        <p className="font-mono text-xs text-destructive">
+          {error.name}: {error.message}
+        </p>
+        {error.stack && (
+          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap font-mono text-[10px] text-muted-foreground/70">
+            {error.stack}
+          </pre>
+        )}
+        {error.digest && (
+          <p className="mt-1 text-[10px] text-muted-foreground/50">Error ref: {error.digest}</p>
+        )}
+      </div>
     </div>
   );
 }
