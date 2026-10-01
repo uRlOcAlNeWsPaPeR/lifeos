@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
 import { sceneStore, useAnchorKey } from "@/lib/scene/scene-store";
 import { CoreOrb, pointer } from "./core-orb";
@@ -43,13 +43,7 @@ export default function SceneRoot({ className }: { className?: string }) {
         premultipliedAlpha: true,
       }}
       style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
-      onCreated={({ gl }) => {
-        gl.setClearColor(0x000000, 0);
-        gl.domElement.addEventListener("webglcontextlost", (e) => {
-          e.preventDefault();
-          sceneStore.setStatus("failed", "context-lost");
-        });
-      }}
+      onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
       {/* Step resolution down (never below 1) when frames drop; back up when
           they recover. This only ever adjusts dpr — the actual fallback
@@ -60,12 +54,40 @@ export default function SceneRoot({ className }: { className?: string }) {
       />
       <PointerTracker />
       <ReadySignal />
+      <ContextLossWatcher />
       <FpsWatchdog />
       {ids.map((id) => (
         <CoreOrb key={id} id={id} />
       ))}
     </Canvas>
   );
+}
+
+/**
+ * Watches for a *genuine* loss of this canvas's WebGL context — not the one
+ * R3F itself triggers on the way out. Unmounting (leaving the Dashboard, or
+ * React remounting this Canvas) makes R3F call `gl.forceContextLoss()` so the
+ * context is freed immediately rather than left for the GC — standard, and
+ * fine. But `webglcontextlost` is dispatched asynchronously (queued as a
+ * task, per spec), so without this check it fires *after* this component is
+ * already gone and lands on the next Dashboard visit's fresh canvas, marking
+ * a perfectly healthy scene "failed" and hiding the glass Core for the rest
+ * of the session. Checking the element is still attached tells the two
+ * apart: a real loss happens to a canvas still on screen; ours has already
+ * been removed from the DOM by the time the event arrives.
+ */
+function ContextLossWatcher() {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const el = gl.domElement;
+    const onLost = (e: Event) => {
+      e.preventDefault();
+      if (document.contains(el)) sceneStore.setStatus("failed", "context-lost");
+    };
+    el.addEventListener("webglcontextlost", onLost);
+    return () => el.removeEventListener("webglcontextlost", onLost);
+  }, [gl]);
+  return null;
 }
 
 /** Marks the scene ready once it has actually drawn a couple of frames. */

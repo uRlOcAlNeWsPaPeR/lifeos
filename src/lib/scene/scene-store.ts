@@ -102,6 +102,15 @@ export const sceneStore = {
   },
 };
 
+/** Re-renders when either the status or its reason changes. */
+export function useSceneStatusDetail(): { status: SceneStatus; reason: string | null } {
+  return useSyncExternalStore(
+    sceneStore.subscribe,
+    () => ({ status: state.status, reason: state.reason }),
+    () => ({ status: "off" as SceneStatus, reason: null }),
+  );
+}
+
 /** Re-renders only when the status changes. */
 export function useSceneStatus(): SceneStatus {
   return useSyncExternalStore(
