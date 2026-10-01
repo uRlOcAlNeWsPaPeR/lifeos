@@ -42,6 +42,16 @@ const state: SceneState = { status: "off", reason: null, els: new Map(), looks: 
 const listeners = new Set<() => void>();
 let anchorKey = "";
 
+// A stable object for useSceneStatusDetail's snapshot. useSyncExternalStore
+// compares what getSnapshot returns with Object.is, so a getSnapshot that
+// builds `{ status, reason }` fresh on every call always looks "changed" —
+// which makes React re-render, call it again, see it "changed" again, and
+// loop forever (React error #185). Replacing this reference only when the
+// status or reason actually change is what keeps it referentially stable
+// the rest of the time.
+let statusDetail: { status: SceneStatus; reason: string | null } = { status: "off", reason: null };
+const OFF_DETAIL = { status: "off" as SceneStatus, reason: null };
+
 function notify() {
   listeners.forEach((l) => l());
 }
@@ -68,6 +78,7 @@ export const sceneStore = {
     if (state.status === status && state.reason === reason) return;
     state.status = status;
     state.reason = reason;
+    statusDetail = { status, reason };
     notify();
   },
 
@@ -92,6 +103,11 @@ export const sceneStore = {
     return anchorKey;
   },
 
+  /** Tests only — the raw object useSceneStatusDetail's snapshot returns. */
+  peekStatusDetail() {
+    return statusDetail;
+  },
+
   /** Tests only. */
   reset() {
     state.status = "off";
@@ -99,6 +115,7 @@ export const sceneStore = {
     state.els.clear();
     state.looks.clear();
     anchorKey = "";
+    statusDetail = { status: "off", reason: null };
   },
 };
 
@@ -106,8 +123,8 @@ export const sceneStore = {
 export function useSceneStatusDetail(): { status: SceneStatus; reason: string | null } {
   return useSyncExternalStore(
     sceneStore.subscribe,
-    () => ({ status: state.status, reason: state.reason }),
-    () => ({ status: "off" as SceneStatus, reason: null }),
+    () => statusDetail,
+    () => OFF_DETAIL,
   );
 }
 

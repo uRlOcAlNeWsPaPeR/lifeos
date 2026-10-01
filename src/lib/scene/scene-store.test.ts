@@ -60,4 +60,34 @@ test("status changes notify once; repeats don't", () => {
   c.off();
 });
 
+test("useSceneStatusDetail's snapshot stays referentially stable until something changes", () => {
+  // useSyncExternalStore compares what getSnapshot returns with Object.is on
+  // every render; a getSnapshot that builds a fresh { status, reason } object
+  // each call always looks "changed" and sends React into an infinite
+  // re-render loop — exactly what shipped to production once already. Two
+  // reads with nothing in between must be the same reference, and a real
+  // change must produce a new one.
+  sceneStore.reset();
+  const a = sceneStore.peekStatusDetail();
+  const b = sceneStore.peekStatusDetail();
+  assert.equal(a, b, "no change in between — same object, not a lookalike");
+  sceneStore.setStatus("ready");
+  const c = sceneStore.peekStatusDetail();
+  assert.notEqual(b, c, "a real status change does get a new object");
+  assert.deepEqual(c, { status: "ready", reason: null });
+});
+
+test("setStatus only replaces the shared status/reason snapshot when something actually changed", () => {
+  sceneStore.reset();
+  const c = counting();
+  sceneStore.setStatus("loading");
+  const n1 = c.count();
+  // same status + same reason (both null) — must not notify again
+  sceneStore.setStatus("loading");
+  assert.equal(c.count(), n1, "an identical setStatus call is a no-op, not a fresh notify");
+  sceneStore.setStatus("failed", "too-slow");
+  assert.equal(c.count(), n1 + 1);
+  c.off();
+});
+
 report("scene-store");
