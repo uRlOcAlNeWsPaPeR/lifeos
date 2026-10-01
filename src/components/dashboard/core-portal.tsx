@@ -147,7 +147,33 @@ export function CorePortal() {
   // look; the scene follows their on-screen box, opacity and brightness, so
   // every phase below drives it unchanged. The CSS Core hides only once the
   // scene is actually drawing, and comes back if it ever fails.
-  const core3d = useSceneStatus() === "ready";
+  //
+  // Swapping in the moment the scene reports ready made the handoff look
+  // different every visit: the first time, the three.js chunk is slow to load,
+  // so the CSS Core's own spin-and-glow plays for a bit before the 3D one takes
+  // over, which reads as a nice little entrance. Once that chunk is cached
+  // (every visit after), "ready" fires almost instantly and the CSS Core is
+  // swapped out before its animation is ever seen. Holding the swap to a
+  // minimum visible window makes that entrance play every time, not just once.
+  const sceneReady = useSceneStatus() === "ready";
+  const mountedAt = useRef(performance.now());
+  const [core3d, setCore3d] = useState(false);
+  useEffect(() => {
+    if (!sceneReady) {
+      setCore3d(false);
+      return;
+    }
+    const reducedMotion =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const MIN_MS = 650;
+    const left = reducedMotion ? 0 : MIN_MS - (performance.now() - mountedAt.current);
+    if (left <= 0) {
+      setCore3d(true);
+      return;
+    }
+    const t = window.setTimeout(() => setCore3d(true), left);
+    return () => window.clearTimeout(t);
+  }, [sceneReady]);
   const orbitSphereRef = useCallback(
     (app: LifeApp, el: HTMLElement | null) => sceneStore.setAnchor(`orbit:${app.id}`, el),
     [],
