@@ -2,11 +2,10 @@
 
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CalendarClock, Bell, Timer, User, CreditCard, Sparkles, GraduationCap, Plug, Trophy } from "lucide-react";
+import { CalendarClock, Bell, Timer, User, GraduationCap, Plug, Trophy } from "lucide-react";
 import { PageHeader } from "@/components/app/page-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PricingTable } from "@/components/marketing/pricing-table";
 import {
   LogoutButton,
   ProfileForm,
@@ -19,15 +18,9 @@ import { CanvasSettings } from "./canvas-settings";
 import { GoogleCalendarSettings } from "./google-calendar-settings";
 import { BrainGameLeaderboardSettings } from "./brain-game-leaderboard-settings";
 import { useAppData } from "@/lib/store/app-data";
-import { planLabel, isCreator, hasGrantedPlan } from "@/lib/plan-limits";
 import { SCHOOL_INTEGRATIONS, CALENDAR_INTEGRATIONS } from "@/lib/integrations/descriptors";
 import { IntegrationCard } from "@/components/app/integration-card";
 import { cn } from "@/lib/utils";
-
-function planSummary(l: ReturnType<typeof useAppData>["data"]["limits"]) {
-  const n = (v: number | null) => (v === null ? "Unlimited" : v);
-  return `${n(l.brainDumpsPerWeek)} Brain Dumps/week · ${n(l.assistantPerDay)} Assistant questions/day · ${n(l.maxActiveGoals)} goals · ${l.fullAnalytics ? "full" : "snapshot"} analytics`;
-}
 
 const TABS = [
   { id: "schedule", label: "Schedule", icon: CalendarClock },
@@ -37,7 +30,10 @@ const TABS = [
   { id: "notifications", label: "Notifications", icon: Bell },
   { id: "leaderboard", label: "Leaderboard", icon: Trophy },
   { id: "profile", label: "Profile", icon: User },
-  { id: "plan", label: "Plan", icon: CreditCard },
+  // The Plan tab (billing/pricing) is hidden for now — everyone on this
+  // account is comped to Student+, so showing a pricing tab with nothing to
+  // actually buy was just confusing. Its render code is in git history
+  // (removed alongside this) if it needs to come back.
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -57,7 +53,7 @@ export default function SettingsPage() {
 }
 
 function SettingsPanel() {
-  const { data, setPlan } = useAppData();
+  const { data } = useAppData();
   const router = useRouter();
   const params = useSearchParams();
   const p = data.profile;
@@ -199,35 +195,6 @@ function SettingsPanel() {
             </>
           )}
 
-          {tab === "plan" && (
-            <>
-              <Card className="flex items-center justify-between p-5">
-                <div>
-                  <p className="font-medium">{planLabel(p.plan)} plan</p>
-                  <p className="text-sm text-muted-foreground">{planSummary(data.limits)}</p>
-                </div>
-                <Badge tone={p.plan === "free" ? "muted" : "primary"}>Current</Badge>
-              </Card>
-              {hasGrantedPlan(p.email) ? (
-                <Card className="flex items-center gap-3 border-primary/30 bg-primary/[0.06] p-4">
-                  <Sparkles className="h-4 w-4 shrink-0 text-primary" />
-                  <p className="text-sm">
-                    {isCreator(p.email)
-                      ? "You're signed in as a LifeOS creator — Student+ is unlocked on this account and can't be downgraded."
-                      : "Student+ is unlocked on this account — enjoy."}
-                  </p>
-                </Card>
-              ) : (
-                <>
-                  <PricingTable currentPlan={p.plan} mode="app" onUpgraded={setPlan} />
-                  <p className="text-xs text-muted-foreground">
-                    Payments are not live in this MVP. Switching plans updates your feature access
-                    instantly in demo mode — no charge is made.
-                  </p>
-                </>
-              )}
-            </>
-          )}
         </div>
       </div>
     </>

@@ -28,7 +28,15 @@ export function BrainDumpLoader({
   }, [steps.length]);
 
   return (
-    <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-background/85 backdrop-blur-2xl animate-fade-in">
+    <div
+      // Covers the whole viewport (including over the sidebar, which is a
+      // flow sibling of the page content, not an overlay). `lg:pl-64` nudges
+      // the centered content to the right by the sidebar's own width, so it
+      // lands in the middle of the visible content pane instead of the
+      // middle of the full screen — which, with a 256px sidebar eating the
+      // left side, reads as noticeably off-center.
+      className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-background/85 backdrop-blur-2xl animate-fade-in lg:pl-64"
+    >
       {/* themed glow */}
       <div
         aria-hidden
