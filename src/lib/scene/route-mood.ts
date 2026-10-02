@@ -31,6 +31,13 @@ const MOODS: Record<string, RouteMood> = {
   sat: { hue: 150, speed: 0.3, opacity: 0.08, variant: "scatter" },
 };
 
+// 227 matches SAT's own hue in lib/apps.ts (its Core sphere, and what the
+// Dashboard nebula shifts to when SAT is centred) — same blue identity, but
+// scoped to just the overview page (`/sat` itself). Sub-pages (practice,
+// exams, settings, …) keep the plain SAT mood above so the blue reads as
+// "you've arrived," not a tint that follows you everywhere in the section.
+const SAT_OVERVIEW_MOOD: RouteMood = { hue: 227, speed: 0.3, opacity: 0.08, variant: "scatter" };
+
 /** Routes that get the ambient layer at all — a conservative allowlist so an
  * unlisted/new route never silently picks up an effect it wasn't designed
  * for. The Dashboard and Brain Game run their own cinematic scenes instead
@@ -62,5 +69,7 @@ export function shouldShowAmbient(pathname: string): boolean {
 }
 
 export function getRouteMood(pathname: string): RouteMood {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 1 && segments[0] === "sat") return SAT_OVERVIEW_MOOD;
   return MOODS[firstSegment(pathname)] ?? DEFAULT_MOOD;
 }
