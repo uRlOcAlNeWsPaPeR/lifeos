@@ -38,14 +38,36 @@ export function SceneCanvas({ className }: { className?: string }) {
   // Leaving the Dashboard: drop back to "off" so nothing stays hidden.
   useEffect(() => () => sceneStore.setStatus("off"), []);
 
+  // "too-slow" and "context-lost" are both often passing conditions after the
+  // tab has sat for a while — a throttled/backgrounded page, a laptop waking
+  // up, the GPU reclaiming a context — not proof the device can't draw the
+  // glass Core. Both get retried; a real WebGL error ("error") does not.
+  const recoverable = reason === "too-slow" || reason === "context-lost";
+
   useEffect(() => {
-    if (status !== "failed" || reason !== "too-slow" || retries.current >= MAX_RETRIES) return;
+    if (status !== "failed" || !recoverable || retries.current >= MAX_RETRIES) return;
     const t = window.setTimeout(() => {
       retries.current += 1;
       sceneStore.setStatus("off");
     }, RETRY_COOLDOWN_MS);
     return () => window.clearTimeout(t);
-  }, [status, reason]);
+  }, [status, recoverable]);
+
+  // Coming back to the tab is the best moment to try again, and starts a fresh
+  // retry budget — otherwise a long idle burns the retries while nobody's
+  // looking and the CSS Core stays for good.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.hidden) return;
+      retries.current = 0;
+      const s = sceneStore.getScene();
+      if (s.status === "failed" && (s.reason === "too-slow" || s.reason === "context-lost")) {
+        sceneStore.setStatus("off");
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
 
   if (!cap?.ok || status === "failed") return null;
 

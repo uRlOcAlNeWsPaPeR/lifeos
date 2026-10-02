@@ -111,11 +111,34 @@ function FpsWatchdog() {
   const WINDOW_MS = 3000;
   const GRACE_MS = 1500;
   const MIN_FPS = 24;
+  // A gap this long between two frames is the page being paused (hidden tab,
+  // laptop asleep, the browser throttling an occluded window) — not a slow
+  // GPU. Counting it is what used to flip the glass Core to the CSS fallback
+  // after the tab sat idle for a while.
+  const PAUSE_GAP_MS = 2500;
   const start = useRef(performance.now());
+  const last = useRef(performance.now());
   const times = useRef<number[]>([]);
+
+  useEffect(() => {
+    const restart = () => {
+      start.current = last.current = performance.now();
+      times.current = [];
+    };
+    document.addEventListener("visibilitychange", restart);
+    return () => document.removeEventListener("visibilitychange", restart);
+  }, []);
 
   useFrame(() => {
     const now = performance.now();
+    if (document.hidden || now - last.current > PAUSE_GAP_MS) {
+      // resumed from a pause — begin a fresh grace window rather than judging
+      // the stalled stretch
+      start.current = last.current = now;
+      times.current = [];
+      return;
+    }
+    last.current = now;
     if (now - start.current < GRACE_MS) return;
     const buf = times.current;
     buf.push(now);
