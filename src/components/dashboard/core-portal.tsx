@@ -260,7 +260,14 @@ export function CorePortal() {
   // app (SAT) recolours it, and the console dims it.
   const nebulaInput = useMemo(() => {
     const look = STATE_LOOK[m.state];
-    const app = boomApp ?? LIFE_APPS[appIndex];
+    // boomApp is only meaningful mid-detonation/reform. It's never cleared when
+    // arriving back from SAT (it's seeded from the reform), so honouring it at
+    // "home" pinned the sky to SAT's blue even with Study centred — the
+    // background not matching the ball.
+    const app =
+      phase === "boom" || phase === "closing"
+        ? (boomApp ?? LIFE_APPS[appIndex])
+        : LIFE_APPS[appIndex];
     return {
       stateHue: look.hue,
       energy: look.energy,
