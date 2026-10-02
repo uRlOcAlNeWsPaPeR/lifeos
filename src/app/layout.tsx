@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ConfirmHost } from "@/components/ui/confirm";
 import { BackgroundFX } from "@/components/background-fx";
 import { AmbientScene } from "@/components/three/ambient-scene-loader";
+import { PersistentNebula } from "@/components/three/persistent-nebula-loader";
 import { AuthProvider } from "@/lib/firebase/auth-context";
 import { INTRO_SCRIPT } from "@/components/marketing/intro-reveal";
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <BackgroundFX />
           <AmbientScene />
+          <PersistentNebula />
           {children}
           <Toaster />
           <ConfirmHost />

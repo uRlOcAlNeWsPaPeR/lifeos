@@ -8,7 +8,7 @@ import { test, report } from "@/lib/test-harness";
 import { getRouteMood, shouldShowAmbient } from "./route-mood";
 
 test("listed app routes show the ambient layer", () => {
-  for (const p of ["/tasks", "/calendar", "/school", "/grades", "/study", "/goals", "/assistant", "/sat"]) {
+  for (const p of ["/tasks", "/calendar", "/school", "/grades", "/study", "/goals", "/assistant", "/sat/practice"]) {
     assert.equal(shouldShowAmbient(p), true, p);
   }
 });
@@ -19,13 +19,18 @@ test("the Dashboard, Brain Game, auth and marketing routes don't", () => {
   }
 });
 
-test("the SAT overview is blue; nested SAT pages stay the plain SAT mood", () => {
-  const overview = getRouteMood("/sat");
+test("the SAT overview gets the persistent nebula instead, not this layer", () => {
+  // <PersistentNebula/> (components/three) covers /dashboard and /sat so the
+  // same background survives that navigation — this lighter layer steps
+  // aside for the exact overview path, but still covers SAT's sub-pages.
+  assert.equal(shouldShowAmbient("/sat"), false);
+  assert.equal(shouldShowAmbient("/sat/practice"), true);
+  assert.equal(shouldShowAmbient("/sat/exams"), true);
+});
+
+test("nested SAT pages share one plain mood", () => {
   const nested = getRouteMood("/sat/practice");
-  assert.equal(overview.hue, 227);
   assert.equal(nested.hue, 150);
-  assert.notEqual(nested.hue, overview.hue);
-  // nested SAT routes are still internally consistent with each other
   assert.equal(getRouteMood("/sat/exams").hue, nested.hue);
   assert.equal(getRouteMood("/sat/settings").variant, nested.variant);
 });
