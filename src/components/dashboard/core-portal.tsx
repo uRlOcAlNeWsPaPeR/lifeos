@@ -29,7 +29,7 @@ import { useStudyLock, fmtLeft, openStudyLockPrompt, enterFocusFullscreen } from
 import { consumeCoreReform, loadCorePhase, saveCorePhase } from "@/lib/core-phase";
 import { cn } from "@/lib/utils";
 import { SceneCanvas } from "@/components/three/scene-canvas";
-import { nebulaStore, useNebulaLive } from "@/lib/scene/nebula-input";
+import { NebulaBackdrop } from "@/components/three/nebula-backdrop";
 import { sceneStore, useSceneStatus, STATE_LOOK } from "@/lib/scene/scene-store";
 import { useSceneCapability } from "@/lib/scene/use-scene-capability";
 import type { AssignmentDTO, TaskDTO } from "@/lib/types";
@@ -257,10 +257,7 @@ export function CorePortal() {
   const onConsole = phase === "console" || phase === "closing";
 
   // The backdrop follows the Core: the day's state tints it, a centred routed
-  // app (SAT) recolours it, and the console dims it. Pushed into the shared
-  // nebula store (not rendered locally) so <PersistentNebula/>, mounted at
-  // the root layout, keeps the same canvas alive across the Dashboard → SAT
-  // navigation instead of it unmounting with this component.
+  // app (SAT) recolours it, and the console dims it.
   const nebulaInput = useMemo(() => {
     const look = STATE_LOOK[m.state];
     const app = boomApp ?? LIFE_APPS[appIndex];
@@ -271,11 +268,8 @@ export function CorePortal() {
       phase,
     };
   }, [m.state, boomApp, appIndex, phase]);
-  useEffect(() => {
-    nebulaStore.setInput(nebulaInput);
-  }, [nebulaInput]);
   // the live sky lights itself from the cursor — the CSS glow is only for the still
-  const nebulaLive = useNebulaLive();
+  const [nebulaLive, setNebulaLive] = useState(false);
 
   const topBar = (
     <div className="fixed inset-x-0 top-0 z-40 flex items-center justify-between px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-8">
@@ -366,6 +360,7 @@ export function CorePortal() {
   /* ---------------- cinematic ---------------- */
   return (
     <>
+      <NebulaBackdrop input={nebulaInput} onLiveChange={setNebulaLive} />
       {topBar}
       <div ref={stage} className={cn("relative h-[100svh] overflow-hidden", core3d && "core3d-on")}>
         <SceneCanvas />

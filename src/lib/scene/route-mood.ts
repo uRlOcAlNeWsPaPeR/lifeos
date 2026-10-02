@@ -28,13 +28,15 @@ const MOODS: Record<string, RouteMood> = {
   study: { hue: 150, speed: 0.22, opacity: 0.09, variant: "scatter" },
   goals: { hue: 158, speed: 0.5, opacity: 0.13, variant: "orbit" },
   assistant: { hue: 162, speed: 0.95, opacity: 0.16, variant: "scatter" },
-  // Applies to SAT's sub-pages only now (practice, exams, settings, …) — the
-  // overview itself (`/sat`) gets the persistent nebula instead (blue, same
-  // identity as the Dashboard's SAT hue) so it keeps going across the
-  // Dashboard → SAT navigation instead of handing off to this lighter system.
-  // See components/three/persistent-nebula.tsx.
   sat: { hue: 150, speed: 0.3, opacity: 0.08, variant: "scatter" },
 };
+
+// 227 matches SAT's own hue in lib/apps.ts (its Core sphere, and what the
+// Dashboard nebula shifts to when SAT is centred) — same blue identity, but
+// scoped to just the overview page (`/sat` itself). Sub-pages (practice,
+// exams, settings, …) keep the plain SAT mood above so the blue reads as
+// "you've arrived," not a tint that follows you everywhere in the section.
+const SAT_OVERVIEW_MOOD: RouteMood = { hue: 227, speed: 0.3, opacity: 0.08, variant: "scatter" };
 
 /** Routes that get the ambient layer at all — a conservative allowlist so an
  * unlisted/new route never silently picks up an effect it wasn't designed
@@ -62,18 +64,12 @@ function firstSegment(pathname: string): string {
   return pathname.split("/").filter(Boolean)[0] ?? "";
 }
 
-/** The exact SAT overview path — carved out below since <PersistentNebula/>
- * covers it instead of this lighter ambient layer. */
-function isSatOverview(pathname: string): boolean {
-  const segments = pathname.split("/").filter(Boolean);
-  return segments.length === 1 && segments[0] === "sat";
-}
-
 export function shouldShowAmbient(pathname: string): boolean {
-  if (isSatOverview(pathname)) return false;
   return AMBIENT_ROUTES.has(firstSegment(pathname));
 }
 
 export function getRouteMood(pathname: string): RouteMood {
+  const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 1 && segments[0] === "sat") return SAT_OVERVIEW_MOOD;
   return MOODS[firstSegment(pathname)] ?? DEFAULT_MOOD;
 }
