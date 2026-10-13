@@ -41,7 +41,7 @@ export function LifeosCore({
   className?: string;
   variant?: "panel" | "hero" | "orbit";
   /** Subtle etched cue inside the orb (dashboard hub). */
-  motif?: "study" | "school" | "progress" | "generic";
+  motif?: "study" | "school" | "progress" | "brain" | "generic";
   /** Force a specific `--core-hue` (per-app identity) instead of the state colour. */
   hueOverride?: number;
   /** `orbit` only — the centred/active sphere blooms into the full treatment. */
@@ -231,7 +231,7 @@ function OrbitCore({
   className,
 }: {
   hue: string;
-  motif: "study" | "school" | "progress" | "generic";
+  motif: "study" | "school" | "progress" | "brain" | "generic";
   active: boolean;
   className?: string;
 }) {
@@ -329,7 +329,7 @@ function OrbitCore({
 }
 
 /** A faint etched pattern inside a hub sphere — signals what the app is for. */
-function CoreMotif({ motif }: { motif: "study" | "school" | "progress" | "generic" }) {
+function CoreMotif({ motif }: { motif: "study" | "school" | "progress" | "brain" | "generic" }) {
   if (motif === "generic") return null;
   return (
     <svg
@@ -355,6 +355,17 @@ function CoreMotif({ motif }: { motif: "study" | "school" | "progress" | "generi
           <path d="M50 32 L78 45 L50 58 L22 45 Z" strokeWidth="3" />
           <path d="M38 50 V64 Q50 71 62 64 V50" strokeWidth="2.5" />
           <line x1="74" y1="47" x2="74" y2="62" strokeWidth="2.5" />
+        </g>
+      )}
+      {motif === "brain" && (
+        // a small web: five memories, joined
+        <g opacity="0.16">
+          <path d="M30 56 L46 38 L66 46 L72 66 L50 72 L30 56 M46 38 L50 72 M66 46 L30 56" strokeWidth="2.2" />
+          <circle cx="30" cy="56" r="3.2" fill="currentColor" stroke="none" />
+          <circle cx="46" cy="38" r="3.2" fill="currentColor" stroke="none" />
+          <circle cx="66" cy="46" r="3.2" fill="currentColor" stroke="none" />
+          <circle cx="72" cy="66" r="3.2" fill="currentColor" stroke="none" />
+          <circle cx="50" cy="72" r="3.2" fill="currentColor" stroke="none" />
         </g>
       )}
       {motif === "progress" && (

@@ -118,7 +118,11 @@ export function useAssistantChat(): AssistantChat {
 }
 
 export function AssistantChatProvider({ children }: { children: React.ReactNode }) {
-  const { data } = useAppData();
+  const { data, rememberQuestion } = useAppData();
+  // Read through a ref so `ask` doesn't get a new identity every time the
+  // store re-renders just to pick up this function.
+  const rememberRef = useRef(rememberQuestion);
+  rememberRef.current = rememberQuestion;
   const perDay = data.limits.assistantPerDay;
   const serverUsed = data.limits.assistantUsedToday;
 
@@ -256,6 +260,9 @@ export function AssistantChatProvider({ children }: { children: React.ReactNode 
           },
         });
         setOptimistic((o) => o + 1);
+        // Everything the student asks goes into their Brain, so they can find
+        // it again later (see /brain).
+        rememberRef.current(q, res.answer);
         setTurns((t) => [
           ...t,
           {

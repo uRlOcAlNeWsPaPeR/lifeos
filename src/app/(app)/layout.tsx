@@ -61,6 +61,8 @@ function OnboardedShell({ children }: { children: React.ReactNode }) {
     pathname === "/dashboard" ||
     pathname === "/assistant" ||
     pathname === "/brain-game" ||
+    // exact match: /brain-dump is an ordinary page with the sidebar
+    pathname === "/brain" ||
     pathname === "/sat" ||
     pathname.startsWith("/sat/")
   ) {

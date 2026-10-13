@@ -6,7 +6,9 @@ import {
   deleteDoc,
   doc,
   getDocs,
+  limit,
   onSnapshot,
+  orderBy,
   query,
   where,
   serverTimestamp,
@@ -38,6 +40,7 @@ import type {
   CourseDTO,
   DeckDTO,
   PodcastDTO,
+  MemoryDTO,
   EventDTO,
   FocusSessionDTO,
   GameMode,
@@ -115,6 +118,8 @@ interface StoreData {
   /** Practice study sets, most recently studied first. */
   decks: DeckDTO[];
   podcasts: PodcastDTO[];
+  /** Brain memories the student wrote or asked — most recent day first. */
+  memories: MemoryDTO[];
   ai: { engine: string; label: string };
   limits: {
     plan: string;
@@ -339,6 +344,21 @@ interface AppDataValue {
 
   logFocusSession: (s: Omit<FocusSessionDTO, "id">) => Promise<void>;
 
+  addMemory: (input: {
+    title?: string;
+    text: string;
+    /** Local day it's from, YYYY-MM-DD — can be years back. */
+    occurredAt: string;
+    courseId?: string | null;
+    subject?: string | null;
+    tags?: string[];
+  }) => Promise<MemoryDTO | undefined>;
+  deleteMemory: (id: string) => Promise<void>;
+  /** Quietly keep a question the student asked (and the answer) in the Brain. */
+  rememberQuestion: (question: string, answer: string) => void;
+  /** Saved brain dumps, newest first — read on demand, not held in the store. */
+  listBrainDumps: () => Promise<{ id: string; rawText: string; createdAt: string }[]>;
+
   addPodcast: (input: {
     title: string;
     summary?: string | null;
@@ -408,6 +428,7 @@ export function AppDataProvider({
   const [focusRaw, setFocusRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [decksRaw, setDecksRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [podcastsRaw, setPodcastsRaw] = useState<Raw<Record<string, unknown>>[]>([]);
+  const [memoriesRaw, setMemoriesRaw] = useState<Raw<Record<string, unknown>>[]>([]);
   const [loaded, setLoaded] = useState({ profile: false, tasks: false, goals: false, courses: false, assignments: false, events: false });
 
   useEffect(() => {
@@ -422,7 +443,7 @@ export function AppDataProvider({
     const mark = (k: keyof typeof loaded) => setLoaded((s) => (s[k] ? s : { ...s, [k]: true }));
     const snap =
       <T,>(
-        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions" | "decks" | "podcasts",
+        name: "tasks" | "goals" | "courses" | "assignments" | "events" | "alarms" | "focusSessions" | "decks" | "podcasts" | "memories",
         set: (v: T[]) => void,
         markKey?: keyof typeof loaded,
       ) =>
@@ -448,6 +469,7 @@ export function AppDataProvider({
       snap("focusSessions", setFocusRaw),
       snap("decks", setDecksRaw),
       snap("podcasts", setPodcastsRaw),
+      snap("memories", setMemoriesRaw),
     ];
     return () => unsubs.forEach((u) => u());
   }, [uid]);
@@ -835,6 +857,20 @@ export function AppDataProvider({
         (b.lastPlayedAt ?? b.createdAt).localeCompare(a.lastPlayedAt ?? a.createdAt),
       );
 
+    const memories: MemoryDTO[] = memoriesRaw
+      .map((m) => ({
+        id: m.id,
+        kind: (m.kind === "question" ? "question" : "note") as MemoryDTO["kind"],
+        title: (m.title as string) ?? "",
+        text: (m.text as string) ?? "",
+        occurredAt: (m.occurredAt as string) ?? ((m.createdAt as string) ?? now()).slice(0, 10),
+        courseId: (m.courseId as string) ?? null,
+        subject: (m.subject as string) ?? null,
+        tags: Array.isArray(m.tags) ? (m.tags as unknown[]).filter((t): t is string => typeof t === "string") : [],
+        createdAt: (m.createdAt as string) ?? now(),
+      }))
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || b.createdAt.localeCompare(a.createdAt));
+
     const email = profile?.email || authEmail || "";
     const plan = effectivePlan(profile?.plan, email);
     const planLimits = limitsFor(plan);
@@ -863,6 +899,7 @@ export function AppDataProvider({
       focusSessions,
       decks,
       podcasts,
+      memories,
       ai,
       limits: {
         plan,
@@ -880,7 +917,7 @@ export function AppDataProvider({
         screenshotImportsUsedThisWeek: profile?.screenshotImportUsage?.[weekKey()] ?? 0,
       },
     };
-  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, podcastsRaw, ai]);
+  }, [profile, authEmail, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, focusRaw, decksRaw, podcastsRaw, memoriesRaw, ai]);
 
   const analytics = useMemo(
     () => deriveAnalytics(data.allTasks, data.goals, data.assignments),
@@ -1466,6 +1503,63 @@ export function AppDataProvider({
 
       /* ------------------------------ Practice ------------------------------ */
 
+      addMemory: (input) =>
+        guard(async () => {
+          const text = input.text.trim().slice(0, 4000);
+          if (!text) throw new Error("Write something to remember first.");
+          const doc = {
+            kind: "note" as const,
+            title: (input.title ?? "").trim().slice(0, 120),
+            text,
+            occurredAt: input.occurredAt,
+            courseId: input.courseId ?? null,
+            subject: input.subject?.trim() || null,
+            tags: (input.tags ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean).slice(0, 12),
+            createdAt: now(),
+          };
+          const ref = await addDoc(col(uid, "memories"), doc);
+          return { id: ref.id, ...doc } as MemoryDTO;
+        }, "Couldn't save that memory"),
+
+      deleteMemory: (id) =>
+        guard(async () => {
+          const snap = memoriesRaw.find((d) => d.id === id);
+          await deleteDoc(entityDoc(uid, "memories", id));
+          if (snap) {
+            const restore = stripId(snap);
+            pushUndo({
+              label: "Deleted a memory",
+              onUndo: () => setDoc(entityDoc(uid, "memories", id), restore),
+            });
+          }
+        }, "Couldn't delete that memory").then(() => undefined),
+
+      // Fire-and-forget on purpose: a failed background save must never toast
+      // or interrupt the conversation it's quietly recording.
+      rememberQuestion: (question, answer) => {
+        const title = question.trim().slice(0, 120);
+        if (!title) return;
+        addDoc(col(uid, "memories"), {
+          kind: "question",
+          title,
+          text: answer.trim().slice(0, 1500),
+          occurredAt: new Date().toLocaleDateString("en-CA"), // local YYYY-MM-DD
+          courseId: null,
+          subject: null,
+          tags: [],
+          createdAt: now(),
+        }).catch(() => {});
+      },
+
+      listBrainDumps: async () => {
+        const qs = await getDocs(query(col(uid, "brainDumps"), orderBy("createdAt", "desc"), limit(200)));
+        return qs.docs.map((d) => ({
+          id: d.id,
+          rawText: String(d.data().rawText ?? ""),
+          createdAt: String(d.data().createdAt ?? ""),
+        }));
+      },
+
       addPodcast: (input) =>
         guard(async () => {
           const segments = (input.segments ?? []).filter(
@@ -1601,7 +1695,7 @@ export function AppDataProvider({
           await updateDoc(entityDoc(uid, "decks", id), patch);
         }, "Couldn't save your progress").then(() => undefined),
     };
-  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, decksRaw, podcastsRaw]);
+  }, [data, analytics, ready, uid, profile, tasksRaw, goalsRaw, coursesRaw, assignmentsRaw, eventsRaw, alarmsRaw, decksRaw, podcastsRaw, memoriesRaw]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

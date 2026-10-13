@@ -272,6 +272,8 @@ export type Grade = "again" | "hard" | "good" | "easy";
  * script-building logic in lib/podcast, re-exported here so the store and UI
  * import every DTO from one place.
  * -------------------------------------------------------------------------- */
+export type { MemoryDTO, StoredMemoryKind } from "@/lib/brain/types";
+
 export type {
   PodcastDTO,
   PodcastFormat,

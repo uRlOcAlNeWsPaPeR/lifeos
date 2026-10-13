@@ -77,6 +77,15 @@ Ref: the user's own reference image (kept as `public/backdrop/nebula.webp`). Mob
 - Fallbacks to the still: reduced motion, no WebGL, `?core3d=off`, a crash, a shader compile error, or still too slow after stepping DPR down to 0.6. Own error boundary; never touches `sceneStore`. The CSS cursor glow only renders when the live sky isn't on screen.
 - **The CSS Core is fallback-only (user's call):** on a device that passes the capability check, only the glass Core is ever shown, and it fades itself in (`appear` in `core-orb.tsx`). The old 650ms CSS "entrance" hold is gone. The CSS Core returns only when 3D can't run or the scene fails.
 
+### 2026-10-13: the Brain (third sphere, `/brain`)
+Built on the user's direct request ("get to it now"), **without the Mobbin research pass**: the Mobbin MCP wasn't connected that session. Treat the look as a first pass and revisit with references if it needs polish.
+- **A third Core sphere**: `LIFE_APPS` entry `brain` (hue 285, violet, `motif: "brain"`: a small web). Everything downstream is data-driven (orbit arc, 3D glass Core, nebula recolour, reform-back via `flagCoreReform("brain")`).
+- **Full-bleed page** (`(app)/layout.tsx` exact-matches `/brain`, never `startsWith`: `/brain-dump` is a normal sidebar page). Own sticky top bar like SAT's.
+- **Memories are read, not copied**: `lib/brain/collect.ts` turns tasks, assignments, goals, decks, podcasts, brain dumps and stored memories into nodes. Only things with no other home are stored, in `users/{uid}/memories`: notes written in the Brain (with a date that may be years back) and every question asked to the assistant (`rememberQuestion`, fire-and-forget, saved with the answer). Brain dumps are read on demand (`listBrainDumps`), not held in the store.
+- **No AI, no cost**: links come from shared keywords (`keywords.ts`, stem + 7-letter root), hubs from course/subject. Recall (`search.ts`) understands time phrases: "multiplication 10 years ago", "in 2019", "last year". Time/kind filters *rebuild* the web; search words only *light up* nodes, so typing never reshuffles it.
+- **Canvas 2D, no new dependency and no second WebGL context** (`components/brain/brain-web.tsx`). Repaints only while something moves. Older memories are dimmer (fade over ~3 years). Timeline view is the accessible text alternative.
+- Layout (`graph.ts`, Fruchterman-Reingold) is deterministic and capped at 420 nodes (newest kept; narrow by time to reach older ones).
+
 ## Gotchas
 
 - Marketing reveals: GSAP's ScrollTrigger is registered in `SmoothScroll`'s effect, which runs *after* the child `Reveal` effects, so reveals log "Missing plugin" and play on load instead of on scroll (pre-existing, unfixed as of 2026-10-01).

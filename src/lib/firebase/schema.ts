@@ -20,11 +20,12 @@ import type { GpaLevel, GpaPoints, GradeScalePref } from "@/lib/grades";
  *   users/{uid}/events/{id}
  *   users/{uid}/brainDumps/{id}
  *   users/{uid}/decks/{id}          → a Practice study set (cards embedded)
+ *   users/{uid}/memories/{id}       → a Brain memory (a note, or a question asked)
  *
  * All dates are stored as ISO strings to match the DTOs used across the app.
  */
 
-export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms", "decks", "podcasts"] as const;
+export const COLLECTIONS = ["tasks", "goals", "courses", "assignments", "events", "alarms", "decks", "podcasts", "memories"] as const;
 export type CollectionName = (typeof COLLECTIONS)[number];
 type AnyCol = CollectionName | "brainDumps" | "focusSessions" | "courseScreenshots";
 

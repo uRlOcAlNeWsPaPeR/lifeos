@@ -5,6 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { test, report } from "@/lib/test-harness";
+import { LIFE_APPS } from "@/lib/apps";
 import { getRouteMood, shouldShowAmbient } from "./route-mood";
 
 test("listed app routes show the ambient layer", () => {
@@ -40,6 +41,24 @@ test("an unlisted-but-allowed route falls back to the default mood", () => {
   const def = getRouteMood("/settings");
   assert.equal(def.variant, "scatter");
   assert.equal(def.hue, 152);
+});
+
+test("the Brain gets its own violet mood, and Brain Dump isn't mistaken for it", () => {
+  const brain = LIFE_APPS.find((a) => a.id === "brain")!;
+  assert.equal(shouldShowAmbient("/brain"), true);
+  assert.equal(getRouteMood("/brain").hue, brain.hue, "same violet as its sphere");
+  // /brain-dump is a different page that merely starts with the same letters.
+  assert.equal(getRouteMood("/brain-dump").hue, 152);
+  assert.notEqual(getRouteMood("/brain-dump").hue, brain.hue);
+});
+
+test("the dashboard has three apps, each with its own id, hue and route", () => {
+  assert.deepEqual(LIFE_APPS.map((a) => a.id), ["study", "sat", "brain"]);
+  assert.equal(new Set(LIFE_APPS.map((a) => a.hue)).size, LIFE_APPS.length, "two spheres share a colour");
+  const brain = LIFE_APPS.find((a) => a.id === "brain")!;
+  assert.equal(brain.kind, "internal");
+  assert.equal(brain.route, "/brain");
+  assert.equal(brain.motif, "brain");
 });
 
 report("route-mood");

@@ -10,7 +10,7 @@ export interface LifeApp {
   /** One honest line — no invented features. */
   tagline: string;
   /** Subtle etched cue inside the sphere. */
-  motif: "study" | "school" | "progress" | "generic";
+  motif: "study" | "school" | "progress" | "brain" | "generic";
   /** Sphere hue (HSL hue channel for `--core-hue`). */
   hue: number;
   /** "internal" = lives inside LifeOS. "external" = opens in a new tab. */
@@ -41,6 +41,17 @@ export const LIFE_APPS: LifeApp[] = [
     kind: "internal",
     route: "/sat",
     enterLabel: "Enter SAT",
+  },
+  {
+    id: "brain",
+    name: "Brain",
+    tagline: "Everything you've learned and asked, connected like a web — search it, browse it by date, and recall it.",
+    motif: "brain",
+    // Violet: the one hue neither Study (green) nor SAT (blue) uses.
+    hue: 285,
+    kind: "internal",
+    route: "/brain",
+    enterLabel: "Enter Brain",
   },
 ];
 

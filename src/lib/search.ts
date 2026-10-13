@@ -63,6 +63,7 @@ export const PAGES: PageEntry[] = [
   { label: "Goals", href: "/goals", group: "Progress", keywords: ["targets", "habits", "milestones", "ambitions"] },
   { label: "Analytics", href: "/analytics", group: "Progress", keywords: ["stats", "insights", "streak", "progress", "charts"] },
   { label: "AI Assistant", href: "/assistant", group: "Tools", keywords: ["ask", "chat", "help", "question", "ai"] },
+  { label: "Brain", href: "/brain", group: "Tools", keywords: ["memory", "memories", "recall", "remember", "web", "notes", "history", "knowledge", "past", "timeline"] },
   { label: "Brain Game", href: "/brain-game", group: "Tools", keywords: ["trivia", "quiz", "fun", "play", "game"] },
   { label: "Settings", href: "/settings", group: "Tools", keywords: ["preferences", "account", "profile", "sleep", "bedtime", "canvas", "plan", "reminders"] },
 ];

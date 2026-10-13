@@ -29,6 +29,8 @@ const MOODS: Record<string, RouteMood> = {
   goals: { hue: 158, speed: 0.5, opacity: 0.13, variant: "orbit" },
   assistant: { hue: 162, speed: 0.95, opacity: 0.16, variant: "scatter" },
   sat: { hue: 150, speed: 0.3, opacity: 0.08, variant: "scatter" },
+  // 285 is the Brain sphere's hue (lib/apps.ts). Kept faint: the page draws its own web.
+  brain: { hue: 285, speed: 0.25, opacity: 0.07, variant: "orbit" },
 };
 
 // 227 matches SAT's own hue in lib/apps.ts (its Core sphere, and what the
@@ -52,6 +54,7 @@ const AMBIENT_ROUTES = new Set([
   "goals",
   "assistant",
   "sat",
+  "brain",
   "analytics",
   "brain-dump",
   "podcast",
