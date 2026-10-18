@@ -27,6 +27,8 @@ import type { ExamModule, ExamState } from "@/lib/sat/types";
 import { cn } from "@/lib/utils";
 import { AccuracyRows, ErrorBlock, LoadingBlock, Stat } from "./common";
 import { LETTERS, OptionRow, QuestionHtml, Sheet, type OptionState } from "./question";
+import { HighlightableHtml } from "./highlight";
+import type { Highlight } from "@/lib/sat/highlights";
 import { MathTools } from "./tools";
 import { SAT_ROUTES } from "./use-sat-actions";
 
@@ -272,6 +274,9 @@ export function ExamRunner() {
   );
 }
 
+// A stable empty list, so a question with no highlights doesn't look "changed" on every render.
+const NO_MARKS: Highlight[] = [];
+
 function ModuleView({
   ex,
   onChange,
@@ -289,6 +294,9 @@ function ModuleView({
   const id = mod.qids[mod.at];
   const q = cachedQuestion(id);
   const low = mod.timeLeft < 300;
+  // Passage highlights, kept per question for as long as this module is on
+  // screen, so going back to an earlier question finds them where they were.
+  const [marks, setMarks] = useState<Record<string, Highlight[]>>({});
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -386,7 +394,15 @@ function ModuleView({
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-            <QuestionHtml html={q.stimulus || q.stem} />
+            {q.section === "rw" ? (
+              <HighlightableHtml
+                html={q.stimulus || q.stem}
+                highlights={marks[id] ?? NO_MARKS}
+                onChange={(next) => setMarks((m) => ({ ...m, [id]: next }))}
+              />
+            ) : (
+              <QuestionHtml html={q.stimulus || q.stem} />
+            )}
           </Sheet>
           <Sheet className="space-y-4">
             {q.stimulus && q.stem && <QuestionHtml html={q.stem} className="font-semibold" />}

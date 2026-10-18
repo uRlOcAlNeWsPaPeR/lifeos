@@ -1,7 +1,7 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
-import { Check, X } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { Check, Eye, EyeOff, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { fixMathHTML } from "@/lib/sat/math-fix";
 import { DIFF_NAME, SECTION_NAME } from "@/lib/sat/constants";
@@ -60,13 +60,42 @@ export function sectionName(s: Section) {
   return SECTION_NAME[s];
 }
 
-/** Section · skill · difficulty · College Board ID. */
+/**
+ * Section · skill · difficulty · College Board ID.
+ *
+ * Difficulty is there but out of sight until asked for: the real test doesn't
+ * tell you how hard a question is, and knowing can change how you approach it.
+ * Give this a `key` of the question's id so it hides again on the next one.
+ */
 export function QuestionMeta({ q, qid }: { q: Question; qid?: string }) {
+  const [showDifficulty, setShowDifficulty] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <Badge tone="muted">{SECTION_NAME[q.section]}</Badge>
       <Badge tone="muted">{q.skillDesc}</Badge>
-      <DifficultyBadge d={q.difficulty} />
+      {showDifficulty ? (
+        <>
+          <DifficultyBadge d={q.difficulty} />
+          <button
+            type="button"
+            onClick={() => setShowDifficulty(false)}
+            aria-label="Hide difficulty"
+            title="Hide difficulty"
+            className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+          >
+            <EyeOff className="h-3.5 w-3.5" />
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowDifficulty(true)}
+          className="inline-flex items-center gap-1 rounded-full border border-white/10 px-2 py-0.5 font-medium text-muted-foreground transition-colors hover:border-white/25 hover:text-foreground"
+        >
+          <Eye className="h-3 w-3" />
+          Show difficulty
+        </button>
+      )}
       {qid && <span className="font-mono text-muted-foreground">ID {qid}</span>}
     </div>
   );

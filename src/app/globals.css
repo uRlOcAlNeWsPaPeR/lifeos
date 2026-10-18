@@ -434,6 +434,23 @@ html.lenis body {
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
+/* Passage highlights (see components/sat/highlight.tsx). Translucent so the
+   words stay readable on the dark sheet. */
+.sat-content mark.sat-hl {
+  color: inherit;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.sat-content mark.sat-hl-yellow {
+  background: hsl(48 96% 58% / 0.42);
+}
+.sat-content mark.sat-hl-blue {
+  background: hsl(205 90% 62% / 0.42);
+}
+.sat-content mark.sat-hl-pink {
+  background: hsl(330 85% 66% / 0.42);
+}
+
 .sat-content p {
   margin: 0 0 0.6em;
 }

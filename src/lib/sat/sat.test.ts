@@ -26,6 +26,7 @@ import {
   totalEstimate,
 } from "./engine";
 import { buildModule, gradeModule, newExam, routeFor, scoreExam, scoreSection } from "./exam";
+import { addHighlight, highlightAt, overlaps, removeRange, type Highlight } from "./highlights";
 import type { CatalogRow, ExamModule, Question, SatState } from "./types";
 
 const NOW = new Date(2026, 8, 21, 12); // 21 Sep 2026, local noon
@@ -343,6 +344,61 @@ test("an exam result lists every missed or skipped question for review", () => {
   // Buckets follow each question's own section: a, b and d were answered (c skipped).
   assert.equal(r.examDomains.math.H.attempts, 3);
   assert.equal(r.examDomains.math.H.correct, 2);
+});
+
+/* ------------------------------ highlighting ------------------------------ */
+
+const hl = (start: number, end: number, color: Highlight["color"] = "yellow"): Highlight => ({ start, end, color });
+
+test("a highlight is added as a span of the passage's text", () => {
+  assert.deepEqual(addHighlight([], hl(5, 12)), [hl(5, 12)]);
+});
+
+test("highlights stay sorted however they were added", () => {
+  const out = addHighlight(addHighlight([], hl(40, 50)), hl(5, 12));
+  assert.deepEqual(out.map((h) => h.start), [5, 40]);
+});
+
+test("highlighting over an existing one in another colour replaces it, not stacks it", () => {
+  const out = addHighlight([hl(10, 30, "yellow")], hl(20, 40, "blue"));
+  assert.deepEqual(out, [hl(10, 20, "yellow"), hl(20, 40, "blue")]);
+});
+
+test("a new highlight inside a bigger one splits it around the new colour", () => {
+  const out = addHighlight([hl(0, 100, "yellow")], hl(40, 60, "pink"));
+  assert.deepEqual(out, [hl(0, 40, "yellow"), hl(40, 60, "pink"), hl(60, 100, "yellow")]);
+});
+
+test("touching or overlapping highlights of the same colour join into one", () => {
+  assert.deepEqual(addHighlight([hl(0, 10)], hl(10, 20)), [hl(0, 20)]);
+  assert.deepEqual(addHighlight([hl(0, 15)], hl(10, 20)), [hl(0, 20)]);
+});
+
+test("removing part of a highlight leaves the rest, and removing it all clears it", () => {
+  assert.deepEqual(removeRange([hl(0, 100)], 40, 60), [hl(0, 40), hl(60, 100)]);
+  assert.deepEqual(removeRange([hl(10, 20)], 0, 50), []);
+  assert.deepEqual(removeRange([hl(10, 20)], 30, 40), [hl(10, 20)]);
+});
+
+test("an empty selection changes nothing", () => {
+  const list = [hl(1, 5)];
+  assert.equal(addHighlight(list, hl(7, 7)), list);
+  assert.equal(removeRange(list, 3, 3), list);
+});
+
+test("highlight edits never mutate the list they were given", () => {
+  const list = [hl(0, 100)];
+  addHighlight(list, hl(40, 60, "blue"));
+  removeRange(list, 40, 60);
+  assert.deepEqual(list, [hl(0, 100)]);
+});
+
+test("overlap and lookup agree about where a highlight is", () => {
+  const list = [hl(10, 20)];
+  assert.equal(overlaps(list, 15, 25), true);
+  assert.equal(overlaps(list, 20, 30), false, "end is exclusive");
+  assert.equal(highlightAt(list, 10)?.color, "yellow");
+  assert.equal(highlightAt(list, 20), null);
 });
 
 report("sat");

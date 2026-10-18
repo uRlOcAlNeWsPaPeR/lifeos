@@ -25,6 +25,8 @@ import { confetti, playCorrect } from "@/lib/sat/celebrate";
 import { cn } from "@/lib/utils";
 import { BadgeIcon, LoadingBlock, Stat } from "./common";
 import { LETTERS, OptionRow, QuestionHtml, QuestionMeta, Sheet, type OptionState } from "./question";
+import { HighlightableHtml } from "./highlight";
+import type { Highlight } from "@/lib/sat/highlights";
 import { MathTools } from "./tools";
 import { SAT_ROUTES } from "./use-sat-actions";
 
@@ -74,6 +76,9 @@ export function PracticeRunner() {
   return <Runner session={session} onFinish={setResult} />;
 }
 
+// A stable empty list, so a question with no highlights doesn't look "changed" on every render.
+const NO_MARKS: Highlight[] = [];
+
 function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Result) => void }) {
   const router = useRouter();
   const [idx, setIdx] = useState(session.idx);
@@ -87,6 +92,8 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
   const [spr, setSpr] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showPrev, setShowPrev] = useState(false);
+  // Passage highlights, per question for the length of the set.
+  const [marks, setMarks] = useState<Record<string, Highlight[]>>({});
   const [, rerender] = useState(0);
   const firstAttempt = useRef<{ done: boolean; correct: boolean | null }>({ done: false, correct: null });
   // What was answered the last time this question was missed — read when the
@@ -260,7 +267,8 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
       <Progress value={progress} className="h-1.5" />
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <QuestionMeta q={q} qid={qidFor(catalog, q.id)} />
+        {/* keyed by question, so difficulty is hidden again on the next one */}
+        <QuestionMeta key={q.id} q={q} qid={qidFor(catalog, q.id)} />
         {prevText && (
           <button
             type="button"
@@ -278,7 +286,15 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Passage or problem on the left; question and choices on the right. */}
         <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-          <QuestionHtml html={q.stimulus || q.stem} />
+          {q.section === "rw" ? (
+            <HighlightableHtml
+              html={q.stimulus || q.stem}
+              highlights={marks[q.id] ?? NO_MARKS}
+              onChange={(next) => setMarks((m) => ({ ...m, [q.id]: next }))}
+            />
+          ) : (
+            <QuestionHtml html={q.stimulus || q.stem} />
+          )}
         </Sheet>
 
         <div className="space-y-4">
