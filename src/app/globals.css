@@ -447,6 +447,14 @@ html.lenis body {
 .sat-content mark.sat-hl-blue {
   background: hsl(205 90% 62% / 0.42);
 }
+.sat-content mark.sat-hl-note {
+  border-bottom: 2px dotted currentColor;
+}
+.sat-content mark.sat-hl-note::after {
+  content: " ✎";
+  font-size: 0.75em;
+  opacity: 0.8;
+}
 .sat-content mark.sat-hl-pink {
   background: hsl(330 85% 66% / 0.42);
 }

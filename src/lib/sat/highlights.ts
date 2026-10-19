@@ -15,6 +15,8 @@ export interface Highlight {
   /** Exclusive. */
   end: number;
   color: HighlightColor;
+  /** An optional note pinned to the highlighted words. */
+  note?: string;
 }
 
 /** Sorted, non-overlapping, with touching same-colour neighbours joined. */
@@ -23,7 +25,9 @@ function tidy(list: Highlight[]): Highlight[] {
   const out: Highlight[] = [];
   for (const h of sorted) {
     const last = out[out.length - 1];
-    if (last && last.color === h.color && h.start <= last.end) last.end = Math.max(last.end, h.end);
+    // A highlight carrying a note keeps its own span — joining would swallow the note.
+    const plain = last && last.note === undefined && h.note === undefined;
+    if (last && plain && last.color === h.color && h.start <= last.end) last.end = Math.max(last.end, h.end);
     else out.push({ ...h });
   }
   return out;
@@ -38,8 +42,13 @@ export function removeRange(list: Highlight[], start: number, end: number): High
       out.push({ ...h });
       continue;
     }
-    if (h.start < start) out.push({ start: h.start, end: start, color: h.color });
-    if (h.end > end) out.push({ start: end, end: h.end, color: h.color });
+    // The note stays with the first piece that survives.
+    let note = h.note;
+    if (h.start < start) {
+      out.push({ start: h.start, end: start, color: h.color, ...(note !== undefined ? { note } : {}) });
+      note = undefined;
+    }
+    if (h.end > end) out.push({ start: end, end: h.end, color: h.color, ...(note !== undefined ? { note } : {}) });
   }
   return tidy(out);
 }
@@ -62,4 +71,15 @@ export function overlaps(list: Highlight[], start: number, end: number): boolean
 /** The highlight covering a character offset, if any. */
 export function highlightAt(list: Highlight[], offset: number): Highlight | null {
   return list.find((h) => offset >= h.start && offset < h.end) ?? null;
+}
+
+/** Set (or, with blank text, clear) the note on the highlight covering [start, end). */
+export function setNote(list: Highlight[], start: number, end: number, note: string): Highlight[] {
+  const text = note.trim();
+  return list.map((h) => {
+    if (h.start > start || h.end < end) return h;
+    const { note: _old, ...rest } = h;
+    void _old;
+    return text ? { ...rest, note: text } : rest;
+  });
 }

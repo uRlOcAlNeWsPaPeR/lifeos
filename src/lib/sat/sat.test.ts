@@ -26,7 +26,7 @@ import {
   totalEstimate,
 } from "./engine";
 import { buildModule, gradeModule, newExam, routeFor, scoreExam, scoreSection } from "./exam";
-import { addHighlight, highlightAt, overlaps, removeRange, type Highlight } from "./highlights";
+import { addHighlight, highlightAt, overlaps, removeRange, setNote, type Highlight } from "./highlights";
 import type { CatalogRow, ExamModule, Question, SatState } from "./types";
 
 const NOW = new Date(2026, 8, 21, 12); // 21 Sep 2026, local noon
@@ -399,6 +399,30 @@ test("overlap and lookup agree about where a highlight is", () => {
   assert.equal(overlaps(list, 20, 30), false, "end is exclusive");
   assert.equal(highlightAt(list, 10)?.color, "yellow");
   assert.equal(highlightAt(list, 20), null);
+});
+
+
+test("a note is set on the highlight covering the span, and blank text clears it", () => {
+  let list: Highlight[] = addHighlight([], { start: 4, end: 12, color: "yellow" });
+  list = setNote(list, 4, 12, "  main claim ");
+  assert.equal(list[0].note, "main claim");
+  list = setNote(list, 4, 12, "   ");
+  assert.equal("note" in list[0], false);
+});
+
+test("a highlight with a note is not joined into a neighbour", () => {
+  let list: Highlight[] = addHighlight([], { start: 0, end: 5, color: "yellow" });
+  list = addHighlight(list, { start: 5, end: 10, color: "yellow", note: "x" });
+  assert.equal(list.length, 2);
+  assert.equal(list[1].note, "x");
+});
+
+test("removing the middle of a noted highlight keeps the note on the first piece only", () => {
+  const list = removeRange([{ start: 0, end: 20, color: "blue", note: "keep" }], 8, 12);
+  assert.deepEqual(list, [
+    { start: 0, end: 8, color: "blue", note: "keep" },
+    { start: 12, end: 20, color: "blue" },
+  ]);
 });
 
 report("sat");

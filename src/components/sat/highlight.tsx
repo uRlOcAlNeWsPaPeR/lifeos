@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eraser } from "lucide-react";
+import { Eraser, StickyNote } from "lucide-react";
 import { fixMathHTML } from "@/lib/sat/math-fix";
 import {
   addHighlight,
   HIGHLIGHT_COLORS,
+  highlightAt,
   overlaps,
   removeRange,
+  setNote,
   type Highlight,
   type HighlightColor,
 } from "@/lib/sat/highlights";
@@ -67,7 +69,11 @@ function paint(root: HTMLElement, list: Highlight[]) {
       const target = a > 0 ? n.splitText(a) : n;
       if (b - a < target.data.length) target.splitText(b - a);
       const mark = document.createElement("mark");
-      mark.className = `sat-hl sat-hl-${h.color}`;
+      mark.className = `sat-hl sat-hl-${h.color}${h.note ? " sat-hl-note" : ""}`;
+      if (h.note) {
+        mark.dataset.note = h.note;
+        mark.title = h.note;
+      }
       mark.dataset.s = String(h.start);
       mark.dataset.e = String(h.end);
       target.parentNode!.insertBefore(mark, target);
@@ -87,6 +93,10 @@ interface Bar {
   left: number;
   start: number;
   end: number;
+}
+
+interface NoteEditor extends Bar {
+  text: string;
 }
 
 /**
@@ -111,6 +121,7 @@ export function HighlightableHtml({
   const bodyRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const [bar, setBar] = useState<Bar | null>(null);
+  const [editor, setEditor] = useState<NoteEditor | null>(null);
 
   // Same hand-injected HTML as QuestionHtml (the MathML repairs rewrite nodes,
   // so React must not own them), then the marks on top.
@@ -122,6 +133,9 @@ export function HighlightableHtml({
     paint(el, highlights);
     setBar(null);
   }, [html, highlights]);
+
+  // A different question's passage closes any open note.
+  useEffect(() => setEditor(null), [html]);
 
   useEffect(() => {
     const body = () => bodyRef.current;
@@ -139,7 +153,7 @@ export function HighlightableHtml({
 
       const rect = r.getBoundingClientRect();
       const box = wrap.getBoundingClientRect();
-      const width = 188;
+      const width = 224;
       const above = rect.top - box.top - 46;
       setBar({
         top: above >= 0 ? above : rect.bottom - box.top + 8,
@@ -180,6 +194,48 @@ export function HighlightableHtml({
     setBar(null);
   }
 
+  /** Where the note box goes: under the given rect, kept inside the passage column. */
+  function editorSpot(rect: DOMRect) {
+    const wrap = wrapRef.current!;
+    const box = wrap.getBoundingClientRect();
+    const width = Math.min(260, box.width);
+    return {
+      top: rect.bottom - box.top + 8,
+      left: Math.max(0, Math.min(box.width - width, rect.left - box.left + rect.width / 2 - width / 2)),
+    };
+  }
+
+  function startNote() {
+    if (!bar) return;
+    const sel = window.getSelection();
+    const rect = sel && sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+    const here = highlightAt(highlights, bar.start);
+    const exact = here && here.start <= bar.start && here.end >= bar.end;
+    if (!exact) {
+      onChange(addHighlight(highlights, { start: bar.start, end: bar.end, color: here?.color ?? "yellow", note: "" }));
+    }
+    setEditor({
+      ...(rect ? editorSpot(rect) : { top: bar.top, left: bar.left }),
+      start: bar.start,
+      end: bar.end,
+      text: exact ? here.note ?? "" : "",
+    });
+    sel?.removeAllRanges();
+    setBar(null);
+  }
+
+  function saveNote() {
+    if (!editor) return;
+    onChange(setNote(highlights, editor.start, editor.end, editor.text));
+    setEditor(null);
+  }
+
+  function removeFromEditor() {
+    if (!editor) return;
+    onChange(removeRange(highlights, editor.start, editor.end));
+    setEditor(null);
+  }
+
   function clear() {
     if (!bar) return;
     onChange(removeRange(highlights, bar.start, bar.end));
@@ -193,6 +249,14 @@ export function HighlightableHtml({
     const el = bodyRef.current;
     const sel = window.getSelection();
     if (!mark || !el || !sel || !sel.isCollapsed) return;
+    // A highlight with a note opens that note (editable); a plain one offers removal.
+    if (mark.dataset.note) {
+      const start = Number(mark.dataset.s);
+      const end = Number(mark.dataset.e);
+      setBar(null);
+      setEditor({ ...editorSpot(mark.getBoundingClientRect()), start, end, text: mark.dataset.note });
+      return;
+    }
     const a = locate(el, Number(mark.dataset.s));
     const b = locate(el, Number(mark.dataset.e));
     if (!a || !b) return;
@@ -212,7 +276,7 @@ export function HighlightableHtml({
         dragging.current = e.pointerType === "mouse";
       }} onClick={onClick}>
       <div className="mb-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>Select text to highlight it.</span>
+        <span>Select text to highlight it or add a note.</span>
         {highlights.length > 0 && (
           <button type="button" onClick={() => onChange([])} className="rounded-md px-1.5 py-0.5 hover:bg-white/5 hover:text-foreground">
             Clear highlights
@@ -244,6 +308,15 @@ export function HighlightableHtml({
               <span className={cn("h-4 w-4 rounded-full ring-1 ring-black/20", SWATCH[c])} />
             </button>
           ))}
+          <button
+            type="button"
+            aria-label="Add a note"
+            title="Add a note"
+            onClick={startNote}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+          >
+            <StickyNote className="h-4 w-4" />
+          </button>
           {hasHere && (
             <button
               type="button"
@@ -256,6 +329,49 @@ export function HighlightableHtml({
               Remove
             </button>
           )}
+        </div>
+      )}
+
+      {editor && (
+        <div
+          role="dialog"
+          aria-label="Note"
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="absolute z-30 flex w-[min(260px,100%)] flex-col gap-2 rounded-xl border border-white/15 bg-background/95 p-2.5 shadow-lg backdrop-blur-xl"
+          style={{ top: editor.top, left: editor.left }}
+        >
+          <textarea
+            autoFocus
+            value={editor.text}
+            maxLength={300}
+            placeholder="Add a note…"
+            onChange={(e) => setEditor({ ...editor, text: e.target.value })}
+            className="min-h-[76px] w-full resize-y rounded-lg border border-white/10 bg-white/5 p-2 text-base text-foreground outline-none focus:border-primary/50 sm:text-sm"
+          />
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={saveNote}
+              className="flex-1 rounded-lg bg-primary/90 px-3 py-2 text-xs font-medium text-primary-foreground hover:bg-primary"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={removeFromEditor}
+              className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground"
+            >
+              Remove highlight
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditor(null)}
+              className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground"
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
     </div>
