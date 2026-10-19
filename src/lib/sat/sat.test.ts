@@ -26,7 +26,7 @@ import {
   totalEstimate,
 } from "./engine";
 import { buildModule, gradeModule, newExam, routeFor, scoreExam, scoreSection } from "./exam";
-import { addHighlight, highlightAt, overlaps, removeRange, setNote, type Highlight } from "./highlights";
+import { addHighlight, annotsFor, highlightAt, overlaps, removeRange, setNote, withAnnots, type Highlight } from "./highlights";
 import type { CatalogRow, ExamModule, Question, SatState } from "./types";
 
 const NOW = new Date(2026, 8, 21, 12); // 21 Sep 2026, local noon
@@ -423,6 +423,51 @@ test("removing the middle of a noted highlight keeps the note on the first piece
     { start: 0, end: 8, color: "blue", note: "keep" },
     { start: 12, end: 20, color: "blue" },
   ]);
+});
+
+test("ScoreClimb's saved highlights are read back — yellow, with their notes", () => {
+  // The shape ScoreClimb itself writes into an exam: no colour, a note ("" for none).
+  const saved = [
+    { c: "s", start: 4, end: 20, note: "" },
+    { c: "t", start: 0, end: 5, note: "check the verb" },
+    { c: "s", start: 30, end: 40, note: "main idea" },
+  ];
+  assert.deepEqual(annotsFor(saved, "s"), [
+    { start: 4, end: 20, color: "yellow" },
+    { start: 30, end: 40, color: "yellow", note: "main idea" },
+  ]);
+  assert.deepEqual(annotsFor(saved, "t"), [{ start: 0, end: 5, color: "yellow", note: "check the verb" }]);
+});
+
+test("a saved highlight that's malformed is dropped instead of breaking the passage", () => {
+  const saved = [null, 7, { c: "s", start: -1, end: 5 }, { c: "s", start: 9, end: 9 }, { c: "s", start: 1.5, end: 4 }, { c: "s", start: 2, end: 6, color: "pink", note: 5 }];
+  assert.deepEqual(annotsFor(saved, "s"), [{ start: 2, end: 6, color: "pink" }]);
+  assert.deepEqual(annotsFor(undefined, "s"), []);
+  assert.deepEqual(annotsFor("junk", "t"), []);
+});
+
+test("nothing saved reads as the same empty list every time, so a repaint isn't triggered", () => {
+  assert.equal(annotsFor(undefined, "s"), annotsFor([], "t"));
+});
+
+test("writing one part's highlights leaves the other part untouched", () => {
+  const saved = [
+    { c: "t", start: 0, end: 5, note: "keep me" },
+    { c: "s", start: 10, end: 20, note: "" },
+  ];
+  const out = withAnnots(saved, "s", [{ start: 3, end: 9, color: "blue", note: "new" }]);
+  assert.deepEqual(out, [
+    { c: "t", start: 0, end: 5, note: "keep me" },
+    { c: "s", start: 3, end: 9, note: "new", color: "blue" },
+  ]);
+  assert.deepEqual(withAnnots(undefined, "t", []), [], "an empty edit saves nothing");
+});
+
+test("what LifeOS saves reads back the same, and is in ScoreClimb's shape", () => {
+  const marks: Highlight[] = [{ start: 5, end: 15, color: "pink", note: "why?" }, { start: 20, end: 30, color: "yellow" }];
+  const saved = withAnnots(undefined, "s", marks);
+  assert.deepEqual(annotsFor(saved, "s"), marks);
+  for (const a of saved) assert.ok(a.c && typeof a.start === "number" && typeof a.end === "number" && typeof a.note === "string");
 });
 
 report("sat");

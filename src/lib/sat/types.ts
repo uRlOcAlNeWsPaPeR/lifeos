@@ -73,6 +73,22 @@ export interface SectionStat {
   wcorr: number;
 }
 
+/**
+ * One highlight (with an optional note) saved on an exam question, in
+ * ScoreClimb's own shape — `c` says whether it's in the passage (`s`) or the
+ * question text (`t`), the rest are character offsets into that text and the
+ * note ("" for none). `color` is LifeOS's addition (ScoreClimb has one
+ * colour and ignores it; a highlight without it is read as yellow), so a
+ * backup carries marks in both directions.
+ */
+export interface ExamAnnotation {
+  c: "s" | "t";
+  start: number;
+  end: number;
+  note: string;
+  color?: "yellow" | "blue" | "pink";
+}
+
 export interface ExamModule {
   section: Section;
   route: ModuleRoute;
@@ -81,6 +97,12 @@ export interface ExamModule {
   answers: Record<string, string>;
   flagged: Record<string, boolean>;
   crossed: Record<string, Record<string, boolean>>;
+  /**
+   * Highlights and notes, per question. Created the first time one is made —
+   * like ScoreClimb, where it's the same lazily-added field — so an exam saved
+   * before this existed, and a freshly built module, simply don't have it.
+   */
+  annots?: Record<string, ExamAnnotation[]>;
   timeLeft: number;
   at: number;
   submitted: boolean;

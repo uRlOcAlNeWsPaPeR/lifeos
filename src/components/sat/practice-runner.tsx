@@ -92,8 +92,11 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
   const [spr, setSpr] = useState("");
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showPrev, setShowPrev] = useState(false);
-  // Passage highlights, per question for the length of the set.
-  const [marks, setMarks] = useState<Record<string, Highlight[]>>({});
+  // Highlights and notes, per question for the length of the set: the passage
+  // (`s`) and the question text (`t`) are marked up separately.
+  const [marks, setMarks] = useState<Record<string, { s: Highlight[]; t: Highlight[] }>>({});
+  const mark = (id: string, part: "s" | "t", next: Highlight[]) =>
+    setMarks((m) => ({ ...m, [id]: { s: m[id]?.s ?? NO_MARKS, t: m[id]?.t ?? NO_MARKS, [part]: next } }));
   const [, rerender] = useState(0);
   const firstAttempt = useRef<{ done: boolean; correct: boolean | null }>({ done: false, correct: null });
   // What was answered the last time this question was missed — read when the
@@ -286,20 +289,14 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Passage or problem on the left; question and choices on the right. */}
         <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-          {q.section === "rw" ? (
-            <HighlightableHtml
-              html={q.stimulus || q.stem}
-              highlights={marks[q.id] ?? NO_MARKS}
-              onChange={(next) => setMarks((m) => ({ ...m, [q.id]: next }))}
-            />
-          ) : (
-            <QuestionHtml html={q.stimulus || q.stem} />
-          )}
+          <HighlightableHtml html={q.stimulus || q.stem} highlights={marks[q.id]?.s ?? NO_MARKS} onChange={(next) => mark(q.id, "s", next)} />
         </Sheet>
 
         <div className="space-y-4">
           <Sheet className="space-y-4">
-            {q.stimulus && q.stem && <QuestionHtml html={q.stem} className="font-semibold" />}
+            {q.stimulus && q.stem && (
+              <HighlightableHtml compact html={q.stem} highlights={marks[q.id]?.t ?? NO_MARKS} onChange={(next) => mark(q.id, "t", next)} className="font-semibold" />
+            )}
             {q.type === "mcq" ? (
               <div className="space-y-2">
                 {LETTERS.map((L, i) => {

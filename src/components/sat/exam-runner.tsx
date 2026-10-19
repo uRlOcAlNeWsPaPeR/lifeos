@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, ChevronDown, Coffee, Grid3X3,
@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
 import { AccuracyRows, ErrorBlock, LoadingBlock, Stat } from "./common";
 import { LETTERS, OptionRow, QuestionHtml, Sheet, type OptionState } from "./question";
 import { HighlightableHtml } from "./highlight";
-import type { Highlight } from "@/lib/sat/highlights";
+import { annotsFor, withAnnots, type Highlight } from "@/lib/sat/highlights";
 import { MathTools } from "./tools";
 import { SAT_ROUTES } from "./use-sat-actions";
 
@@ -262,6 +262,7 @@ export function ExamRunner() {
           <li>Four timed modules: two Reading &amp; Writing, a 10-minute break, then two Math.</li>
           <li>Module 2 adapts: 60%+ on Module 1 gets you the harder Module 2, with a higher score ceiling.</li>
           <li><strong className="text-foreground">Mark for review</strong> flags a question so you can find it in the question navigator.</li>
+          <li>Select text in the passage or the question to <strong className="text-foreground">highlight</strong> it or attach a <strong className="text-foreground">note</strong>. Click a highlight to edit it.</li>
           <li>Use the letter beside a choice to cross it out. Clicking the choice itself selects it.</li>
           <li>Math modules include the Desmos calculator and a reference sheet.</li>
           <li>Wrong answers aren&apos;t penalized — always guess.</li>
@@ -273,9 +274,6 @@ export function ExamRunner() {
     </>
   );
 }
-
-// A stable empty list, so a question with no highlights doesn't look "changed" on every render.
-const NO_MARKS: Highlight[] = [];
 
 function ModuleView({
   ex,
@@ -294,9 +292,6 @@ function ModuleView({
   const id = mod.qids[mod.at];
   const q = cachedQuestion(id);
   const low = mod.timeLeft < 300;
-  // Passage highlights, kept per question for as long as this module is on
-  // screen, so going back to an earlier question finds them where they were.
-  const [marks, setMarks] = useState<Record<string, Highlight[]>>({});
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
@@ -328,6 +323,19 @@ function ModuleView({
     if (next < 0) return;
     if (next >= mod.total) return onOpenNav(); // past the last question → review
     mod.at = next;
+    save();
+  }
+
+  // Highlights and notes live on the module itself, so they're saved with the
+  // exam: leaving and coming back, or reloading, finds them where they were.
+  // Each part's list only changes identity when it's edited, which is what
+  // keeps the passage from repainting (and losing a selection) on timer ticks.
+  const stored = mod.annots?.[id];
+  const passageMarks = useMemo(() => annotsFor(stored, "s"), [stored]);
+  const stemMarks = useMemo(() => annotsFor(stored, "t"), [stored]);
+  function setMarks(part: "s" | "t", next: Highlight[]) {
+    mod.annots = mod.annots ?? {};
+    mod.annots[id] = withAnnots(mod.annots[id], part, next);
     save();
   }
 
@@ -394,18 +402,12 @@ function ModuleView({
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-            {q.section === "rw" ? (
-              <HighlightableHtml
-                html={q.stimulus || q.stem}
-                highlights={marks[id] ?? NO_MARKS}
-                onChange={(next) => setMarks((m) => ({ ...m, [id]: next }))}
-              />
-            ) : (
-              <QuestionHtml html={q.stimulus || q.stem} />
-            )}
+            <HighlightableHtml html={q.stimulus || q.stem} highlights={passageMarks} onChange={(next) => setMarks("s", next)} />
           </Sheet>
           <Sheet className="space-y-4">
-            {q.stimulus && q.stem && <QuestionHtml html={q.stem} className="font-semibold" />}
+            {q.stimulus && q.stem && (
+              <HighlightableHtml compact html={q.stem} highlights={stemMarks} onChange={(next) => setMarks("t", next)} className="font-semibold" />
+            )}
             {q.type === "mcq" ? (
               <div className="space-y-2">
                 {LETTERS.map((L, i) => {

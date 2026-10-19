@@ -83,3 +83,49 @@ export function setNote(list: Highlight[], start: number, end: number, note: str
     return text ? { ...rest, note: text } : rest;
   });
 }
+
+const EMPTY: Highlight[] = [];
+
+/** A saved highlight, as it sits in an exam's saved state (see ExamAnnotation). */
+export interface StoredAnnotation {
+  c: "s" | "t";
+  start: number;
+  end: number;
+  note: string;
+  color?: HighlightColor;
+}
+
+/**
+ * The highlights for one part of a question (`s` the passage, `t` the question
+ * text) out of what a saved exam holds. A saved exam, or a backup restored
+ * from ScoreClimb, is only as trustworthy as whatever wrote it, so malformed
+ * entries are dropped rather than allowed to break painting; one with no
+ * colour (ScoreClimb's) is yellow.
+ */
+export function annotsFor(stored: unknown, part: "s" | "t"): Highlight[] {
+  if (!Array.isArray(stored)) return EMPTY;
+  const out: Highlight[] = [];
+  for (const a of stored) {
+    if (!a || typeof a !== "object") continue;
+    const x = a as Record<string, unknown>;
+    if (x.c !== part) continue;
+    const { start, end } = x;
+    if (!Number.isInteger(start) || !Number.isInteger(end) || (start as number) < 0 || (end as number) <= (start as number)) continue;
+    const color = (HIGHLIGHT_COLORS as string[]).includes(x.color as string) ? (x.color as HighlightColor) : "yellow";
+    const note = typeof x.note === "string" && x.note.trim() ? x.note : undefined;
+    out.push({ start: start as number, end: end as number, color, ...(note !== undefined ? { note } : {}) });
+  }
+  return out.length ? out : EMPTY;
+}
+
+/**
+ * The saved list with one part's highlights replaced by `next`, leaving the
+ * other part (and anything that isn't ours to read) exactly as it was.
+ */
+export function withAnnots(stored: unknown, part: "s" | "t", next: Highlight[]): StoredAnnotation[] {
+  const keep = Array.isArray(stored) ? (stored as StoredAnnotation[]).filter((a) => a && a.c !== part) : [];
+  return [
+    ...keep,
+    ...next.map((h) => ({ c: part, start: h.start, end: h.end, note: h.note ?? "", color: h.color })),
+  ];
+}

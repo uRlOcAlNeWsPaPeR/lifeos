@@ -112,10 +112,15 @@ export function HighlightableHtml({
   html,
   highlights,
   onChange,
+  compact = false,
+  className,
 }: {
   html: string | undefined;
   highlights: Highlight[];
   onChange: (next: Highlight[]) => void;
+  /** No "select text" hint or Clear button — for a second block next to a passage. */
+  compact?: boolean;
+  className?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -275,16 +280,18 @@ export function HighlightableHtml({
         // debounce alone (its pointer events stop as soon as the OS takes over).
         dragging.current = e.pointerType === "mouse";
       }} onClick={onClick}>
-      <div className="mb-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span>Select text to highlight it or add a note.</span>
-        {highlights.length > 0 && (
-          <button type="button" onClick={() => onChange([])} className="rounded-md px-1.5 py-0.5 hover:bg-white/5 hover:text-foreground">
-            Clear highlights
-          </button>
-        )}
-      </div>
+      {!compact && (
+        <div className="mb-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>Select text to highlight it or add a note.</span>
+          {highlights.length > 0 && (
+            <button type="button" onClick={() => onChange([])} className="rounded-md px-1.5 py-0.5 hover:bg-white/5 hover:text-foreground">
+              Clear highlights
+            </button>
+          )}
+        </div>
+      )}
 
-      <div ref={bodyRef} className="sat-content" />
+      <div ref={bodyRef} className={cn("sat-content", className)} />
 
       {bar && (
         <div
