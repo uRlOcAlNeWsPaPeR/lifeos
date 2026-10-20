@@ -86,7 +86,9 @@ export interface ExamAnnotation {
   start: number;
   end: number;
   note: string;
-  color?: "yellow" | "blue" | "pink";
+  /** "none" = an underline with no highlight. */
+  color?: "yellow" | "blue" | "pink" | "none";
+  underline?: boolean;
 }
 
 export interface ExamModule {

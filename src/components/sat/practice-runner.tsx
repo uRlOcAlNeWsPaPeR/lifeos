@@ -25,7 +25,7 @@ import { confetti, playCorrect } from "@/lib/sat/celebrate";
 import { cn } from "@/lib/utils";
 import { BadgeIcon, LoadingBlock, Stat } from "./common";
 import { LETTERS, OptionRow, QuestionHtml, QuestionMeta, Sheet, type OptionState } from "./question";
-import { HighlightableHtml } from "./highlight";
+import { HighlightableHtml, HighlightsNotesButton } from "./highlight";
 import type { Highlight } from "@/lib/sat/highlights";
 import { MathTools } from "./tools";
 import { SAT_ROUTES } from "./use-sat-actions";
@@ -257,6 +257,8 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
           Mark for review
         </Button>
         <div className="ml-auto flex items-center gap-1">
+          {/* The real test has Highlights & Notes on non-math questions only; math gets the calculator and reference sheet instead. */}
+          {q.section === "rw" && <HighlightsNotesButton />}
           <MathTools show={q.section === "math"} />
           <Button variant="ghost" size="icon" onClick={openPause} aria-label="Pause and save for later" title="Pause and save for later">
             <Pause className="h-4 w-4" />
@@ -289,14 +291,22 @@ function Runner({ session, onFinish }: { session: LiveSession; onFinish: (r: Res
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* Passage or problem on the left; question and choices on the right. */}
         <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-          <HighlightableHtml html={q.stimulus || q.stem} highlights={marks[q.id]?.s ?? NO_MARKS} onChange={(next) => mark(q.id, "s", next)} />
+          {q.section === "rw" ? (
+            <HighlightableHtml html={q.stimulus || q.stem} highlights={marks[q.id]?.s ?? NO_MARKS} onChange={(next) => mark(q.id, "s", next)} />
+          ) : (
+            <QuestionHtml html={q.stimulus || q.stem} />
+          )}
         </Sheet>
 
         <div className="space-y-4">
           <Sheet className="space-y-4">
-            {q.stimulus && q.stem && (
-              <HighlightableHtml compact html={q.stem} highlights={marks[q.id]?.t ?? NO_MARKS} onChange={(next) => mark(q.id, "t", next)} className="font-semibold" />
-            )}
+            {q.stimulus &&
+              q.stem &&
+              (q.section === "rw" ? (
+                <HighlightableHtml html={q.stem} highlights={marks[q.id]?.t ?? NO_MARKS} onChange={(next) => mark(q.id, "t", next)} className="font-semibold" />
+              ) : (
+                <QuestionHtml html={q.stem} className="font-semibold" />
+              ))}
             {q.type === "mcq" ? (
               <div className="space-y-2">
                 {LETTERS.map((L, i) => {

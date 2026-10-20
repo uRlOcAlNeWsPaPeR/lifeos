@@ -437,6 +437,7 @@ html.lenis body {
 /* Passage highlights (see components/sat/highlight.tsx). Translucent so the
    words stay readable on the dark sheet. */
 .sat-content mark.sat-hl {
+  background: transparent;
   color: inherit;
   border-radius: 2px;
   cursor: pointer;
@@ -457,6 +458,12 @@ html.lenis body {
 }
 .sat-content mark.sat-hl-pink {
   background: hsl(330 85% 66% / 0.42);
+}
+/* An underline on its own, or on top of a highlight. */
+.sat-content mark.sat-ul {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
 }
 
 .sat-content p {

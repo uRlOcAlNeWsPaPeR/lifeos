@@ -86,6 +86,14 @@ Built on the user's direct request ("get to it now"), **without the Mobbin resea
 - **Canvas 2D, no new dependency and no second WebGL context** (`components/brain/brain-web.tsx`). Repaints only while something moves. Older memories are dimmer (fade over ~3 years). Timeline view is the accessible text alternative.
 - Layout (`graph.ts`, Fruchterman-Reingold) is deterministic and capped at 420 nodes (newest kept; narrow by time to reach older ones).
 
+### 2026-10-19: SAT Highlights & Notes, matched to the real Bluebook tool
+Sources: College Board's PSAT 10 student guide ("On non-math questions, you can highlight any part of a passage and leave yourself a note. You can change the highlight color, add an underline, make a note, or delete the highlight.") and Bluebook's accessibility page (Control + H opens it on every platform).
+- **Reading & Writing only** (passage *and* question text). Math gets the calculator and reference sheet, as on the real test. ScoreClimb enables it on math too; LifeOS deliberately doesn't.
+- A mark = colour (yellow / blue / pink) + optional underline + optional note, as plain text offsets (`lib/sat/highlights.ts`, pure and tested). Underline and colour stack; a note pins to its words; Delete removes all of it.
+- Popup on selection with colours, Underline, Note, Delete; also a "Highlights & Notes" toolbar button and Ctrl + H, both acting on the current selection. No "clear all" button: the real tool has none.
+- Exams save marks on the module in ScoreClimb's own `annots` shape (`c/start/end/note`, plus LifeOS's optional `color`/`underline`); practice sets keep them for the set only (as ScoreClimb does).
+- What couldn't be confirmed from public sources: Bluebook's exact popup layout and colours. Compare against Bluebook's own Test Preview if exact look matters.
+
 ## Gotchas
 
 - Marketing reveals: GSAP's ScrollTrigger is registered in `SmoothScroll`'s effect, which runs *after* the child `Reveal` effects, so reveals log "Missing plugin" and play on load instead of on scroll (pre-existing, unfixed as of 2026-10-01).

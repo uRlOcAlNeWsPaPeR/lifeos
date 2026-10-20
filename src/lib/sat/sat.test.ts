@@ -26,7 +26,7 @@ import {
   totalEstimate,
 } from "./engine";
 import { buildModule, gradeModule, newExam, routeFor, scoreExam, scoreSection } from "./exam";
-import { addHighlight, annotsFor, highlightAt, overlaps, removeRange, setNote, withAnnots, type Highlight } from "./highlights";
+import { addHighlight, annotsFor, colorOf, highlightAt, isUnderlined, overlaps, removeRange, setColor, setNote, setUnderline, withAnnots, type Highlight } from "./highlights";
 import type { CatalogRow, ExamModule, Question, SatState } from "./types";
 
 const NOW = new Date(2026, 8, 21, 12); // 21 Sep 2026, local noon
@@ -468,6 +468,79 @@ test("what LifeOS saves reads back the same, and is in ScoreClimb's shape", () =
   const saved = withAnnots(undefined, "s", marks);
   assert.deepEqual(annotsFor(saved, "s"), marks);
   for (const a of saved) assert.ok(a.c && typeof a.start === "number" && typeof a.end === "number" && typeof a.note === "string");
+});
+
+/* ---------------------- Highlights & Notes: underline ---------------------- */
+
+test("underlining words with no highlight is an underline on its own", () => {
+  assert.deepEqual(setUnderline([], 5, 15, true), [{ start: 5, end: 15, underline: true }]);
+});
+
+test("underline and colour stack on the same words, in either order", () => {
+  const a = setUnderline(setColor([], 5, 15, "blue"), 5, 15, true);
+  const b = setColor(setUnderline([], 5, 15, true), 5, 15, "blue");
+  assert.deepEqual(a, [{ start: 5, end: 15, color: "blue", underline: true }]);
+  assert.deepEqual(b, a);
+});
+
+test("changing the colour keeps the underline, and the underline keeps the colour", () => {
+  const both = [{ start: 0, end: 10, color: "yellow", underline: true } as Highlight];
+  assert.deepEqual(setColor(both, 0, 10, "pink"), [{ start: 0, end: 10, color: "pink", underline: true }]);
+  assert.deepEqual(setUnderline(both, 0, 10, false), [{ start: 0, end: 10, color: "yellow" }]);
+});
+
+test("taking the underline off an underline-only mark removes it entirely", () => {
+  assert.deepEqual(setUnderline([{ start: 0, end: 10, underline: true }], 0, 10, false), []);
+});
+
+test("underlining part of a highlight splits it and leaves the rest as it was", () => {
+  const out = setUnderline([{ start: 0, end: 30, color: "yellow" }], 10, 20, true);
+  assert.deepEqual(out, [
+    { start: 0, end: 10, color: "yellow" },
+    { start: 10, end: 20, color: "yellow", underline: true },
+    { start: 20, end: 30, color: "yellow" },
+  ]);
+});
+
+test("a selection spanning plain text and a highlight gets underlined all the way", () => {
+  const out = setUnderline([{ start: 10, end: 20, color: "blue" }], 5, 25, true);
+  assert.equal(isUnderlined(out, 5, 25), true);
+  assert.equal(colorOf(out, 10, 20), "blue", "the colour stays on the words that had it");
+  assert.equal(colorOf(out, 5, 25), null, "but the whole span isn't one colour");
+});
+
+test("isUnderlined is false while any part is missing it", () => {
+  const out = setUnderline([], 0, 10, true);
+  assert.equal(isUnderlined(out, 0, 10), true);
+  assert.equal(isUnderlined(out, 0, 12), false);
+  assert.equal(isUnderlined([], 3, 3), false);
+});
+
+test("colorOf is the colour only when one covers the whole selection", () => {
+  const list: Highlight[] = [{ start: 0, end: 10, color: "pink" }];
+  assert.equal(colorOf(list, 2, 8), "pink");
+  assert.equal(colorOf(list, 2, 12), null);
+  assert.equal(colorOf([{ start: 0, end: 5, color: "pink" }, { start: 5, end: 10, color: "blue" }], 0, 10), null);
+});
+
+test("restyling part of a noted highlight keeps its note on exactly one piece", () => {
+  const out = setColor([{ start: 0, end: 30, color: "yellow", note: "key idea" }], 10, 20, "blue");
+  assert.equal(out.filter((h) => h.note === "key idea").length, 1);
+  assert.equal(out.find((h) => h.note)?.start, 0, "it stays with the first piece");
+});
+
+test("an underline-only mark survives being saved and read back, and says so for ScoreClimb", () => {
+  const marks: Highlight[] = [
+    { start: 0, end: 5, underline: true },
+    { start: 10, end: 20, color: "blue", underline: true, note: "n" },
+  ];
+  const saved = withAnnots(undefined, "s", marks);
+  assert.equal(saved[0].color, "none");
+  assert.deepEqual(annotsFor(saved, "s"), marks);
+});
+
+test("a ScoreClimb highlight with no colour is still yellow, not an underline", () => {
+  assert.deepEqual(annotsFor([{ c: "s", start: 1, end: 4, note: "" }], "s"), [{ start: 1, end: 4, color: "yellow" }]);
 });
 
 report("sat");

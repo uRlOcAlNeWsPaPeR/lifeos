@@ -1,15 +1,20 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Eraser, StickyNote } from "lucide-react";
+import { Highlighter, StickyNote, Trash2, Underline } from "lucide-react";
+import { toast } from "@/components/ui/toaster";
 import { fixMathHTML } from "@/lib/sat/math-fix";
 import {
   addHighlight,
+  colorOf,
   HIGHLIGHT_COLORS,
   highlightAt,
+  isUnderlined,
   overlaps,
   removeRange,
+  setColor,
   setNote,
+  setUnderline,
   type Highlight,
   type HighlightColor,
 } from "@/lib/sat/highlights";
@@ -69,7 +74,9 @@ function paint(root: HTMLElement, list: Highlight[]) {
       const target = a > 0 ? n.splitText(a) : n;
       if (b - a < target.data.length) target.splitText(b - a);
       const mark = document.createElement("mark");
-      mark.className = `sat-hl sat-hl-${h.color}${h.note ? " sat-hl-note" : ""}`;
+      mark.className = ["sat-hl", h.color && `sat-hl-${h.color}`, h.underline && "sat-ul", h.note && "sat-hl-note"]
+        .filter(Boolean)
+        .join(" ");
       if (h.note) {
         mark.dataset.note = h.note;
         mark.title = h.note;
@@ -80,6 +87,42 @@ function paint(root: HTMLElement, list: Highlight[]) {
       mark.appendChild(target);
     }
   }
+}
+
+const OPEN_EVENT = "sat:highlights-and-notes";
+
+/**
+ * The toolbar button, as on the real test: with words selected it opens the
+ * tool on them; with nothing selected it says what to do.
+ */
+export function HighlightsNotesButton() {
+  function open() {
+    const sel = window.getSelection();
+    const inside =
+      !!sel &&
+      !sel.isCollapsed &&
+      !!(sel.getRangeAt(0).commonAncestorContainer instanceof Element
+        ? (sel.getRangeAt(0).commonAncestorContainer as Element).closest("[data-annotatable]")
+        : sel.getRangeAt(0).commonAncestorContainer.parentElement?.closest("[data-annotatable]"));
+    if (!inside) {
+      toast("Select the words you want to highlight or add a note to first.", "info");
+      return;
+    }
+    window.dispatchEvent(new Event(OPEN_EVENT));
+  }
+  return (
+    <button
+      type="button"
+      // Pressing the button must not clear the selection it's about to act on.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={open}
+      title="Highlights & Notes (Ctrl + H)"
+      className="inline-flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-sm text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+    >
+      <Highlighter className="h-4 w-4" />
+      <span className="hidden sm:inline">Highlights &amp; Notes</span>
+    </button>
+  );
 }
 
 const SWATCH: Record<HighlightColor, string> = {
@@ -112,14 +155,11 @@ export function HighlightableHtml({
   html,
   highlights,
   onChange,
-  compact = false,
   className,
 }: {
   html: string | undefined;
   highlights: Highlight[];
   onChange: (next: Highlight[]) => void;
-  /** No "select text" hint or Clear button — for a second block next to a passage. */
-  compact?: boolean;
   className?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -179,6 +219,21 @@ export function HighlightableHtml({
       window.clearTimeout(timer);
       timer = window.setTimeout(update, 0);
     };
+    // The real test's tool opens with Control + H (on every platform), and from
+    // its toolbar button. Either way it acts on whatever is selected right now.
+    const selectionHere = () => {
+      const sel = window.getSelection();
+      const el = body();
+      return !!sel && !sel.isCollapsed && !!el && el.contains(sel.getRangeAt(0).commonAncestorContainer);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || e.altKey || e.metaKey || e.key.toLowerCase() !== "h" || !selectionHere()) return;
+      e.preventDefault(); // not the browser's History page
+      update();
+    };
+    const onOpen = () => selectionHere() && update();
+    document.addEventListener("keydown", onKey);
+    window.addEventListener(OPEN_EVENT, onOpen);
     document.addEventListener("selectionchange", onSelection);
     document.addEventListener("pointerup", onUp);
     // A touch selection (long-press, then drag the handles) ends in pointercancel,
@@ -189,12 +244,21 @@ export function HighlightableHtml({
       document.removeEventListener("selectionchange", onSelection);
       document.removeEventListener("pointerup", onUp);
       document.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_EVENT, onOpen);
     };
   }, []);
 
   function choose(color: HighlightColor) {
     if (!bar) return;
-    onChange(addHighlight(highlights, { start: bar.start, end: bar.end, color }));
+    onChange(setColor(highlights, bar.start, bar.end, color));
+    window.getSelection()?.removeAllRanges();
+    setBar(null);
+  }
+
+  function toggleUnderline() {
+    if (!bar) return;
+    onChange(setUnderline(highlights, bar.start, bar.end, !isUnderlined(highlights, bar.start, bar.end)));
     window.getSelection()?.removeAllRanges();
     setBar(null);
   }
@@ -273,48 +337,56 @@ export function HighlightableHtml({
   }
 
   const hasHere = bar ? overlaps(highlights, bar.start, bar.end) : false;
+  const underlined = bar ? isUnderlined(highlights, bar.start, bar.end) : false;
 
   return (
-    <div ref={wrapRef} className="relative" onPointerDown={(e) => {
+    <div ref={wrapRef} data-annotatable className="relative" onPointerDown={(e) => {
         // Only a mouse drag needs waiting out; a touch selection is handled by the
         // debounce alone (its pointer events stop as soon as the OS takes over).
         dragging.current = e.pointerType === "mouse";
       }} onClick={onClick}>
-      {!compact && (
-        <div className="mb-3 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-          <span>Select text to highlight it or add a note.</span>
-          {highlights.length > 0 && (
-            <button type="button" onClick={() => onChange([])} className="rounded-md px-1.5 py-0.5 hover:bg-white/5 hover:text-foreground">
-              Clear highlights
-            </button>
-          )}
-        </div>
-      )}
-
       <div ref={bodyRef} className={cn("sat-content", className)} />
 
       {bar && (
         <div
           role="toolbar"
-          aria-label="Highlight"
+          aria-label="Highlights & Notes"
           // Keep the selection alive while a button is pressed.
           onMouseDown={(e) => e.preventDefault()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="absolute z-20 flex items-center gap-1 rounded-xl border border-white/15 bg-background/95 p-1.5 shadow-lg backdrop-blur-xl"
+          className="absolute z-20 flex items-center gap-0.5 rounded-xl border border-white/15 bg-background/95 p-1.5 shadow-lg backdrop-blur-xl"
           style={{ top: bar.top, left: bar.left }}
         >
-          {HIGHLIGHT_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={`Highlight ${c}`}
-              title={`Highlight ${c}`}
-              onClick={() => choose(c)}
-              className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10"
-            >
-              <span className={cn("h-4 w-4 rounded-full ring-1 ring-black/20", SWATCH[c])} />
-            </button>
-          ))}
+          {HIGHLIGHT_COLORS.map((c) => {
+            const on = colorOf(highlights, bar.start, bar.end) === c;
+            return (
+              <button
+                key={c}
+                type="button"
+                aria-label={`Highlight ${c}`}
+                aria-pressed={on}
+                title={`Highlight ${c}`}
+                onClick={() => choose(c)}
+                className={cn("flex h-7 w-7 items-center justify-center rounded-lg transition-colors hover:bg-white/10", on && "bg-white/10")}
+              >
+                <span className={cn("h-4 w-4 rounded-full ring-1 ring-black/20", SWATCH[c], on && "ring-2 ring-foreground")} />
+              </button>
+            );
+          })}
+          <span className="mx-1 h-5 w-px bg-white/10" aria-hidden />
+          <button
+            type="button"
+            aria-label="Underline"
+            aria-pressed={underlined}
+            title="Underline"
+            onClick={toggleUnderline}
+            className={cn(
+              "flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground",
+              underlined && "bg-white/10 text-foreground",
+            )}
+          >
+            <Underline className="h-4 w-4" />
+          </button>
           <button
             type="button"
             aria-label="Add a note"
@@ -327,13 +399,12 @@ export function HighlightableHtml({
           {hasHere && (
             <button
               type="button"
-              aria-label="Remove highlight"
-              title="Remove highlight"
+              aria-label="Delete highlight"
+              title="Delete highlight"
               onClick={clear}
-              className="ml-0.5 flex h-7 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-white/10 hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white/10 hover:text-destructive"
             >
-              <Eraser className="h-3.5 w-3.5" />
-              Remove
+              <Trash2 className="h-4 w-4" />
             </button>
           )}
         </div>
@@ -369,7 +440,7 @@ export function HighlightableHtml({
               onClick={removeFromEditor}
               className="rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-white/10 hover:text-foreground"
             >
-              Remove highlight
+              Delete
             </button>
             <button
               type="button"

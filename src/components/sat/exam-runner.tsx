@@ -27,7 +27,7 @@ import type { ExamModule, ExamState } from "@/lib/sat/types";
 import { cn } from "@/lib/utils";
 import { AccuracyRows, ErrorBlock, LoadingBlock, Stat } from "./common";
 import { LETTERS, OptionRow, QuestionHtml, Sheet, type OptionState } from "./question";
-import { HighlightableHtml } from "./highlight";
+import { HighlightableHtml, HighlightsNotesButton } from "./highlight";
 import { annotsFor, withAnnots, type Highlight } from "@/lib/sat/highlights";
 import { MathTools } from "./tools";
 import { SAT_ROUTES } from "./use-sat-actions";
@@ -262,7 +262,7 @@ export function ExamRunner() {
           <li>Four timed modules: two Reading &amp; Writing, a 10-minute break, then two Math.</li>
           <li>Module 2 adapts: 60%+ on Module 1 gets you the harder Module 2, with a higher score ceiling.</li>
           <li><strong className="text-foreground">Mark for review</strong> flags a question so you can find it in the question navigator.</li>
-          <li>Select text in the passage or the question to <strong className="text-foreground">highlight</strong> it or attach a <strong className="text-foreground">note</strong>. Click a highlight to edit it.</li>
+          <li>On Reading and Writing questions, select text in the passage or the question and use <strong className="text-foreground">Highlights &amp; Notes</strong> (or Ctrl + H) to highlight it, underline it, or attach a note. Click a highlight to edit it.</li>
           <li>Use the letter beside a choice to cross it out. Clicking the choice itself selects it.</li>
           <li>Math modules include the Desmos calculator and a reference sheet.</li>
           <li>Wrong answers aren&apos;t penalized — always guess.</li>
@@ -365,6 +365,8 @@ function ModuleView({
           <Button variant="ghost" size="icon" onClick={onHelp} aria-label="How this exam works">
             <HelpCircle className="h-4 w-4" />
           </Button>
+          {/* The real test has Highlights & Notes on non-math questions only. */}
+          {mod.section === "rw" && <HighlightsNotesButton />}
           <MathTools show={mod.section === "math"} />
           <span
             role="timer"
@@ -402,12 +404,20 @@ function ModuleView({
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <Sheet className="lg:max-h-[calc(100vh-15rem)] lg:overflow-y-auto">
-            <HighlightableHtml html={q.stimulus || q.stem} highlights={passageMarks} onChange={(next) => setMarks("s", next)} />
+            {q.section === "rw" ? (
+              <HighlightableHtml html={q.stimulus || q.stem} highlights={passageMarks} onChange={(next) => setMarks("s", next)} />
+            ) : (
+              <QuestionHtml html={q.stimulus || q.stem} />
+            )}
           </Sheet>
           <Sheet className="space-y-4">
-            {q.stimulus && q.stem && (
-              <HighlightableHtml compact html={q.stem} highlights={stemMarks} onChange={(next) => setMarks("t", next)} className="font-semibold" />
-            )}
+            {q.stimulus &&
+              q.stem &&
+              (q.section === "rw" ? (
+                <HighlightableHtml html={q.stem} highlights={stemMarks} onChange={(next) => setMarks("t", next)} className="font-semibold" />
+              ) : (
+                <QuestionHtml html={q.stem} className="font-semibold" />
+              ))}
             {q.type === "mcq" ? (
               <div className="space-y-2">
                 {LETTERS.map((L, i) => {
